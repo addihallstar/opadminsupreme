@@ -30,7 +30,7 @@ local z;z = {
 	replicated_storage = game:GetService('ReplicatedStorage'),
 	http = game:GetService('HttpService'),
 
-
+	allow_command_switching = true,
 	connect = game.Changed.Connect,
 	destroy = game.Destroy,
 	empty = function() end,
@@ -612,9 +612,16 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified n
 		end)
 	end)
 end)
-
+cmd_library.add({"commandswitching","cmdswitching","cmdswitch"},"use true/false to allow command switching (if mobile fly turns to mobilefly)",function(vstorage,arg)
+	local valuething = false
+	if arg:lower() == "true" then
+		valuething = true
+	end
+	z.allow_command_switching = valuething
+	notify("commandswitching set to "..tostring(valuething))
+end)
 cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
-	if z.is_mobile then
+	if z.is_mobile and z.allow_command_switching then
 		cmd_library.execute('unmobilefly')
 		return
 	end
@@ -631,7 +638,7 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
 end)
 
 cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
-	if z.is_mobile then
+	if z.is_mobile and z.allow_command_switching then
 		cmd_library.execute('mobilefly',speed)
 		return
 	end
@@ -865,6 +872,7 @@ cmd_library.add({'respawnpoint', 'illusion', 'rp'}, 'makes your respawnpoint be 
 				hypernull(function()
 					z.local_character:PivotTo(death_pos)
 				end)
+				maid.remove("resetspawn")
 				if health > 1 then
 					has_died = false
 				end
@@ -1582,6 +1590,7 @@ cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far mo
 				else
 					if z.sim_range_reset == false then
 						notify('attempt to gain ownership timed out, consider using reloadnetwork')
+						z.local_character:PivotTo(oldcf)
 						return
 					end
 				end
@@ -1666,6 +1675,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 				else
 					if z.sim_range_reset == false then
 						notify('attempt to gain ownership timed out, consider using reloadnetwork')
+						z.local_character:PivotTo(oldcf)
 						return
 					end
 				end
@@ -3483,9 +3493,6 @@ cmd_library.add({'partstorm', 'pstorm', 'partrain'}, 'rain parts on a player', f
 	notify(`raining parts on {target.Name}`)
 
 	local old_cframe = z.local_character:GetPivot()
-	z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
-	z.local_player.SimulationRadius = 1000
-	task.wait(z.players.RespawnTime + 0.5)
 	z.local_character:WaitForChild('HumanoidRootPart').CFrame = old_cframe
 	workspace.CurrentCamera = workspace.CurrentCamera
 	task.wait(0.2)
@@ -3533,20 +3540,21 @@ cmd_library.add({'partstorm', 'pstorm', 'partrain'}, 'rain parts on a player', f
 				table.remove(parts, i)
 				continue
 			end
-
+			if part.ReceiveAge ~= 0 or part.Anchored then
+				table.remove(parts, i)
+				continue
+			end
 			pcall(function()
-				if part.ReceiveAge ~= 0 or part.Anchored then return end
-
 				part.CanCollide = true
 				part.Velocity = Vector3.new(
 					math.random(-50, 50),
-					math.random(100, 300),
+					math.random(-100, 300),
 					math.random(-50, 50)
 				)
 
 				local random_offset = Vector3.new(
 					math.random(-20, 20),
-					math.random(30, 60),
+					math.random(4, 30),
 					math.random(-20, 20)
 				)
 
