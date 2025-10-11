@@ -1480,7 +1480,7 @@ cmd_library.add({'noclip'}, 'walk through stuff', function()
 end)
 
 z.sim_range_reset = false
-cmd_library.add({'resetsimulationrange', 'resetsimrange', 'resetsr'}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
+cmd_library.add({'reloadnetwork', 'resetsimrange', 'resetsr'}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
 	notify('fetching all parts, your character will be reset')
 	pcall(function()
 		maid.remove('part_trap_follow')
