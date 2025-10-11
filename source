@@ -1,4 +1,4 @@
---welcome to the source of opadmin
+--welcome to opadmin source make sure to read license.md for an idea what you could get yourself into
 if rawequal(game:IsLoaded(), false) then
 	game.Loaded:Wait()
 end
@@ -49,30 +49,33 @@ local maid;maid = {
 		end
 	end),
 
-	add = function(name, signal, fn)
+	add = function(name, signal, fn, important)
 		if maid._tasks[name] then
 			maid:remove(name)
 		end
-
+		if important == 1 then
+		maid._tasks[name..'$PROTECTED'] = z.connect(signal, fn)
+		else
 		maid._tasks[name] = z.connect(signal, fn)
+		end
 	end,
 
 	remove = function(name)
 		local task = maid._tasks[name]
 		if task then
-			if typeof(task) == 'RBXScriptConnection' and task.Connected then
+			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find("$PROTECTED") then
 				z.disconnect(task)
+				maid._tasks[name] = nil
 			end
-			maid._tasks[name] = nil
 		end
 	end,
 
 	clean = function()
 		for name, task in pairs(maid._tasks) do
-			if typeof(task) == 'RBXScriptConnection' and task.Connected then
+			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find("$PROTECTED")  then
 				z.disconnect(task)
+				maid._tasks[name] = nil
 			end
-			maid._tasks[name] = nil
 		end
 
 		table.clear(maid._tasks)
@@ -88,10 +91,12 @@ do
 	z.local_character = z.local_player.Character or z.local_player.CharacterAdded:Wait()
 	z.default_walkspeed = z.local_character:WaitForChild('Humanoid').WalkSpeed or z.starter_player.CharacterWalkSpeed
 	z.default_jumppower = z.local_character:WaitForChild('Humanoid').JumpPower or z.starter_player.CharacterJumpPower
-
+	pcall(function()
+		z.is_mobile = table.find({Enum.Platform.IOS, Enum.Platform.Android}, game:GetService("UserInputService"):GetPlatform())
+	end)
 	maid.add('local_character_added', z.local_player.CharacterAdded, function(character)
 		z.local_character = character
-	end)
+	end,1)
 
 	maid.add('clean_highlights', z.run_service.Stepped, function()
 		for _, plr in pairs(z.players:GetPlayers()) do
@@ -101,7 +106,7 @@ do
 				z.highlights[plr] = nil
 			end
 		end
-	end)
+	end,1)
 end
 
 local ui = game:GetObjects('rbxassetid://102338830611620')[1]:Clone()
@@ -116,7 +121,7 @@ do
 
 	maid.add('close_button_MouseButton1Up', x_button.MouseButton1Up, function()
 		commands_gui.Enabled = false
-	end)
+	end,1)
 
 	commands_gui.Parent = z.core_gui
 	notif_gui.Parent = z.core_gui
@@ -402,7 +407,7 @@ maid.add('esp_update', z.run_service.RenderStepped, function()
 			end
 		end
 	end
-end)
+end,1)
 
 cmd_library.add({'chatlogs'}, 'toggles the chat logs ui', function(vstorage)
 	local existing_log = z.core_gui:FindFirstChild('chat_logs')
@@ -620,6 +625,10 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified n
 end)
 
 cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
+	if z.is_mobile then
+		cmd_library.execute("unmobilefly")
+		return
+	end
 	local vstorage = cmd_library.get_variable_storage('fly')
 
 	if vstorage.enabled then
@@ -633,6 +642,10 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
 end)
 
 cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
+	if z.is_mobile then
+		cmd_library.execute("mobilefly",speed)
+		return
+	end
 	if vstorage.enabled then
 		return notify('already flying')
 	end
@@ -647,9 +660,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 	flight_part.Anchored = true
 	flight_part.Transparency = 1
 	flight_part.CanCollide = false
-
-	local control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
-
+	
 	maid.add('flight', z.run_service.Heartbeat, function()
 		pcall(function()
 			local old_pos = flight_part.Position
@@ -682,7 +693,74 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 		end)
 	end)
 end)
-
+cmd_library.add({"mobilefly","mobilecframefly","mobilecffly"}, "mobile fly" ,function(vstorage,flyspeed)
+	if not tonumber(flyspeed) then
+		notify("enabled flight")
+		flyspeed = 1
+	else
+		flyspeed = tonumber(flyspeed)
+		notify("enabled flight with speed "..tostring(flyspeed))
+	end
+	pcall(function()
+		vstorage.partusedforflight:Destroy()
+	end)
+	pcall(function()
+		maid.remove("mobile_flight")
+	end)
+	local foundpart = Instance.new("Part",workspace)
+	vstorage.partusedforflight = foundpart
+	foundpart.CFrame = z.local_character:GetPivot()
+	foundpart.Anchored = true
+	foundpart.Transparency = 1
+	
+	local controlModule = require(game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"),2)
+	maid.add("mobile_flight",z.run_service.Heartbeat,function()
+		pcall(function()
+			foundpart.CanCollide = false
+			local oldpos = foundpart.Position
+			foundpart.CFrame = CFrame.lookAt(oldpos,workspace.CurrentCamera.CFrame*CFrame.new(0,0,-250).Position)
+			z.local_character:PivotTo(foundpart.CFrame)
+			z.local_character:FindFirstChild("HumanoidRootPart").AssemblyLinearVelocity = Vector3.zero
+			local direction = controlModule:GetMoveVector()
+			if direction.X > 0 then
+				foundpart.CFrame*=CFrame.new(flyspeed,0,0)
+			end
+			if direction.X < 0 then
+				foundpart.CFrame*=CFrame.new(-flyspeed,0,0)
+			end
+			if direction.Y > 0 then
+				foundpart.CFrame*=CFrame.new(0,flyspeed,0)
+			end
+			if direction.Y < 0 then
+				foundpart.CFrame*=CFrame.new(0,-flyspeed,0)
+			end
+			if direction.Z > 0 then
+				foundpart.CFrame*=CFrame.new(0,0,flyspeed)
+			end
+			if direction.Z < 0 then
+				foundpart.CFrame*=CFrame.new(0,0,-flyspeed)
+			end
+		end)
+	end)
+end)
+cmd_library.add({"unmobilefly","unmobilecframefly","unmobilecffly"},"mobile unfly",function()
+	local vstorage = cmd_library.get_variable_storage("mobilefly")
+	if vstorage.partusedforflight then
+		notify("disabled flight")
+	else
+		notify("flight is already disabled!")
+	end
+	pcall(function()
+		maid.remove("mobile_flight")
+	end)
+	pcall(function()
+		vstorage.partusedforflight:Destroy()
+		vstorage.partusedforflight = nil
+	end)
+end)
+cmd_library.add({"cleanconnections","clean"},"Cleans the connection handler's connections",function()
+	maid.clean()
+end)
 cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(vstorage,speed)
 	if vstorage.enabled then
 		return notify('bypass flight already enabled')
@@ -1480,7 +1558,7 @@ cmd_library.add({'noclip'}, 'walk through stuff', function()
 end)
 
 z.sim_range_reset = false
-cmd_library.add({'reloadnetwork', 'resetsimrange', 'resetsr'}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
+cmd_library.add({'reloadnetwork',"reloadnet","rnetwork"}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
 	notify('fetching all parts, your character will be reset')
 	pcall(function()
 		maid.remove('part_trap_follow')
@@ -1511,8 +1589,8 @@ cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far mo
 			local oldcframepart = Part.CFrame
 			local oldcf = z.local_character:GetPivot()
 			if network_check(Part) == false then
-				notify('use resetsimrange to stop trying to gain ownership')
 				local otick;otick = tick()
+				notify('using reloadnetwork would make partfling work better')
 				repeat
 					z.local_character:PivotTo(Part.CFrame)
 					z.run_service.RenderStepped:Wait()
@@ -1522,6 +1600,7 @@ cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far mo
 				else
 					if z.sim_range_reset == false then
 						notify('attempt to gain ownership timed out')
+						return
 					end
 				end
 			else
@@ -3232,8 +3311,6 @@ cmd_library.add({'discord','invite'},'Copies the Discord invite',function()
 	if setclipboard then
 		setclipboard("https://discord.gg/StHSWMjcnk")
 		notify("Discord invite copied to clipboard")
-	else
-		notify("Discord invite not supported by your executor")
 	end
 end)
 
@@ -3352,7 +3429,7 @@ maid.add('open_cmd_bar', z.user_input_service.InputBegan, function(k,i)
 			cmdbox.Text = ''; z.run_service.Heartbeat:Wait()
 		until cmdbox.Text == ''
 	end
-end)
+end,1)
 
 cmdbox.FocusLost:Connect(function(enter)
 	tween_ui(main_container, 0.1, {Position = pos_closed_box}, true)
