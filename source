@@ -108,7 +108,7 @@ do
 	end,1)
 end
 
-local ui = game:GetObjects('rbxassetid://102338830611620')[1]:Clone()
+local ui = game:GetObjects('rbxassetid://131430979206692')[1]:Clone()
 local commands_gui = ui.commands_ui:Clone()
 local notif_gui = ui.notification_ui:Clone()
 local chatlog_gui = ui.chat_logs:Clone()
