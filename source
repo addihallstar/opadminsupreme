@@ -1695,7 +1695,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 			local allowed = true
 			local oldpartcframeeeee = nil
 			maid.add('part_trap_connection_'..number,z.run_service.Heartbeat,function()
-				if target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
+				if target == nil or target.Character == nil or target.Character:IsDescendantOf(game) == false or target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
 					maid.remove('part_trap_follow')
 					maid.remove('part_trap_connection_'..number)
 					maid.add("removing_trap_connection_"..number,z.run_service.Heartbeat,function()
