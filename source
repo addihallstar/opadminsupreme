@@ -1,4 +1,3 @@
---welcome to opadmin source make sure to read license.md for an idea what you could get yourself into
 if rawequal(game:IsLoaded(), false) then
 	game.Loaded:Wait()
 end
@@ -63,7 +62,7 @@ local maid;maid = {
 	remove = function(name)
 		local task = maid._tasks[name]
 		if task then
-			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find("$PROTECTED") then
+			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find('$PROTECTED') then
 				z.disconnect(task)
 				maid._tasks[name] = nil
 			end
@@ -72,7 +71,7 @@ local maid;maid = {
 
 	clean = function()
 		for name, task in pairs(maid._tasks) do
-			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find("$PROTECTED")  then
+			if typeof(task) == 'RBXScriptConnection' and task.Connected and not name:find('$PROTECTED')  then
 				z.disconnect(task)
 				maid._tasks[name] = nil
 			end
@@ -92,7 +91,7 @@ do
 	z.default_walkspeed = z.local_character:WaitForChild('Humanoid').WalkSpeed or z.starter_player.CharacterWalkSpeed
 	z.default_jumppower = z.local_character:WaitForChild('Humanoid').JumpPower or z.starter_player.CharacterJumpPower
 	pcall(function()
-		z.is_mobile = table.find({Enum.Platform.IOS, Enum.Platform.Android}, game:GetService("UserInputService"):GetPlatform())
+		z.is_mobile = table.find({Enum.Platform.IOS, Enum.Platform.Android}, game:GetService('UserInputService'):GetPlatform())
 	end)
 	maid.add('local_character_added', z.local_player.CharacterAdded, function(character)
 		z.local_character = character
@@ -409,7 +408,7 @@ maid.add('esp_update', z.run_service.RenderStepped, function()
 	end
 end,1)
 
-cmd_library.add({'chatlogs'}, 'toggles the chat logs ui', function(vstorage)
+cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', function(vstorage)
 	local existing_log = z.core_gui:FindFirstChild('chat_logs')
 
 	if existing_log then
@@ -445,7 +444,7 @@ cmd_library.add({'chatlogs'}, 'toggles the chat logs ui', function(vstorage)
 	notify('chatlogs enabled')
 end)
 
-cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chat logs', function(vstorage)
+cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chatlogs', function(vstorage)
 	local existing_log = z.core_gui:FindFirstChild('chat_logs')
 
 	if existing_log then
@@ -546,7 +545,7 @@ cmd_library.add({'saveposition', 'savepos'}, 'save a position to load with loadp
 	notify(`saved position: x:{math.floor(pos.X)}, y:{math.floor(pos.Y)}, z:{math.floor(pos.Z)}`)
 end)
 
-cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with saveposition', function()
+cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savepos', function()
 	local vstorage = cmd_library.get_variable_storage('savepos')
 	if vstorage.pos then
 		hypernull(function()
@@ -626,7 +625,7 @@ end)
 
 cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
 	if z.is_mobile then
-		cmd_library.execute("unmobilefly")
+		cmd_library.execute('unmobilefly')
 		return
 	end
 	local vstorage = cmd_library.get_variable_storage('fly')
@@ -643,7 +642,7 @@ end)
 
 cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 	if z.is_mobile then
-		cmd_library.execute("mobilefly",speed)
+		cmd_library.execute('mobilefly',speed)
 		return
 	end
 	if vstorage.enabled then
@@ -665,7 +664,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 		pcall(function()
 			local old_pos = flight_part.Position
 			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
-			z.local_character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+			z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
 			z.local_character:PivotTo(flight_part.CFrame)
 			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
 
@@ -693,75 +692,71 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 		end)
 	end)
 end)
-cmd_library.add({"mobilefly","mobilecframefly","mobilecffly"}, "mobile fly" ,function(vstorage,flyspeed)
-	if not tonumber(flyspeed) then
-		notify("enabled flight")
-		flyspeed = 1
-	else
-		flyspeed = tonumber(flyspeed)
-		notify("enabled flight with speed "..tostring(flyspeed))
+
+cmd_library.add({'mobilefly', 'mobilecframefly', 'mobilecffly'}, 'mobile fly', function(vstorage, flyspeed)
+	if vstorage.enabled then
+		return notify('mobile fly already enabled')
 	end
+
+	vstorage.enabled = true
+	flyspeed = tonumber(flyspeed) or 1
+	notify(`enabled mobile flight{flyspeed ~= 1 and ` with speed {flyspeed}` or ''}`)
+
 	pcall(function()
-		vstorage.partusedforflight:Destroy()
+		maid.remove('mobile_flight')
 	end)
-	pcall(function()
-		maid.remove("mobile_flight")
-	end)
-	local foundpart = Instance.new("Part",workspace)
-	vstorage.partusedforflight = foundpart
-	foundpart.CFrame = z.local_character:GetPivot()
-	foundpart.Anchored = true
-	foundpart.Transparency = 1
-	
-	local controlModule = require(game:GetService("Players").LocalPlayer.PlayerScripts:WaitForChild("PlayerModule"):WaitForChild("ControlModule"),2)
-	maid.add("mobile_flight",z.run_service.Heartbeat,function()
+
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+	flight_part.CFrame = z.local_character:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 1
+	flight_part.CanCollide = false
+
+	local control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+
+	maid.add('mobile_flight', z.run_service.Heartbeat, function()
 		pcall(function()
-			foundpart.CanCollide = false
-			local oldpos = foundpart.Position
-			foundpart.CFrame = CFrame.lookAt(oldpos,workspace.CurrentCamera.CFrame*CFrame.new(0,0,-250).Position)
-			z.local_character:PivotTo(foundpart.CFrame)
-			z.local_character:FindFirstChild("HumanoidRootPart").AssemblyLinearVelocity = Vector3.zero
-			local direction = controlModule:GetMoveVector()
-			if direction.X > 0 then
-				foundpart.CFrame*=CFrame.new(flyspeed,0,0)
-			end
-			if direction.X < 0 then
-				foundpart.CFrame*=CFrame.new(-flyspeed,0,0)
-			end
-			if direction.Y > 0 then
-				foundpart.CFrame*=CFrame.new(0,flyspeed,0)
-			end
-			if direction.Y < 0 then
-				foundpart.CFrame*=CFrame.new(0,-flyspeed,0)
-			end
-			if direction.Z > 0 then
-				foundpart.CFrame*=CFrame.new(0,0,flyspeed)
-			end
-			if direction.Z < 0 then
-				foundpart.CFrame*=CFrame.new(0,0,-flyspeed)
-			end
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+
+			z.local_character:PivotTo(flight_part.CFrame)
+			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+
+			local direction = control_module:GetMoveVector()
+			local offset = Vector3.new(
+				direction.X * flyspeed,
+				direction.Y * flyspeed,
+				direction.Z * flyspeed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
 		end)
 	end)
 end)
-cmd_library.add({"unmobilefly","unmobilecframefly","unmobilecffly"},"mobile unfly",function()
-	local vstorage = cmd_library.get_variable_storage("mobilefly")
-	if vstorage.partusedforflight then
-		notify("disabled flight")
-	else
-		notify("flight is already disabled!")
+
+cmd_library.add({'unmobilefly', 'unmobilecframefly', 'unmobilecffly'}, 'disable mobile fly', function()
+	local vstorage = cmd_library.get_variable_storage('mobilefly')
+
+	if not vstorage.enabled then
+		return notify('mobile fly not enabled')
 	end
-	pcall(function()
-		maid.remove("mobile_flight")
-	end)
-	pcall(function()
-		vstorage.partusedforflight:Destroy()
-		vstorage.partusedforflight = nil
-	end)
+
+	vstorage.enabled = false
+	notify('disabled mobile flight')
+	maid.remove('mobile_flight')
+
+	if vstorage.part then
+		pcall(z.destroy, vstorage.part)
+		vstorage.part = nil
+	end
 end)
-cmd_library.add({"cleanconnections","clean"},"Cleans the connection handler's connections",function()
+
+cmd_library.add({'cleanconnections', 'clean'},'Cleans the connection handler\'s connections',function()
 	maid.clean()
 end)
-cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(vstorage,speed)
+
+cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', function(vstorage,speed)
 	if vstorage.enabled then
 		return notify('bypass flight already enabled')
 	end
@@ -772,11 +767,11 @@ cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(
 	else
 		vstorage.speed = 1
 	end
-	notify('bypass flight enabled, when you disable hnfly you will teleport to the part')
+	notify('bypass flight enabled, when you disable bfly you will teleport to the part')
 
 	local cam = workspace.CurrentCamera
 	vstorage.old_subject = cam.CameraSubject
-	vstorage.old_speed = z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed
+	vstorage.old_speed = z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed
 	local flight_part = Instance.new('Part', workspace)
 	vstorage.part = flight_part
 	vstorage.old_parent = z.local_character.Parent
@@ -790,12 +785,12 @@ cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(
 	--pcall(function()
 	--	control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule',1):WaitForChild('ControlModule',1))
 	--end)
-	maid.add('hnfly_connection', z.run_service.Heartbeat, function()
+	maid.add('bypassfly_connection', z.run_service.Heartbeat, function()
 		xpcall(function()
 			local old_pos = flight_part.Position
 			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
 			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
-			z.local_character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+			z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
 
 			--local s,e = pcall(function() if control_module:GetMoveVector() == Vector3.zero then end end) 
 			--if s == false then
@@ -834,35 +829,34 @@ cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(
 	end)
 end)
 
-cmd_library.add({'unhnfly', 'disablehnfly', 'stophnfly'}, 'disable bypass flight', function()
+cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', function()
 	local vstorage = cmd_library.get_variable_storage('hnfly')
 
 	if vstorage.enabled then
 		notify('disabled bypass flight')
-		maid.remove('hnfly_connection')
+		maid.remove('bypassfly_connection')
 		vstorage.enabled = false
-		maid.add("anti_anti_teleport_connection_for_fly",z.run_service.Heartbeat,function()
+		maid.add('anti_anti_teleport_connection_for_fly',z.run_service.Heartbeat,function()
 			z.local_character.Parent = vstorage.old_parent
 			z.local_character:PivotTo(vstorage.part.CFrame)
 		end)
 		task.delay(0.5,function()
-			maid.remove("anti_anti_teleport_connection_for_fly")
+			maid.remove('anti_anti_teleport_connection_for_fly')
 			vstorage.part:Destroy()
 		end)
 		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-		z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = vstorage.old_speed or z.default_walkspeed
+		z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or z.default_walkspeed
 		workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
 	else
 		notify('bypass flight is already disabled')
 	end
 end)
 
-cmd_library.add({'resetspawn', 'illusion'}, 'makes your respawnpoint be the place where you died', function()
-	notify('new spawnpoint set')
-
+cmd_library.add({'respawnpoint', 'illusion', 'rp'}, 'makes your respawnpoint be the place where you died', function()
+	notify('enabled illusion')
 	local has_died = false
 	local death_pos
-
+	
 	maid.add('resetspawn', z.run_service.Heartbeat, function() -- will overwrite if already exists
 		pcall(function()
 			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
@@ -877,6 +871,7 @@ cmd_library.add({'resetspawn', 'illusion'}, 'makes your respawnpoint be the plac
 				hypernull(function()
 					z.local_character:PivotTo(death_pos)
 				end)
+				maid.remove("resetspawn")
 				if health > 1 then
 					has_died = false
 				end
@@ -1143,7 +1138,7 @@ cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', function(vs
 	end
 end)
 
-cmd_library.add({'unairwalk','unairw',"unfloat"},'turns off airwalk', function()
+cmd_library.add({'unairwalk','unairw','unfloat'},'turns off airwalk', function()
 	local vstorage = cmd_library.get_variable_storage('airwalk')
 	if vstorage.air_walk_part then
 		pcall(function()
@@ -1158,7 +1153,7 @@ cmd_library.add({'unairwalk','unairw',"unfloat"},'turns off airwalk', function()
 	end
 end)
 
-cmd_library.add({'airwalk', 'airw',"float"}, 'turns on airwalk', function(vstorage)
+cmd_library.add({'airwalk', 'airw','float'}, 'turns on airwalk', function(vstorage)
 	notify('enabled airwalk')
 
 	task.spawn(function()
@@ -1541,7 +1536,7 @@ end)
 
 cmd_library.add({'noclip'}, 'walk through stuff', function()
 	pcall(function()
-		maid.remove("noclip_connection")
+		maid.remove('noclip_connection')
 	end)
 
 	maid.add('noclip_connection', z.run_service.Stepped, function()
@@ -1558,7 +1553,7 @@ cmd_library.add({'noclip'}, 'walk through stuff', function()
 end)
 
 z.sim_range_reset = false
-cmd_library.add({'reloadnetwork',"reloadnet","rnetwork"}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
+cmd_library.add({'reloadnetwork','reloadnet','rnetwork','rnet'}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
 	notify('fetching all parts, your character will be reset')
 	pcall(function()
 		maid.remove('part_trap_follow')
@@ -1599,7 +1594,7 @@ cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far mo
 					notify('successfully gained part ownership and used partfling on '..target.Name)
 				else
 					if z.sim_range_reset == false then
-						notify('attempt to gain ownership timed out')
+						notify('attempt to gain ownership timed out, consider using reloadnetwork')
 						return
 					end
 				end
@@ -1645,165 +1640,121 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 		return notify(`player {name and tostring(name) or ''} does't exist`)
 	end
 
-	local function PartFling(target,number,excluded)
-		if target then
-			local function NetworkCheck(Part)
-				return Part.ReceiveAge == 0
-			end
-			local function getclosestpart()
-				local bestpart
-				local biggestmagnitude 
-				for _, v in ipairs(workspace:GetDescendants()) do
-					if v:IsA('BasePart') or v:IsA('Part') or v:IsA('MeshPart') or v:IsA('UnionOperation') then
-						if v.Anchored == false and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(game:GetService('Players').LocalPlayer.Character) then
-							if biggestmagnitude == nil or biggestmagnitude ~= nil and (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude < biggestmagnitude then
-								if #v:GetConnectedParts() < 2 then
-									if table.find(excluded,v) then
-										continue
-									end
-									biggestmagnitude = (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude
-									bestpart = v
-								end
-							end
-						end
-					end
-				end
-				return bestpart
-			end
-			local Part = getclosestpart()
-			if Part == nil then notify('there is nothing to parttrap with') return end
-			local oldcframepart;oldcframepart = Part.CFrame
-			local oldcf=game:GetService('Players').LocalPlayer.Character:GetPivot()
-			if NetworkCheck(Part) == false then
-				local otick;otick = tick()
-				repeat
-					game:GetService('Players').LocalPlayer.Character:PivotTo(Part.CFrame)
-					game:GetService('RunService').RenderStepped:Wait()
-				until NetworkCheck(Part) == true or z.sim_range_reset== true or tick()-otick >= 5
-				if NetworkCheck(Part) == true then
-				else
-					if z.sim_range_reset == false then
-						notify('attempt to gain ownership timed out')
-						return
-					end
-				end
-			else
-			end
-			game:GetService('Players').LocalPlayer.Character:PivotTo(oldcf)
-			game:GetService('Players').LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-			local weld = {Part1 = target.Character.Head,Part0 = Part}
-			if number >= 2 and number ~= 6  then
-				if target.Character:FindFirstChild('Torso') then
-					weld.Part1 = target.Character.Torso
-				else
-					weld.Part1 = target.Character.HumanoidRootPart
-				end
-			end
-			local parttest = Instance.new("Part",workspace)
-			parttest.Anchored = true
-			parttest.Size = weld.Part1.Size
-			parttest.CFrame = weld.Part1.CFrame
-			parttest.Orientation = Vector3.new(0,90,0)
-			parttest.Transparency = 1
-			parttest.CanCollide = false
-			parttest.Parent = workspace
-			weld.Part1 = parttest
-			local conexttion
-			local oldpos=Part.Position
-			local allowed = true
-			local oldpartcframeeeee = nil
-			maid.add('part_trap_connection_'..number,z.run_service.Heartbeat,function()
-				if target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
-					maid.remove('part_trap_follow')
-					maid.remove('part_trap_connection_'..number)
-					pcall(function()
-						Part.Position = oldpos
-						Part.Velocity = Vector3.zero
-						Part.CFrame = oldcframepart
-					end)
-				else
-					game:GetService('Players').LocalPlayer.SimulationRadius = 1000
-				end
+	local function trap_player(target, part_num, excluded_parts)
+		if not target then return end
 
-				if target.Character.Humanoid.MoveDirection.Magnitude > 1 and allowed == true then
-					if number == 1 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
-					elseif number == 2 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,-1.5)
-					elseif number == 3 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,1.5)
-					elseif number == 4 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.5,15,0)
-					elseif number == 5 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(1.5,15,0)
-					elseif number == 6 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
-					elseif number == 7 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
-					elseif number == 8 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
-					end
-				else
-					if allowed == true then
-						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						if number == 1 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
-							Part.Orientation = Vector3.new(0,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 2 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.75,-1.75)
-							Part.Orientation=Vector3.new(90,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 3 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.5,1.75)
-							Part.Orientation=Vector3.new(90,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 4 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.75,0.75,0)
-							Part.Orientation=Vector3.new(90,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 5 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(1.95,0.75,0)
-							Part.Orientation=Vector3.new(90,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 6 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
-							Part.Orientation = Vector3.new(0,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 7 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
-							Part.Orientation = Vector3.new(0,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 8 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
-							Part.Orientation = Vector3.new(0,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						end
-						oldpartcframeeeee = Part.CFrame
-					else
-						Part.CFrame = oldpartcframeeeee
-						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						Part.CanCollide = false
-						Part.CFrame = oldpartcframeeeee
-					end
-					if allowed == true then
-						if number+1 < 9 then
-							table.insert(excluded,Part)
-							PartFling(target,number+1,excluded)
-						else
-						end
-					end
-					allowed = false
-				end
-			end)
+		local part = get_closest_part()
+
+		while part and table.find(excluded_parts, part) do
+			table.insert(excluded_parts, part)
+			part = get_closest_part()
 		end
+
+		if not part then
+			return notify('there is nothing to parttrap with')
+		end
+
+		local old_part_cf = part.CFrame
+		local old_char_cf = z.local_character:GetPivot()
+
+		if not network_check(part) then
+			local start_time = tick()
+			repeat
+				z.local_character:PivotTo(part.CFrame)
+				z.run_service.RenderStepped:Wait()
+			until network_check(part) or z.sim_range_reset or tick() - start_time >= 5
+
+			if not network_check(part) and not z.sim_range_reset then
+				notify('attempt to gain ownership timed out, consider using reloadnetwork')
+				return
+			end
+		end
+
+		z.local_character:PivotTo(old_char_cf)
+		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+
+		local weld_target
+		if part_num >= 2 and part_num ~= 6 then
+			weld_target = target.Character:FindFirstChild('Torso') or target.Character.HumanoidRootPart
+		else
+			weld_target = target.Character.Head
+		end
+
+		local anchor_part = Instance.new('Part', workspace)
+		anchor_part.Anchored = true
+		anchor_part.Size = weld_target.Size
+		anchor_part.CFrame = weld_target.CFrame
+		anchor_part.Orientation = Vector3.new(0, 90, 0)
+		anchor_part.Transparency = 1
+		anchor_part.CanCollide = false
+
+		local weld_data = {Part0 = part, Part1 = anchor_part}
+		local old_pos = part.Position
+		local is_positioned = false
+		local stored_cf
+
+		maid.add('part_trap_connection_' .. part_num, z.run_service.Heartbeat, function()
+			local humanoid = target.Character:FindFirstChild('Humanoid')
+			if not humanoid or humanoid.Health <= 1 or z.sim_range_reset then
+				maid.remove('part_trap_follow')
+				maid.remove('part_trap_connection_' .. part_num)
+				pcall(function()
+					part.Position = old_pos
+					part.Velocity = Vector3.zero
+					part.CFrame = old_part_cf
+					anchor_part:Destroy()
+				end)
+				return
+			end
+
+			z.local_player.SimulationRadius = 1000
+
+			if humanoid.MoveDirection.Magnitude > 0 and not is_positioned then
+				local move_offsets = {
+					CFrame.new(0, 15, 0), CFrame.new(0, 15, -1.5), CFrame.new(0, 15, 1.5),
+					CFrame.new(-1.5, 15, 0), CFrame.new(1.5, 15, 0), CFrame.new(0, 15, 0),
+					CFrame.new(0, 15, 0), CFrame.new(0, 15, 0)
+				}
+				part.CFrame = weld_data.Part1.CFrame * move_offsets[part_num]
+			else
+				if not is_positioned then
+					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
+
+					local positions = {
+						{cf = CFrame.new(0, 2, 0), rot = Vector3.new(0, 0, 0)},
+						{cf = CFrame.new(0, 0.75, -1.75), rot = Vector3.new(90, 90, 0)},
+						{cf = CFrame.new(0, 0.5, 1.75), rot = Vector3.new(90, 90, 0)},
+						{cf = CFrame.new(-1.75, 0.75, 0), rot = Vector3.new(90, 0, 0)},
+						{cf = CFrame.new(1.95, 0.75, 0), rot = Vector3.new(90, 0, 0)},
+						{cf = CFrame.new(0, 2, 0), rot = Vector3.new(0, 90, 0)},
+						{cf = CFrame.new(0, -2, 0), rot = Vector3.new(0, 90, 0)},
+						{cf = CFrame.new(0, -2, 0), rot = Vector3.new(0, 0, 0)}
+					}
+
+					local pos_data = positions[part_num]
+					part.CFrame = weld_data.Part1.CFrame * pos_data.cf
+					part.Orientation = pos_data.rot
+					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
+					stored_cf = part.CFrame
+
+					if part_num < 8 then
+						table.insert(excluded_parts, part)
+						trap_player(target, part_num + 1, excluded_parts)
+					end
+					is_positioned = true
+				else
+					part.CFrame = stored_cf
+					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
+					part.CanCollide = false
+				end
+			end
+		end)
 	end
 
 	for _, target in pairs(targets) do
-		notify('attempted trap on '..target.Name)
-
-		PartFling(target,1,{})
-		task.wait(.5)
+		notify('attempted trap on ' .. target.Name)
+		trap_player(target, 1, {})
+		task.wait(0.5)
 	end
 end)
 
@@ -1819,7 +1770,7 @@ cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', function()
 		local hum = z.local_character:WaitForChild('Humanoid')
 		cooldown = true
 
-		task.delay(.15,function()
+		task.delay(0,function()
 			cooldown = false
 		end)
 
@@ -1842,15 +1793,15 @@ cmd_library.add({'clip'}, 'stop walking through stuff', function()
 		z.local_character.HumanoidRootPart.CFrame += Vector3.new(0, 3, 0)
 	end
 end)
-cmd_library.add({'unantivoid','unantiv'},'it disable anti void',function()
+cmd_library.add({'unantivoid','unantiv'},'disables anti void',function()
 	maid.remove('anti_void_connection')
 	notify('disabled antivoid')
 end)
 
-cmd_library.add({'antivoid','antiv'},'Stops the void from killing you.',function()
+cmd_library.add({'antivoid','antiv'},'stops the void from killing you.',function()
 	notify('enabled antivoid')
 	pcall(function()
-		maid.remove("anti_void_connection")
+		maid.remove('anti_void_connection')
 	end)
 	maid.add('anti_void_connection',game:GetService('RunService').Heartbeat,function()
 		if z.local_character:GetPivot().Position.Y <= workspace.FallenPartsDestroyHeight+30 then
@@ -1903,7 +1854,7 @@ cmd_library.add({'revive'}, 'attempts to stop oneshots', function()
 	humanoid.RequiresNeck = false
 	humanoid.BreakJointsOnDeath = false
 	pcall(function()
-		maid.remove("revive")
+		maid.remove('revive')
 	end)
 	maid.add('revive', humanoid:GetPropertyChangedSignal('Health'), function()
 		local current_health = humanoid.Health
@@ -2002,7 +1953,7 @@ end)
 cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event of all parts using it', function()
 	notify('succesfully eradicated touched event')
 	pcall(function()
-		maid.remove("disable_touch_event")
+		maid.remove('disable_touch_event')
 	end)
 	maid.add('disable_touch_event', z.run_service.Heartbeat, function()
 		local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
@@ -2021,7 +1972,7 @@ cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event 
 	end
 end)
 
-cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf'}, 'partfling on walkfling 😰 (optional third arg: torsopos)', function(_, name, torso_mode)
+cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling 😰 (optional third arg: torsopos)', function(_, name, torso_mode)
 	local targets = get_plr(name)
 	if not targets then 
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -2170,9 +2121,7 @@ end)
 
 cmd_library.add({'freeze'}, 'freezes your character in place', function()
 	notify('you are now frozen')
-	pcall(function()
-		maid.remove("freeze_connection")
-	end)
+	
 	maid.add('freeze_connection', z.run_service.Heartbeat, function()
 		pcall(function()
 			z.local_character.HumanoidRootPart.Anchored = true
@@ -2262,7 +2211,7 @@ cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', functio
 	size = tonumber(size) or 10
 	notify(`hitbox size set to {size}`)
 	pcall(function()
-		maid.remove("hitbox_connection")
+		maid.remove('hitbox_connection')
 	end)
 	maid.add('hitbox_connection', z.run_service.Heartbeat, function()
 		for _, plr in pairs(z.players:GetPlayers()) do
@@ -2363,10 +2312,12 @@ cmd_library.add({'unplatformstand', 'unpstand'}, 'disables platform stand', func
 	notify('platform stand disabled')
 	z.local_character:FindFirstChildOfClass('Humanoid').PlatformStand = false
 end)
-cmd_library.add({"enablecoreuis","showguis","enableuis"},"enables the coreguis",function()
-	notify("enabled every coregui")
-	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.All,true)
+
+cmd_library.add({'enablecoreuis','showguis','enableuis'},'enables the coreguis',function()
+	notify('enabled every coregui')
+	game:GetService('StarterGui'):SetCoreGuiEnabled(Enum.CoreGuiType.All,true)
 end)
+
 cmd_library.add({'droptools', 'dtools'}, 'drops all tools', function()
 	notify('tools dropped')
 
@@ -2376,12 +2327,13 @@ cmd_library.add({'droptools', 'dtools'}, 'drops all tools', function()
 		end
 		task.delay(0.15,function()
 			for _, tool in pairs(z.local_character:GetChildren()) do
-				if tool:IsA('Tool') and tool.CanBeDropped == true then
+				if tool:IsA('Tool') then
+					tool.CanBeDropped = true
 					tool.Parent = workspace
 				end
 			end
 			task.delay(0.05,function()
-				z.local_character:FindFirstChildOfClass("Humanoid"):UnequipTools()
+				z.local_character:FindFirstChildOfClass('Humanoid'):UnequipTools()
 			end)
 		end)
 	end)
@@ -2392,7 +2344,7 @@ cmd_library.add({'equiptools', 'etools'}, 'equips all tools', function()
 
 	pcall(function()
 		for _, tool in pairs(z.local_player.Backpack:GetChildren()) do
-			if tool:IsA('Tool') then
+			if tool:IsA('Tool') or tool:IsA('HopperBin') or tool:IsA('BackpackItem') then
 				tool.Parent = z.local_character
 			end
 		end
@@ -2472,7 +2424,7 @@ cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', function()
 
 	local vu = game:GetService('VirtualUser')
 	pcall(function()
-		maid.remove("anti_afk")
+		maid.remove('anti_afk')
 	end)
 	maid.add('anti_afk', z.local_player.Idled, function()
 		vu:CaptureController()
@@ -2501,10 +2453,10 @@ cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', function(vs
 	local cam = workspace.CurrentCamera
 	vstorage.old_subject = cam.CameraSubject
 	vstorage.old_parent = z.local_character.Parent
-	vstorage.old_speed = z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed
+	vstorage.old_speed = z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed
 	local flight_part = Instance.new('Part', workspace)
 	vstorage.part = flight_part
-	z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = 0
+	z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = 0
 	flight_part.CFrame = z.local_character:GetPivot()
 	flight_part.Anchored = true
 	flight_part.Transparency = 1
@@ -2555,7 +2507,7 @@ cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', functio
 	maid.remove('freecam')
 	z.local_character.Parent = vstorage.old_parent
 	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
-	z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = vstorage.old_speed or z.default_walkspeed
+	z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or z.default_walkspeed
 	workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
 end)
 
@@ -2575,7 +2527,7 @@ cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', function(v
 	height = tonumber(height) or 5
 	notify(`looping hip height at {height}`)
 	pcall(function()
-		maid.remove("loop_hip_height")
+		maid.remove('loop_hip_height')
 	end)
 	maid.add('loop_hip_height', z.run_service.Heartbeat, function()
 		pcall(function()
@@ -2912,39 +2864,6 @@ cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', function(_, 
 	z.debris:AddItem(bv, 0.5)
 end)
 
-cmd_library.add({'rainbow'}, 'makes you rainbow colored', function(vstorage)
-	if vstorage.enabled then
-		return notify('rainbow already enabled')
-	end
-
-	vstorage.enabled = true
-	vstorage.hue = 0
-	notify('rainbow enabled')
-
-	maid.add('rainbow', z.run_service.Heartbeat, function(dt)
-		vstorage.hue = (vstorage.hue + dt * 0.5) % 1
-		local color = Color3.fromHSV(vstorage.hue, 1, 1)
-
-		for _, part in pairs(z.local_character:GetDescendants()) do
-			if part:IsA('BasePart') then
-				part.Color = color
-			end
-		end
-	end)
-end)
-
-cmd_library.add({'unrainbow'}, 'stops rainbow', function()
-	local vstorage = cmd_library.get_variable_storage('rainbow')
-
-	if not vstorage.enabled then
-		return notify('rainbow not enabled')
-	end
-
-	vstorage.enabled = false
-	notify('rainbow disabled')
-	maid.remove('rainbow')
-end)
-
 cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', function()
 	notify('lighting reset')
 
@@ -3240,7 +3159,7 @@ cmd_library.add({'reach'}, 'sets tool reach', function(vstorage, size)
 	size = tonumber(size) or 10
 	notify(`reach set to {size}`)
 	pcall(function()
-		maid.remove("reach")
+		maid.remove('reach')
 	end)
 	maid.add('reach', z.run_service.Heartbeat, function()
 		for _, tool in pairs(z.local_character:GetChildren()) do
@@ -3261,7 +3180,7 @@ cmd_library.add({'cframeloop', 'cfloop'}, 'cframe speed (fast movement)', functi
 	vstorage.speed = tonumber(speed) or 2
 	notify(`cframe loop enabled with speed {vstorage.speed}`)
 	pcall(function()
-		maid.remove("cframe_loop")
+		maid.remove('cframe_loop')
 	end)
 	maid.add('cframe_loop', z.run_service.Heartbeat, function()
 		pcall(function()
@@ -3293,7 +3212,7 @@ cmd_library.add({'hncframeloop', 'hncfloop'}, 'cframe speed (bypass, laggy)', fu
 	vstorage.speed = tonumber(speed) or 2
 	notify(`hn cframe loop enabled with speed {vstorage.speed}`)
 	pcall(function()
-		maid.remove("cframe_loop")
+		maid.remove('cframe_loop')
 	end)
 	maid.add('hn_cframe_loop', z.run_service.Heartbeat, function()
 		pcall(function()
@@ -3307,10 +3226,10 @@ cmd_library.add({'hncframeloop', 'hncfloop'}, 'cframe speed (bypass, laggy)', fu
 	end)
 end)
 
-cmd_library.add({'discord','invite'},'Copies the Discord invite',function()
+cmd_library.add({'discord','invite'},'copies the Discord invite',function()
 	if setclipboard then
-		setclipboard("https://discord.gg/StHSWMjcnk")
-		notify("Discord invite copied to clipboard")
+		setclipboard('https://discord.gg/StHSWMjcnk')
+		notify('discord invite copied to clipboard')
 	end
 end)
 
@@ -3411,8 +3330,12 @@ cmdbar_ui.Parent = game:GetService('CoreGui')
 
 local main_container = cmdbar_ui.main_container
 local cmdbox = main_container:WaitForChild('command_box')
+local button = cmdbar_ui:WaitForChild('mobile_open')
 local pos_open_box = main_container.Position
+local pos_open_button = button.Position
 local pos_closed_box = UDim2.new(0.5, 0, 0, -35)
+local pos_closed_button = UDim2.new(0.5, 0, 0, 10)
+button.Visible = z.is_mobile
 
 local tween_ui = function(element, duration, properties, close)
 	z.tween_service:Create(element, TweenInfo.new(duration, Enum.EasingStyle.Sine, close and Enum.EasingDirection.Out or Enum.EasingDirection.In), properties):Play()
@@ -3420,11 +3343,31 @@ end
 
 task.wait(.1)
 tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
+tween_ui(cmdbar_ui.mobile_open, 0.15, {Position = pos_closed_button}, true)
+
+local open = false
+button.MouseButton1Click:Connect(function()
+	open = not open
+	if open then
+		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
+		tween_ui(button, 0.15, {Position = pos_open_button}, false)
+		button.Text = 'close'
+		cmdbox:CaptureFocus()
+	else
+		tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
+		tween_ui(button, 0.15, {Position = pos_closed_button}, false)
+		button.Text = 'open'
+	end
+end)
 
 maid.add('open_cmd_bar', z.user_input_service.InputBegan, function(k,i)
 	if k.KeyCode == Enum.KeyCode.Quote and i == false then
 		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
+		tween_ui(button, 0.15, {Position = pos_open_button}, false)
+		open = true
+		
 		cmdbox:CaptureFocus()
+		
 		repeat
 			cmdbox.Text = ''; z.run_service.Heartbeat:Wait()
 		until cmdbox.Text == ''
@@ -3433,7 +3376,10 @@ end,1)
 
 cmdbox.FocusLost:Connect(function(enter)
 	tween_ui(main_container, 0.1, {Position = pos_closed_box}, true)
-	if not enter then return end
+	tween_ui(button, 0.1, {Position = pos_closed_button}, true)
+	open = false
+	
+	if not enter and not z.is_mobile then return end
 
 	local text = cmdbox.Text
 	if text ~= '' and text ~= ' ' then
@@ -3446,5 +3392,6 @@ cmdbox.FocusLost:Connect(function(enter)
 
 	cmdbox.Text = ''
 end)
+
 notify('join the discord .gg/StHSWMjcnk')
 notify('opadmin loaded, press \' to open the cmdbar')
