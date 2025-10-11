@@ -1,0 +1,3372 @@
+if rawequal(game:IsLoaded(), false) then
+	game.Loaded:Wait()
+end
+
+task.wait(.5)
+
+if _G.loadedopadminalruscrub then return end
+_G.loadedopadminalruscrub = true
+
+setfpscap = setfpscap or function() end
+setfps = setfps or function() end
+getgenv = getgenv or (warn('not usable | getgenv') or getfenv)
+fireproximityprompt = fireproximityprompt or function() end
+firetouchinterest = firetouchinterest or function() end
+setclipboard = setclipboard or function() end
+saveinstance = saveinstance or function() end
+hookmetamethod = hookmetamethod or function() end
+
+local z;z = {
+	core_gui = game:GetService('CoreGui'),
+	debris = game:GetService('Debris'),
+	tween_service = game:GetService('TweenService'),
+	players = game:GetService('Players'),
+	run_service = game:GetService('RunService'),
+	starter_player = game:GetService('StarterPlayer'),
+	teleport_service = game:GetService('TeleportService'),
+	text_chat_service = game:GetService('TextChatService'),
+	lighting = game:GetService('Lighting'),
+	user_input_service = game:GetService('UserInputService'),
+	replicated_storage = game:GetService('ReplicatedStorage'),
+	http = game:GetService('HttpService'),
+
+
+	connect = game.Changed.Connect,
+	destroy = game.Destroy,
+	empty = function() end,
+	local_player = game:GetService('Players').LocalPlayer,
+	highlights = {},
+}
+
+local maid;maid = {
+	_tasks = {},
+	_cleaner = z.connect(z.run_service.Stepped, function()
+		for name, task in pairs(maid._tasks) do
+			if typeof(task) == 'RBXScriptConnection' and not task.Connected then
+				maid._tasks[name] = nil
+			end
+		end
+	end),
+
+	add = function(name, signal, fn)
+		if maid._tasks[name] then
+			maid:remove(name)
+		end
+
+		maid._tasks[name] = z.connect(signal, fn)
+	end,
+
+	remove = function(name)
+		local task = maid._tasks[name]
+		if task then
+			if typeof(task) == 'RBXScriptConnection' and task.Connected then
+				z.disconnect(task)
+			end
+			maid._tasks[name] = nil
+		end
+	end,
+
+	clean = function()
+		for name, task in pairs(maid._tasks) do
+			if typeof(task) == 'RBXScriptConnection' and task.Connected then
+				z.disconnect(task)
+			end
+			maid._tasks[name] = nil
+		end
+
+		table.clear(maid._tasks)
+		maid._tasks = {}
+	end,
+}
+
+do
+	local connection = z.connect(game.Changed, z.empty)
+	z.disconnect = connection.Disconnect
+	z.disconnect(connection)
+
+	z.local_character = z.local_player.Character or z.local_player.CharacterAdded:Wait()
+	z.default_walkspeed = z.local_character:WaitForChild('Humanoid').WalkSpeed or z.starter_player.CharacterWalkSpeed
+	z.default_jumppower = z.local_character:WaitForChild('Humanoid').JumpPower or z.starter_player.CharacterJumpPower
+
+	maid.add('local_character_added', z.local_player.CharacterAdded, function(character)
+		z.local_character = character
+	end)
+
+	maid.add('clean_highlights', z.run_service.Stepped, function()
+		for _, plr in pairs(z.players:GetPlayers()) do
+			local highlight = z.highlights[plr]
+			if highlight and not (highlight.Adornee and highlight.Adornee:IsDescendantOf(workspace)) then
+				pcall(z.destroy, highlight)
+				z.highlights[plr] = nil
+			end
+		end
+	end)
+end
+
+local ui = game:GetObjects('rbxassetid://102338830611620')[1]:Clone()
+local commands_gui = ui.commands_ui:Clone()
+local notif_gui = ui.notification_ui:Clone()
+local chatlog_gui = ui.chat_logs:Clone()
+chatlog_gui.Name = 'chat_logs'
+if not ui then return error('failed to get gui') end
+do
+	commands_gui:WaitForChild('main_container')
+	local x_button = commands_gui.main_container:WaitForChild('close')
+
+	maid.add('close_button_MouseButton1Up', x_button.MouseButton1Up, function()
+		commands_gui.Enabled = false
+	end)
+
+	commands_gui.Parent = z.core_gui
+	notif_gui.Parent = z.core_gui
+	commands_gui.Enabled = false
+end
+
+local notif_list = notif_gui.main_container
+local notif_template = notif_list:WaitForChild('template'):Clone()
+local command_template = commands_gui.main_container:WaitForChild('commands'):WaitForChild('template'):Clone()
+local chat_log_template = chatlog_gui.main_container:WaitForChild('chatlogs'):WaitForChild('log'):Clone()
+pcall(z.destroy, notif_list.template)
+pcall(z.destroy, commands_gui.main_container:WaitForChild('commands'):WaitForChild('template'))
+pcall(z.destroy, chatlog_gui.main_container:WaitForChild('chatlogs'):WaitForChild('log'))
+
+-- function slop
+
+local hypernull;hypernull = function(fn, ...)
+	if(coroutine.status(task.spawn(hypernull,fn,...)) == 'dead')then return end
+	fn(...)
+end
+
+local notify = function(text)
+	local text_label = notif_template:Clone()
+	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+	text_label.Parent = notif_list
+	text_label.Visible = true
+	text_label.Text = ' '..text..' '
+	text_label.BackgroundTransparency = 1
+	text_label.TextTransparency = 1
+
+	z.tween_service:Create(text_label, tween_info, {
+		BackgroundTransparency = .1,
+		TextTransparency = 0
+	}):Play()
+
+	task.delay(4, function()
+		z.tween_service:Create(text_label, tween_info, {
+			BackgroundTransparency = 1,
+			TextTransparency = 1
+		}):Play()
+	end)
+
+	z.debris:AddItem(text_label, 5)
+end
+
+local parse_hex = function(hex)
+	if not (hex and hex:sub(1, 1) == '#' and #hex == 7) then return end
+
+	local r = tonumber(hex:sub(2, 3), 16)
+	local g = tonumber(hex:sub(4, 5), 16)
+	local b = tonumber(hex:sub(6, 7), 16)
+
+	return r and g and b and Color3.fromRGB(r, g, b)
+end
+
+local get_plr = function(name)
+	if not name then
+		return {}
+	end
+
+	local lower_name = name:lower()
+	local all_plrs = z.players:GetPlayers()
+
+	if lower_name == '@random' then
+		return {all_plrs[math.random(#all_plrs)]}
+	elseif lower_name == '@me' then
+		return {z.local_player}
+	elseif lower_name == '@all' then
+		return all_plrs
+	elseif lower_name == '@others' then
+		local others = {}
+		for _, plr in next, all_plrs do
+			if plr ~= z.local_player then
+				table.insert(others, plr)
+			end
+		end
+		return others
+	end
+
+	lower_name = lower_name:gsub('%s', '')
+	for _, plr in next, all_plrs do
+		if plr.Name:lower():match(lower_name) or plr.DisplayName:lower():match('^' .. lower_name) then
+			return {plr}
+		end
+	end
+end
+
+local predict_movement = function(player, future)
+	local char = player.Character
+	if not char then return end
+
+	local hrp = char:FindFirstChild('HumanoidRootPart')
+	local humanoid = char:FindFirstChild('Humanoid')
+	if not (hrp and humanoid) then return end
+
+	local move_dir = humanoid.MoveDirection
+	if move_dir == Vector3.zero then
+		return hrp.CFrame
+	end
+
+	return hrp.CFrame + move_dir * future
+end
+
+local network_check = function(part)
+	return part.ReceiveAge == 0
+end
+
+local get_closest_part = function()
+	local best_part, smallest_mag
+	local head_pos = z.local_character.Head.Position
+
+	for _, v in pairs(workspace:GetDescendants()) do
+		if v:IsA('BasePart') and not v.Anchored and #v:GetConnectedParts() < 2 then
+			if not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(z.local_character) then
+				local mag = (head_pos - v.Position).Magnitude
+				if not smallest_mag or mag < smallest_mag then
+					smallest_mag, best_part = mag, v
+				end
+			end
+		end
+	end
+
+	return best_part
+end
+
+local get_closest_player = function(fov)
+	local mouse = z.local_player:GetMouse()
+	local closest_player, closest_distance = nil, fov
+
+	for _, plr in pairs(z.players:GetPlayers()) do
+		if plr ~= z.local_player and plr.Character and plr.Character:FindFirstChild('Head') then
+			local head = plr.Character.Head
+			local screen_pos, on_screen = workspace.CurrentCamera:WorldToScreenPoint(head.Position)
+
+			if on_screen then
+				local mouse_distance = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(screen_pos.X, screen_pos.Y)).Magnitude
+
+				if mouse_distance < closest_distance then
+					closest_distance = mouse_distance
+					closest_player = plr
+				end
+			end
+		end
+	end
+
+	return closest_player
+end
+
+local cmd_library;cmd_library = {
+	_commands = {},
+
+	add = function(names, description, fn)
+		table.insert(cmd_library._commands, {
+			names = names,
+			description = description,
+			fn = fn,
+			variable_storage = {}
+		})
+	end,
+
+	get_variable_storage = function(name)
+		for _, v in next, cmd_library._commands do
+			for _, cmd in next, v.names do
+				if cmd:lower() == name:lower() then
+					return v.variable_storage
+				end
+			end
+		end
+	end,
+
+	execute = function(name, ...) 
+		local found = false
+		local vargs = {...}
+
+		for _, v in pairs(cmd_library._commands) do
+			for _, cmd in next, v.names do
+				if cmd:lower() == name:lower() then
+					found = true
+					task.spawn(function()
+						xpcall(function()
+							v.fn(v.variable_storage, unpack(vargs))
+						end, warn)
+					end)
+					break
+				end
+			end
+		end
+
+		if not found then
+			notify(`couldn't find command named '{name and tostring(name) or ''}'`)
+		end
+	end,
+}
+
+-- commands slop
+--[[
+cmd_library.add({'alias1', 'alias2'}, 'description', function(variable_storage, ...)
+
+end)
+]]
+
+cmd_library.add({'rejoin', 'rj'}, 'rejoins the server', function()
+	notify('now rejoining')
+	z.teleport_service:TeleportToPlaceInstance(game.PlaceId, game.JobId, z.local_player)
+end)
+
+cmd_library.add({'esp', 'playeresp', 'toggleesp'}, `toggles esp. optional args: 'team' for team colors, '#RRGGBB' for custom color`, function(vstorage, color)
+	vstorage.enabled = not vstorage.enabled
+	vstorage.team = color == 'team'
+	vstorage.color = (not vstorage.team and parse_hex(color)) or vstorage.color or Color3.new(1, 1, 1)
+
+	if vstorage.enabled then
+		notify('esp enabled')
+	else
+		notify('esp disabled')
+
+		for _, plr in pairs(z.players:GetPlayers()) do
+			if plr.Character then
+				local head = plr.Character:FindFirstChild('Head')
+				if head then
+					local esp_gui = head:FindFirstChild('ESPThingYes')
+					if esp_gui then esp_gui:Destroy() end
+				end
+
+				if z.highlights[plr] then
+					pcall(z.destroy, z.highlights[plr])
+					z.highlights[plr] = nil
+				end
+			end
+		end
+	end
+end)
+
+maid.add('esp_update', z.run_service.RenderStepped, function()
+	local esp_vs = cmd_library.get_variable_storage('esp')
+	if not esp_vs.enabled then return end
+
+	for _, plr in pairs(z.players:GetPlayers()) do
+		local char = plr.Character
+		if plr ~= z.local_player and char and char:FindFirstChild('Head') then
+			local head = char.Head
+
+			local esp_billboard = head:FindFirstChild('ESPThingYes')
+			if not esp_billboard then
+				esp_billboard = Instance.new('BillboardGui')
+				esp_billboard.Name = 'ESPThingYes'
+				esp_billboard.Size = UDim2.new(0, 150, 0, 50)
+				esp_billboard.StudsOffset = Vector3.new(0, 2, 0)
+				esp_billboard.AlwaysOnTop = true
+				esp_billboard.Parent = head
+
+				local text_label = Instance.new('TextLabel')
+				text_label.Name = 'ESPText'
+				text_label.Size = UDim2.new(1, 0, 1, 0)
+				text_label.BackgroundTransparency = 1
+				text_label.TextScaled = true
+				text_label.TextStrokeTransparency = 0
+				text_label.Parent = esp_billboard
+			end
+
+			local text_label = esp_billboard:FindFirstChild('ESPText')
+			local coords = char.PrimaryPart and char.PrimaryPart.Position or Vector3.new(0, 0, 0)
+			text_label.Text = string.format('%s\nX:%d Y:%d Z:%d', plr.Name, coords.X, coords.Y, coords.Z)
+
+			local color = esp_vs.team and 
+				(plr.Team == z.local_player.Team and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)) or 
+				esp_vs.color
+
+			text_label.TextColor3 = color
+
+			local highlight = z.highlights[plr]
+			if not highlight then
+				highlight = Instance.new('Highlight')
+				highlight.Adornee = char
+				highlight.FillColor = color
+				highlight.OutlineColor = Color3.new(0, 0, 0)
+				highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+				highlight.Parent = workspace
+				z.highlights[plr] = highlight
+			else
+				highlight.FillColor = color
+			end
+		end
+	end
+end)
+
+cmd_library.add({'chatlogs'}, 'toggles the chat logs ui', function(vstorage)
+	local existing_log = z.core_gui:FindFirstChild('chat_logs')
+
+	if existing_log then
+		z.text_chat_service.OnIncomingMessage = z.empty
+		pcall(z.destroy, existing_log)
+		vstorage.logsexecuted = false
+		notify('chatlogs disabled')
+		return
+	end
+
+	vstorage.logsexecuted = true
+	local chatlog = chatlog_gui:Clone()
+	chatlog.Parent = z.core_gui
+
+	if z.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
+		z.text_chat_service.OnIncomingMessage = function(message)
+			if message.Status == Enum.TextChatMessageStatus.Success then
+				local frame = chatlog:FindFirstChildOfClass('Frame')
+				local sframe = frame:FindFirstChildOfClass('ScrollingFrame')
+				local label = chat_log_template:Clone()
+
+				label.Name = tostring(message.Text)
+				label.Visible = true
+				label.Text = tostring(message.TextSource) .. ': ' .. tostring(message.Text)
+				label.Parent = sframe
+
+				task.wait()
+				sframe.CanvasPosition = Vector2.new(0, sframe.AbsoluteCanvasSize.Y)
+			end
+		end
+	end
+
+	notify('chatlogs enabled')
+end)
+
+cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chat logs', function(vstorage)
+	local existing_log = z.core_gui:FindFirstChild('chat_logs')
+
+	if existing_log then
+		for _,log in existing_log.main_container.chatlogs:GetChildren() do
+			if log:IsA('TextLabel') then
+				pcall(z.destroy, log)
+			end
+		end
+		return notify('chatlogs cleared')
+	end
+
+	notify('chatlogs not enabled')
+end)
+
+cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage inflicted 50 times and adds reach', function(vstorage, reach)
+	local reach_size = tonumber(reach) or 40
+
+	local tool = z.local_player.Character:FindFirstChildOfClass('Tool') or z.local_player.Backpack:FindFirstChildOfClass('Tool')
+	if not tool then return notify('equip a tool and maybe then we\'ll see') end
+
+	notify('enabled instakillreach')
+
+	maid.add('instks_sword_activated', tool.Activated, function()
+		for _, v in pairs(workspace:GetDescendants()) do
+			if v.Name == 'HumanoidRootPart' and v.Parent:FindFirstChildOfClass('Humanoid') or v.Name == 'Head' and v.Parent:FindFirstChildOfClass('Humanoid') then
+				if (tool.Handle.Position-v.Position).Magnitude <= reach_size then
+					for i = 1, 50 do
+						firetouchinterest(v, tool.Handle, 0)
+						firetouchinterest(v, tool.Handle, 1)
+						task.wait()
+					end
+				end
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown ability', function(vstorage, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	for _, target in pairs(targets) do
+		notify(`bringing {target.Name} to you`)
+		local old_pos = z.local_character:GetPivot()
+		local takedown = z.local_player.Backpack:FindFirstChild('Takedown') or z.local_character:FindFirstChild('Takedown')
+		local local_humanoid = z.local_character:WaitForChild('Humanoid')
+		local target_character = target.Character
+		local target_humanoid = target_character:WaitForChild('Humanoid')
+
+		if takedown.Parent ~= z.local_character then
+			local_humanoid:EquipTool(takedown)
+		end
+
+		if target_humanoid.MoveDirection ~= Vector3.zero then
+			z.local_character:PivotTo(predict_movement(target, 20))
+		else
+			z.local_character:PivotTo(target_character.HumanoidRootPart.CFrame*CFrame.new(0, 0, 3))
+		end
+
+		task.wait(1)
+
+		local_humanoid:UnequipTools()
+		z.local_character:PivotTo(old_pos)
+	end
+end)
+
+cmd_library.add({'speed','walkspeed','ws'}, 'sets your walkspeed to [NUM], set num as blank to be default speed', function(vstorage, speed)
+	if tonumber(speed) then
+		notify(`speed set to {tonumber(speed)}`)
+	else
+		notify('invalid speed, speed set to default')
+	end
+
+	hypernull(function()
+		z.local_character:WaitForChild('Humanoid').WalkSpeed = tonumber(speed) or z.default_walkspeed
+	end)
+end)
+
+cmd_library.add({'jump','jumppower','jp'}, 'sets your jumppower to [NUM], set num as blank to be default jumppower', function(vstorage, power)
+	if tonumber(power) then
+		notify(`jumppower set to {tonumber(power)}`)
+	else
+		notify('invalid jumppower, jumppower set to default')
+	end
+
+	local hum = z.local_character:WaitForChild('Humanoid')
+	hypernull(function()
+		hum.UseJumpPower = true
+		hum.JumpPower = tonumber(power) or z.default_jumppower
+	end)
+end)
+
+cmd_library.add({'saveposition', 'savepos'}, 'save a position to load with loadpos', function(vstorage)
+	vstorage.pos = z.local_character:GetPivot()
+	local pos = vstorage.pos.Position
+	notify(`saved position: x:{math.floor(pos.X)}, y:{math.floor(pos.Y)}, z:{math.floor(pos.Z)}`)
+end)
+
+cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with saveposition', function()
+	local vstorage = cmd_library.get_variable_storage('savepos')
+	if vstorage.pos then
+		hypernull(function()
+			z.local_character:PivotTo(vstorage.pos)
+		end)
+		notify('loaded position')
+	else
+		notify('you haven\'t saved a position using saveposition')
+	end
+end)
+
+cmd_library.add({'unloopjumppower', 'unloopjp'}, 'disables loopjumppower', function()
+	local vstorage = cmd_library.get_variable_storage('loopjp')
+
+	if vstorage.enabled then
+		maid.remove('loopjp')
+		notify('disabled loopjumppower')
+		z.local_character:FindFirstChildOfClass('Humanoid').JumpPower = vstorage.old_power or z.default_jumppower
+	else
+		notify('loopjumppower is already disabled!')
+	end
+end)
+
+cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to specified number in a loop', function(vstorage, power)
+	power = tonumber(power) or 32
+
+	notify(`setting jumppower to {power} in a loop`)
+
+	pcall(function()
+		if vstorage.enabled then
+			maid.remove('loopjp')
+			z.local_character:FindFirstChildOfClass('Humanoid').JumpPower = vstorage.old_power
+		end
+	end)
+
+	vstorage.old_power = z.local_character:FindFirstChildOfClass('Humanoid').JumpPower
+	maid.add('loopjp', z.run_service.Heartbeat, function()
+		pcall(function()
+			local hum = z.local_character:WaitForChild('Humanoid')
+			hum.UseJumpPower = true
+			hum.JumpPower = tonumber(power) or z.default_jumppower
+		end)
+	end)
+end)
+
+cmd_library.add({'unloopwalkspeed', 'unloopws'}, 'disables loopwalkspeed', function()
+	local vstorage = cmd_library.get_variable_storage('loopws')
+
+	if vstorage.enabled then
+		maid.remove('loopws')
+		notify('disabled loopwalkspeed')
+		z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or z.default_walkspeed
+	else
+		notify('loopwalkspeed is already disabled!')
+	end
+end)
+
+cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified number in a loop', function(vstorage, speed)
+	speed = tonumber(speed) or 32
+
+	notify(`setting walkspeed to {speed} in a loop`)
+
+	pcall(function()
+		if vstorage.enabled then
+			maid.remove('loopws')
+			z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed
+		end
+	end)
+
+	vstorage.old_speed = z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed
+	maid.add('loopws', z.run_service.Heartbeat, function()
+		pcall(function()
+			z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = speed
+		end)
+	end)
+end)
+
+cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
+	local vstorage = cmd_library.get_variable_storage('fly')
+
+	if vstorage.enabled then
+		notify('disabled flight')
+		maid.remove('flight')
+		vstorage.enabled = false
+		vstorage.part:Destroy()
+	else
+		notify('flight is already disabled!')
+	end
+end)
+
+cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
+	if vstorage.enabled then
+		return notify('already flying')
+	end
+	vstorage.enabled = true
+	speed = tonumber(speed) or 1
+	notify(`enabled flight{speed ~= 1 and ` with speed {speed}` or ''}`)
+
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+
+	flight_part.CFrame = z.local_character:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 1
+	flight_part.CanCollide = false
+
+	local control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+
+	maid.add('flight', z.run_service.Heartbeat, function()
+		pcall(function()
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+			z.local_character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+			z.local_character:PivotTo(flight_part.CFrame)
+			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+
+			if z.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * speed,
+				direction.Y * speed,
+				direction.Z * speed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
+		end)
+	end)
+end)
+
+cmd_library.add({'hnflight', 'hnfly'}, 'detach camera from character', function(vstorage,speed)
+	if vstorage.enabled then
+		return notify('bypass flight already enabled')
+	end
+
+	vstorage.enabled = true
+	if tonumber(speed) then
+		vstorage.speed = tonumber(speed)
+	else
+		vstorage.speed = 1
+	end
+	notify('bypass flight enabled, when you disable hnfly you will teleport to the part')
+
+	local cam = workspace.CurrentCamera
+	vstorage.old_subject = cam.CameraSubject
+	vstorage.old_speed = z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+	vstorage.old_parent = z.local_character.Parent
+	z.local_character.Parent = nil
+	flight_part.CFrame = z.local_character:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 0.5
+	flight_part.CanCollide = false
+	workspace.CurrentCamera.CameraSubject = flight_part
+	local control_module
+	--pcall(function()
+	--	control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule',1):WaitForChild('ControlModule',1))
+	--end)
+	maid.add('hnfly_connection', z.run_service.Heartbeat, function()
+		xpcall(function()
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+			z.local_character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+
+			--local s,e = pcall(function() if control_module:GetMoveVector() == Vector3.zero then end end) 
+			--if s == false then
+			if z.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * vstorage.speed,
+				direction.Y * vstorage.speed,
+				direction.Z * vstorage.speed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
+			--else
+			--	local direction = control_module:GetMoveVector()
+			--	local offset = Vector3.new(
+			--		direction.X * vstorage.speed,
+			--		direction.Y * vstorage.speed,
+			--		direction.Z * vstorage.speed
+			--	)
+
+			--	flight_part.CFrame *= CFrame.new(offset)
+			--end
+		end,warn)
+	end)
+end)
+
+cmd_library.add({'unhnfly', 'disablehnfly', 'stophnfly'}, 'disable bypass flight', function()
+	local vstorage = cmd_library.get_variable_storage('hnfly')
+
+	if vstorage.enabled then
+		notify('disabled bypass flight')
+		maid.remove('hnfly_connection')
+		vstorage.enabled = false
+		maid.add("anti_anti_teleport_connection_for_fly",z.run_service.Heartbeat,function()
+			z.local_character.Parent = vstorage.old_parent
+			z.local_character:PivotTo(vstorage.part.CFrame)
+		end)
+		task.delay(0.5,function()
+			maid.remove("anti_anti_teleport_connection_for_fly")
+			vstorage.part:Destroy()
+		end)
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = vstorage.old_speed or z.default_walkspeed
+		workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
+	else
+		notify('bypass flight is already disabled')
+	end
+end)
+
+cmd_library.add({'resetspawn', 'illusion'}, 'makes your respawnpoint be the place where you died', function()
+	notify('new spawnpoint set')
+
+	local has_died = false
+	local death_pos
+
+	maid.add('resetspawn', z.run_service.Heartbeat, function() -- will overwrite if already exists
+		pcall(function()
+			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+			if not humanoid then return end
+
+			local health = humanoid.Health
+
+			if not has_died and health <= 0 then
+				has_died = true
+				death_pos = z.local_character:GetPivot()
+			elseif has_died and health > 0 then
+				hypernull(function()
+					z.local_character:PivotTo(death_pos)
+				end)
+				if health > 1 then
+					has_died = false
+				end
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'unfakelag', 'undesync'}, 'disables fake lag', function()
+	cmd_library.get_variable_storage('fakelag').enabled = false
+	notify('disabled fakelag')
+end)
+
+cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your character', function(vstorage)
+	if vstorage.enabled then return notify('fakelag is already enabled') end
+	vstorage.enabled = true
+	notify('enabled fakelag')
+
+	while vstorage.enabled do
+		pcall(function()
+			local anchor_part = z.local_character:FindFirstChild('UpperTorso') and z.local_character.HumanoidRootPart or z.local_character.Torso
+			anchor_part.Anchored = true
+
+			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+			for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+				track:AdjustSpeed(track.Speed * 1.1)
+			end
+
+			humanoid.Jump = true
+		end)
+
+		task.wait(.1)
+
+		pcall(function()
+			local anchor_part = z.local_character:FindFirstChild('UpperTorso') and z.local_character.HumanoidRootPart or z.local_character.Torso
+			anchor_part.Anchored = false
+
+			for _, track in pairs(z.local_character:FindFirstChildOfClass('Humanoid'):GetPlayingAnimationTracks()) do
+				track:AdjustSpeed(track.Speed * 1.05)
+			end
+		end)
+
+		task.wait(.1)
+	end
+end)
+
+cmd_library.add({'antifling', 'afling', 'antif'}, 'stops other exploiters from flinging you (except from partfling)', function(vstorage)
+
+	if vstorage.enabled == nil then
+		vstorage.enabled = false
+	end
+
+	if not vstorage.enabled then
+		vstorage.enabled = true
+		notify('antifling enabled')
+
+		maid.add('antifling', z.run_service.Heartbeat, function()
+			local other_players = z.players:GetPlayers()
+			table.remove(other_players, table.find(other_players, z.local_player))
+
+			for _, v in pairs(other_players) do
+				if v.Character then
+					for _, part in pairs(v.Character:GetDescendants()) do
+						if part:IsA('BasePart') then
+							part.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+				end
+			end
+		end)
+	else
+		notify('antifling is already enabled')
+	end
+end)
+
+cmd_library.add({'unantifling', 'unafling', 'unantif'}, 'disables antifling', function()
+	local vstorage = cmd_library.get_variable_storage('antifling')
+
+	if vstorage.enabled then
+		vstorage.enabled = false
+		notify('disabled antifling')
+		maid.remove('antifling')
+	else
+		notify('antifling is already disabled')
+	end
+end)
+
+cmd_library.add({'gettools','tools'},'attempts to steal tools from others',function()
+	local count = 0
+
+	for _, v in ipairs(workspace:GetDescendants()) do
+		if v:IsA('Tool') or v:IsA('BackpackItem') or v:IsA('HopperBin') then
+			count += 1
+			v.Parent = z.local_player.Backpack
+		end
+	end
+
+	notify('stole '..count..' tools')
+end)
+
+cmd_library.add({'fullbright', 'fb'}, 'overrides lighting properties', function()
+	hypernull(function()
+		z.lighting.Brightness = 10
+		z.lighting.ClockTime = 14.5
+		z.lighting.FogEnd = 10000
+		z.lighting.GlobalShadows = true
+		z.lighting.OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+	end)
+
+	notify('lighting properties set')
+end)
+
+cmd_library.add({'partcontrol', 'pcontrol'}, 'networkownership goes brr', function()
+	notify('fetching all parts, your character will be reset')
+
+	local camera = workspace.CurrentCamera
+	local old_cframe = z.local_character.HumanoidRootPart.CFrame
+
+	z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
+	z.local_player.SimulationRadius = 1000
+
+	wait(z.players.RespawnTime + .5)
+
+	z.local_player.SimulationRadius = 1000
+	z.local_character:WaitForChild('HumanoidRootPart').CFrame = old_cframe
+	workspace.CurrentCamera = camera
+
+	task.wait(.8)
+
+	local found_part
+	for _, part in ipairs(workspace:GetDescendants()) do
+		pcall(function()
+			if not part.Anchored and #part:GetConnectedParts() <= 1 and network_check(part) then
+				found_part = part
+			end
+		end)
+	end
+
+	if not found_part then
+		notify('no controllable parts were found')
+		return
+	end
+
+	z.local_character:WaitForChild('Animate'):Destroy()
+
+	found_part.CFrame = z.local_character:GetPivot()
+	notify('found controllable part')
+
+	--local control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+	local velocity_fling = Vector3.new(0,500*5,0)
+	local velocity_offset = Vector3.new(14.46262424,14.46262424,14.46262424)
+
+	task.spawn(function()
+		while task.wait(3) do
+			found_part.Velocity = velocity_offset + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
+			z.local_character:PivotTo(found_part.CFrame)
+			camera.CameraSubject = z.local_character:FindFirstChildOfClass('Humanoid')
+		end
+	end)
+
+	maid.add('partcontrol', z.run_service.Heartbeat, function()
+		pcall(function()
+			workspace.Gravity = 0
+			workspace.FallenPartsDestroyHeight = -9999999
+			found_part.CanCollide = false
+			found_part.Velocity = Vector3.zero
+
+			local old_pos = found_part.Position
+			found_part.CFrame = CFrame.lookAt(old_pos, camera.CFrame * CFrame.new(0, 0, -250).Position)
+
+			if not network_check(found_part) then
+				found_part.Velocity = velocity_offset
+				z.local_character:PivotTo(found_part.CFrame)
+				camera.CameraSubject = z.local_character:FindFirstChildOfClass('Humanoid')
+				return
+			end
+
+			local in_attack = false
+			for _, plr in ipairs(z.players:GetPlayers()) do
+				if plr ~= z.local_player and plr.Character and plr.Character:FindFirstChild('Head') then
+					local part = Instance.new('Part', workspace)
+					part.Anchored = true
+					part.Size = Vector3.new(plr.SimulationRadius, plr.SimulationRadius, plr.SimulationRadius)
+					part.Color = Color3.new(1, 0, 0)
+					part.Transparency = 1
+					part.CanCollide = false
+					part.CastShadow = false
+					part.CFrame = plr.Character:GetPivot()
+					z.debris:AddItem(part, 0.1)
+
+					if (z.local_character.Head.Position - plr.Character.Head.Position).Magnitude <= 18 then
+						in_attack = true
+					end
+
+					local part2 = Instance.new('Part', workspace)
+					part2.Anchored = true
+					part2.Size = Vector3.new(27, 27, 27)
+					part2.Color = Color3.new(0, 0, 1)
+					part2.Transparency = 1
+					part2.CanCollide = false
+					part2.CastShadow = false
+					part2.CFrame = plr.Character:GetPivot()
+					z.debris:AddItem(part2, 0.05)
+				end
+			end
+
+			camera.CameraSubject = found_part
+			z.local_character:PivotTo(CFrame.new(found_part.Position.X, found_part.Position.Y + (in_attack and 0 or -12), found_part.Position.Z))
+
+			if not network_check(found_part) then
+				notify('could not reposition part cframe: partcontrol cancelled')
+				maid.remove('partcontrol')
+				return
+			end
+
+			if z.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * 1,
+				direction.Y * 1,
+				direction.Z * 1
+			)
+
+			found_part.CFrame *= CFrame.new(offset)
+		end)
+	end)
+end)
+
+cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', function(vstorage)
+	commands_gui.Enabled = true
+	if not vstorage.loaded_commands then
+		vstorage.loaded_commands = true
+		for _, v in pairs(cmd_library._commands) do
+			local newframe = command_template:Clone()
+			newframe.Visible = true
+			newframe.Parent = commands_gui.main_container.commands
+			newframe.TextWrapped = true
+			newframe.AutomaticSize = Enum.AutomaticSize.Y
+			if #v['names'] == 1 then
+				newframe.Text = v.names[1]..': '..v.description
+			else
+				local finishednames = v['names'][1]
+				for inow, ve in ipairs(v['names']) do
+					if inow == 1 then
+						continue
+					end
+					finishednames ..= ', '..ve
+				end
+				newframe.Text = finishednames..': '..v.description
+			end
+		end
+	end
+end)
+
+cmd_library.add({'unairwalk','unairw',"unfloat"},'turns off airwalk', function()
+	local vstorage = cmd_library.get_variable_storage('airwalk')
+	if vstorage.air_walk_part then
+		pcall(function()
+			z.destroy(vstorage.air_walk_part)
+			vstorage.air_walk_part = nil
+		end)
+
+		maid.remove('air_walk')
+		notify('disabled airwalk')
+	else
+		notify('airwalk is already disabled')
+	end
+end)
+
+cmd_library.add({'airwalk', 'airw',"float"}, 'turns on airwalk', function(vstorage)
+	notify('enabled airwalk')
+
+	task.spawn(function()
+		local function AirWalk()
+			pcall(function()
+				maid.remove('air_walk')
+			end)
+			pcall(function()
+				z.destroy(vstorage.air_walk_part)
+			end)
+			local AirWPart = Instance.new('Part', workspace)
+			vstorage.air_walk_part = AirWPart
+			local crtl = true
+			local Mouse = game:GetService('Players').LocalPlayer:GetMouse()
+			AirWPart.Size = Vector3.new(7, 2, 3)
+			AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
+			AirWPart.Transparency = 1
+			AirWPart.Anchored = true
+			AirWPart.Name = tostring(game:GetService('HttpService'):GenerateGUID())
+			maid.add('air_walk',z.run_service.Heartbeat,function()
+				pcall(function()
+					z.destroy(AirWPart)
+					AirWPart = nil
+				end)
+				AirWPart = Instance.new('Part', workspace)
+				vstorage.air_walk_part = AirWPart
+				AirWPart.Size = Vector3.new(7, 2, 3)
+				AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
+				AirWPart.Transparency = 1
+				AirWPart.Anchored = true
+				AirWPart.Name = tostring(game:GetService('HttpService'):GenerateGUID())
+				pcall(function()
+					AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
+				end)
+			end)
+		end
+		AirWalk()
+	end)
+end)
+
+cmd_library.add({'visible','uninvis','uninvisible'}, 'makes your character visible', function()
+	local vstorage = cmd_library.get_variable_storage('invisible')
+
+	if vstorage.used == false then
+		notify('you aren\'t invisible')
+	else
+		notify('became visible')
+		vstorage.used = false
+
+		local pos = z.local_character.HumanoidRootPart.CFrame
+		local camera = workspace.CurrentCamera
+
+		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
+		z.local_player.SimulationRadius = 1000
+		wait(z.players.RespawnTime + 0.5)
+		z.local_player.SimulationRadius = 1000
+		z.local_character:WaitForChild('HumanoidRootPart').CFrame = pos
+
+		workspace.CurrentCamera = camera
+	end
+end)
+
+cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for others', function(vstorage)
+	if vstorage.used then
+		notify('you already are invisible')
+	else
+		notify('you are now invisible')
+		vstorage.used = true
+		task.spawn(function()
+			local position = z.local_character.HumanoidRootPart.Position
+			wait(.1)
+			z.local_character:MoveTo(position + Vector3.new(0, 1000000, 0))
+			wait(.1)
+			local hrpc = z.local_character.HumanoidRootPart:Clone()
+			wait(.1)
+			local hrp = z.local_character.HumanoidRootPart
+			pcall(z.destroy, hrp)
+
+			hrpc.Parent = z.local_character
+			task.delay(.2,function()
+				z.local_character:MoveTo(position)
+			end)
+		end)
+	end
+end)
+
+cmd_library.add({'seatbring', 'sbring'}, 'the seat kidnap 😱😱 real', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	for _, target in pairs(targets) do
+		local tool = z.local_character:FindFirstChildOfClass('Tool')
+
+		if not tool then
+			notify('equip a tool and maybe then we\'ll see')
+			repeat task.wait() until z.local_character:FindFirstChildOfClass('Tool')
+			tool = z.local_character:FindFirstChildOfClass('Tool')
+		end
+
+		notify(`bringing {target.Name} to you`)
+
+		local seat = tool:FindFirstChildWhichIsA('Seat', true)
+		local old_pos = z.local_character:GetPivot()
+		local start_time = tick()
+		local target_char = target.Character
+		local target_hrp = target_char.HumanoidRootPart
+		local target_humanoid = target_char:FindFirstChildOfClass('Humanoid')
+
+		repeat
+			local predicted_pos = predict_movement(target, 9)
+
+			if seat then
+				firetouchinterest(seat, target_hrp, 0)
+				firetouchinterest(seat, target_hrp, 1)
+			end
+			z.local_character:PivotTo(predicted_pos * CFrame.new(-4, 0, 3))
+			z.run_service.Heartbeat:Wait()
+
+			if seat then
+				firetouchinterest(seat, target_hrp, 0)
+				firetouchinterest(seat, target_hrp, 1)
+			end
+			z.local_character:PivotTo(predicted_pos * CFrame.new(4, 0, 3))
+			z.run_service.Heartbeat:Wait()
+			z.run_service.Heartbeat:Wait()
+		until tick() - start_time >= 4 or (seat and seat:FindFirstChild('SeatWeld')) or target_humanoid.Sit
+
+		z.local_character:PivotTo(old_pos)
+	end
+end)
+
+cmd_library.add({'to', 'goto'}, 'teleport infront of the target', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`) 
+	end
+
+	for _, target in pairs(targets) do
+		if not target.Character:FindFirstChild('HumanoidRootPart') then
+			notify(`player {target.Name} does not have a rootpart | skipping`)
+			continue
+		end
+
+		hypernull(function()
+			z.local_character:PivotTo(target.Character:FindFirstChild('HumanoidRootPart').CFrame*CFrame.new(0,3,-3))
+		end)
+	end
+end)
+
+cmd_library.add({'test'}, 'test the status of the notification system', function()
+	notify('notification system working')
+end)
+
+cmd_library.add({'fling'}, 'uses velocity to fling people', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	for _, target in targets do
+		task.wait(.3)
+
+		notify(`now flinging {target.Name}`)
+
+		local hrp = z.local_character:FindFirstChild('HumanoidRootPart')
+		local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+		local motor = hrp:FindFirstChildOfClass('Motor6D')
+		local target_char = target.Character
+		local target_hrp = target_char.HumanoidRootPart
+		local target_humanoid = target_char:FindFirstChildOfClass('Humanoid')
+		local cam = workspace.CurrentCamera
+
+		local old_pos = hrp.CFrame
+		local max_vel = Vector3.new(99999, 99999, 99999)
+		local zero_vel = Vector3.new(0, 0, 0)
+
+		hrp.Transparency = .5
+		hrp.BrickColor = BrickColor.new('Persimmon')
+		motor.Enabled = false
+		cam.CameraSubject = target_char.Head
+		hrp.CFrame = target_char:GetPivot()
+		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+
+		local temp_model = Instance.new('Model', workspace)
+		Instance.new('Humanoid', temp_model).Name = '1'
+
+		local start_time = tick()
+		repeat
+			hrp.Parent = temp_model
+			hrp.Position = target_hrp.Position + target_humanoid.MoveDirection * 11
+			hrp.Velocity = max_vel
+			hrp.AssemblyAngularVelocity = max_vel
+			task.wait()
+		until target_hrp.Velocity.Magnitude >= 99 or tick() - start_time >= 3
+
+		temp_model:Destroy()
+		task.wait(.1)
+
+		cam.CameraSubject = z.local_character.Head
+		hrp.Parent = z.local_character
+
+		for i = 1, 2 do
+			hrp.Velocity = zero_vel
+			hrp.AssemblyAngularVelocity = zero_vel
+			hrp.AssemblyLinearVelocity = zero_vel
+
+			for _, part in pairs(z.local_character:GetDescendants()) do
+				if part:IsA('BasePart') then
+					part.AssemblyLinearVelocity = zero_vel
+				end
+			end
+
+			if i == 1 then task.wait(0.1) end
+		end
+
+		motor.Enabled = true
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+		hrp.Transparency = 1
+		z.local_character.Head.Anchored = false
+
+		start_time = tick()
+		repeat
+			workspace:BulkMoveTo({hrp}, {old_pos})
+			task.wait()
+		until tick() - start_time >= 0.3
+
+		cam.CameraSubject = humanoid
+	end
+end)
+
+cmd_library.add({'respawn', 'reset', 'die'}, 'reset your character yes', function()
+	notify('respawning your character')
+
+	z.local_character:BreakJoints()
+	z.local_character.Humanoid.Health = 0
+end)
+
+cmd_library.add({'gravity'}, 'sets workspace gravity value to [NUM]', function(_, gravity)
+	gravity = tonumber(gravity) or 196.2
+	notify(`gravity set to {gravity}`)
+	workspace.Gravity = gravity
+end)
+
+cmd_library.add({'unantisit','unantis','unasit'}, 'enables sitting', function()
+	notify('anti-sit disabled')
+
+	z.local_character.Humanoid:SetStateEnabled('Seated', true)
+	z.local_character.Humanoid.Sit = false
+end)
+
+cmd_library.add({'antisit', 'antis', 'asit'}, 'disables sitting', function()
+	notify('antisit enabled')
+
+	z.local_character.Humanoid:SetStateEnabled('Seated', false)
+	z.local_character.Humanoid.Sit = true
+end)
+
+cmd_library.add({'unwalkfling','unwalkf'}, 'disables walkfling', function()
+	local vstorage = cmd_library.get_variable_storage('walkf')
+	vstorage.enabled = false
+	notify('walkfling disabled')
+end)
+
+cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', function(vstorage)
+	if vstorage.enabled then
+		return notify('walkfling is already enabled')
+	else
+		notify('walkfling enabled')
+	end
+
+	if vstorage.alreadyused then
+		vstorage.enabled = true
+	else
+		vstorage.alreadyused = true
+		vstorage.enabled = true
+
+		local hrp, c, vel, movel = nil, nil, nil, 0.1
+
+		while z.run_service.Heartbeat:Wait() do
+			if vstorage.enabled then
+				while vstorage.enabled and not (c and c.Parent and hrp and hrp.Parent) do
+					z.run_service.Heartbeat:Wait()
+					c = z.local_character
+					hrp = c:FindFirstChild('HumanoidRootPart') or c:FindFirstChild('Torso') or c:FindFirstChild('UpperTorso')
+				end
+
+				if vstorage.enabled then
+					vel = hrp.Velocity
+
+					hrp.Velocity = vel * 10000 + Vector3.new(0, 10000, 0)
+
+					z.run_service.RenderStepped:Wait()
+
+					if c and c.Parent and hrp and hrp.Parent then
+						hrp.Velocity = vel
+					end
+
+					z.run_service.Stepped:Wait()
+
+					if c and c.Parent and hrp and hrp.Parent then
+						hrp.Velocity = vel + Vector3.new(0, movel, 0)
+						movel = movel * -1
+					end
+				end
+			end
+		end
+	end
+end)
+
+cmd_library.add({'follow', 'chase'}, 'lock onto another player instantly', function(vstorage, name)
+	local targets = get_plr(name)
+	local target = targets[1]
+
+	if not target or not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+		notify('target not found, idiotzoid.')
+		return
+	end
+
+	if vstorage.target then
+		return notify(`already following {vstorage.target.Name}, use 'unfollow' first`)
+	end
+
+	vstorage.target = target
+	local hrp = z.local_character:WaitForChild('HumanoidRootPart')
+
+	maid.add('follow_connection', z.run_service.RenderStepped, function()
+		if not vstorage.target or not vstorage.target.Character or not vstorage.target.Character:FindFirstChild('HumanoidRootPart') then
+			return
+		end
+
+		local target_hrp = vstorage.target.Character.HumanoidRootPart
+		hrp.CFrame = target_hrp.CFrame
+		hrp.Velocity = Vector3.zero
+		hrp.RotVelocity = Vector3.zero
+	end)
+
+	notify(`now following {target.Name}`)
+end)
+
+cmd_library.add({'unfollow','stopfollow'}, 'stop following', function()
+	local vstorage = cmd_library.get_variable_storage('follow')
+	if vstorage.target then
+		maid.remove(notify'follow_connection')
+		notify('stopped following '.. (vstorage.target and vstorage.target.Name or 'the player'))
+		vstorage.target = nil
+	else
+		notify('you are not following anyone')
+	end
+end)
+
+cmd_library.add({'view','spectate'}, 'spectate another player', function(vstorage, name)
+	local targets = get_plr(name)
+	local target = targets[1]
+
+	if not target or not target.Character or not target.Character:FindFirstChild('Humanoid') then
+		return notify('target not found, idiotzoid')
+	end
+
+	local camera = workspace.CurrentCamera
+	camera.CameraSubject = target.Character:FindFirstChild('Humanoid')
+	vstorage.target = target
+
+	notify(`spectating {target.Name}`)
+end)
+
+cmd_library.add({'unview', 'unspectate', 'endview'}, 'stop spectating', function()
+	local vstorage = cmd_library.get_variable_storage('view')
+	if vstorage.target then
+		local camera = workspace.CurrentCamera
+		camera.CameraSubject = z.local_character:FindFirstChild('Humanoid')
+		notify(`stopped spectating {vstorage.target.Name}`)
+		vstorage.target = nil
+	else
+		notify('you aren\'t viewing anyone, noob')
+	end
+end)
+
+
+cmd_library.add({'noclip'}, 'walk through stuff', function()
+	pcall(function()
+		maid.remove("noclip_connection")
+	end)
+
+	maid.add('noclip_connection', z.run_service.Stepped, function()
+		if z.local_character then
+			for _, part in pairs(z.local_character:GetDescendants()) do
+				if part:IsA('BasePart') then
+					part.CanCollide = false
+				end
+			end
+		end
+	end)
+
+	notify('noclip enabled')
+end)
+
+z.sim_range_reset = false
+cmd_library.add({'resetsimulationrange', 'resetsimrange', 'resetsr'}, 'resets your simulationradius to 1000 and forces partfling to stop', function(vstorage)
+	notify('fetching all parts, your character will be reset')
+	pcall(function()
+		maid.remove('part_trap_follow')
+	end)
+	task.spawn(function()
+		z.sim_range_reset = true
+		local old_pos = z.local_character:GetPivot()
+		local success = false
+
+		pcall(function()
+			z.local_player.SimulationRadius = 1000
+			z.local_character:BreakJoints()
+			success = true
+		end)
+		task.wait(.01)
+		task.wait(z.players.RespawnTime + .5)
+		z.local_character:PivotTo(old_pos)
+		task.wait(1)
+		z.sim_range_reset = false
+	end)
+end)
+
+cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far more undetectable and works in collisions off.', function(_, name)
+	local function PartFling(target)
+		if target then
+			local Part = get_closest_part()
+			if Part == nil then notify('there is nothing to partfling with') return end
+			local oldcframepart = Part.CFrame
+			local oldcf = z.local_character:GetPivot()
+			if network_check(Part) == false then
+				notify('use resetsimrange to stop trying to gain ownership')
+				local otick;otick = tick()
+				repeat
+					z.local_character:PivotTo(Part.CFrame)
+					z.run_service.RenderStepped:Wait()
+				until network_check(Part) == true or z.sim_range_reset == true or tick()-otick >= 5
+				if network_check(Part) == true then
+					notify('successfully gained part ownership and used partfling on '..target.Name)
+				else
+					if z.sim_range_reset == false then
+						notify('attempt to gain ownership timed out')
+					end
+				end
+			else
+				notify('attempted partfling on '..target.Name)
+			end
+			z.local_character:PivotTo(oldcf)
+			z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+			Part.Velocity = Vector3.new(0,5000,0)
+			local weld = {Part1 = target.Character.HumanoidRootPart,Part0 = Part}
+			local conexttion
+			local oldpos=Part.Position
+			maid.add('partfling_connection',z.run_service.Heartbeat,function()
+				if network_check(Part) ~= true or weld.Part1.Velocity.Magnitude >= 100 then
+					maid.remove('partfling_connection')
+					pcall(function()
+						Part.Position = oldpos
+						Part.Velocity = Vector3.zero
+						Part.CFrame = oldcframepart
+					end)
+				else
+					z.local_player.SimulationRadius = 1000
+					Part.Velocity = Vector3.new(0,500*5,0)
+					Part.CFrame = weld.Part1.CFrame
+				end
+			end)
+		end
+	end
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player {name and tostring(name) or ''} does't exist`)
+	end
+
+	for _, target in pairs(targets) do
+		PartFling(target)
+		task.wait(.5)
+	end
+end)
+
+cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monkey', function(vstorage, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player {name and tostring(name) or ''} does't exist`)
+	end
+
+	local function PartFling(target,number,excluded)
+		if target then
+			local function NetworkCheck(Part)
+				return Part.ReceiveAge == 0
+			end
+			local function getclosestpart()
+				local bestpart
+				local biggestmagnitude 
+				for _, v in ipairs(workspace:GetDescendants()) do
+					if v:IsA('BasePart') or v:IsA('Part') or v:IsA('MeshPart') or v:IsA('UnionOperation') then
+						if v.Anchored == false and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(game:GetService('Players').LocalPlayer.Character) then
+							if biggestmagnitude == nil or biggestmagnitude ~= nil and (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude < biggestmagnitude then
+								if #v:GetConnectedParts() < 2 then
+									if table.find(excluded,v) then
+										continue
+									end
+									biggestmagnitude = (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude
+									bestpart = v
+								end
+							end
+						end
+					end
+				end
+				return bestpart
+			end
+			local Part = getclosestpart()
+			if Part == nil then notify('there is nothing to parttrap with') return end
+			local oldcframepart;oldcframepart = Part.CFrame
+			local oldcf=game:GetService('Players').LocalPlayer.Character:GetPivot()
+			if NetworkCheck(Part) == false then
+				local otick;otick = tick()
+				repeat
+					game:GetService('Players').LocalPlayer.Character:PivotTo(Part.CFrame)
+					game:GetService('RunService').RenderStepped:Wait()
+				until NetworkCheck(Part) == true or z.sim_range_reset== true or tick()-otick >= 5
+				if NetworkCheck(Part) == true then
+				else
+					if z.sim_range_reset == false then
+						notify('attempt to gain ownership timed out')
+						return
+					end
+				end
+			else
+			end
+			game:GetService('Players').LocalPlayer.Character:PivotTo(oldcf)
+			game:GetService('Players').LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+			local weld = {Part1 = target.Character.Head,Part0 = Part}
+			if number >= 2 and number ~= 6  then
+				if target.Character:FindFirstChild('Torso') then
+					weld.Part1 = target.Character.Torso
+				else
+					weld.Part1 = target.Character.HumanoidRootPart
+				end
+			end
+			local parttest = Instance.new("Part",workspace)
+			parttest.Anchored = true
+			parttest.Size = weld.Part1.Size
+			parttest.CFrame = weld.Part1.CFrame
+			parttest.Orientation = Vector3.new(0,90,0)
+			parttest.Transparency = 1
+			parttest.CanCollide = false
+			parttest.Parent = workspace
+			weld.Part1 = parttest
+			local conexttion
+			local oldpos=Part.Position
+			local allowed = true
+			local oldpartcframeeeee = nil
+			maid.add('part_trap_connection_'..number,z.run_service.Heartbeat,function()
+				if target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
+					maid.remove('part_trap_follow')
+					maid.remove('part_trap_connection_'..number)
+					pcall(function()
+						Part.Position = oldpos
+						Part.Velocity = Vector3.zero
+						Part.CFrame = oldcframepart
+					end)
+				else
+					game:GetService('Players').LocalPlayer.SimulationRadius = 1000
+				end
+
+				if target.Character.Humanoid.MoveDirection.Magnitude > 1 and allowed == true then
+					if number == 1 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 2 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,-1.5)
+					elseif number == 3 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,1.5)
+					elseif number == 4 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.5,15,0)
+					elseif number == 5 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(1.5,15,0)
+					elseif number == 6 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 7 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 8 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					end
+				else
+					if allowed == true then
+						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						if number == 1 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
+							Part.Orientation = Vector3.new(0,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 2 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.75,-1.75)
+							Part.Orientation=Vector3.new(90,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 3 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.5,1.75)
+							Part.Orientation=Vector3.new(90,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 4 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.75,0.75,0)
+							Part.Orientation=Vector3.new(90,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 5 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(1.95,0.75,0)
+							Part.Orientation=Vector3.new(90,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 6 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
+							Part.Orientation = Vector3.new(0,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 7 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
+							Part.Orientation = Vector3.new(0,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 8 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
+							Part.Orientation = Vector3.new(0,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						end
+						oldpartcframeeeee = Part.CFrame
+					else
+						Part.CFrame = oldpartcframeeeee
+						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						Part.CanCollide = false
+						Part.CFrame = oldpartcframeeeee
+					end
+					if allowed == true then
+						if number+1 < 9 then
+							table.insert(excluded,Part)
+							PartFling(target,number+1,excluded)
+						else
+						end
+					end
+					allowed = false
+				end
+			end)
+		end
+	end
+
+	for _, target in pairs(targets) do
+		notify('attempted trap on '..target.Name)
+
+		PartFling(target,1,{})
+		task.wait(.5)
+	end
+end)
+
+cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', function()
+	notify('enabled infinite jump')
+
+	local cooldown = false
+	pcall(function()
+		maid.remove('infinite_jump')
+	end)
+	maid.add('infinite_jump', z.user_input_service.JumpRequest, function()
+		if cooldown == true then return end
+		local hum = z.local_character:WaitForChild('Humanoid')
+		cooldown = true
+
+		task.delay(.15,function()
+			cooldown = false
+		end)
+
+		if hum.FloorMaterial == Enum.Material.Air then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+	end)
+end)
+
+cmd_library.add({'uninfjump', 'uninfinitejump'}, 'infinite unjump', function()
+	notify('disabled infinite jump')
+	maid.remove('infinite_jump')
+end)
+
+cmd_library.add({'clip'}, 'stop walking through stuff', function()
+	maid.remove('noclip_connection')
+	notify('disabled noclip')
+
+	if z.local_character and z.local_character:FindFirstChild('HumanoidRootPart') then
+		z.local_character.HumanoidRootPart.CFrame += Vector3.new(0, 3, 0)
+	end
+end)
+cmd_library.add({'unantivoid','unantiv'},'it disable anti void',function()
+	maid.remove('anti_void_connection')
+	notify('disabled antivoid')
+end)
+
+cmd_library.add({'antivoid','antiv'},'Stops the void from killing you.',function()
+	notify('enabled antivoid')
+	pcall(function()
+		maid.remove("anti_void_connection")
+	end)
+	maid.add('anti_void_connection',game:GetService('RunService').Heartbeat,function()
+		if z.local_character:GetPivot().Position.Y <= workspace.FallenPartsDestroyHeight+30 then
+			for _, v in ipairs(z.local_character:GetChildren()) do
+				pcall(function()
+					v.Velocity = Vector3.new(0,0,0)
+					v.AssemblyLinearVelocity = Vector3.new(0,0,0)
+				end)
+			end
+			z.local_character:PivotTo(z.local_character:GetPivot()*CFrame.new(0,(workspace.FallenPartsDestroyHeight*-1)+50,0))
+		end
+	end)
+end)
+
+cmd_library.add({'revive'}, 'attempts to stop oneshots', function()
+	notify('activated revive')
+
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+
+	local old_health = humanoid.Health
+	local reload = true
+
+	local invalid_states = {
+		[Enum.HumanoidStateType.FallingDown] = true,
+		[Enum.HumanoidStateType.Swimming] = true,
+		[Enum.HumanoidStateType.Seated] = true,
+		[Enum.HumanoidStateType.Jumping] = true,
+		[Enum.HumanoidStateType.Freefall] = true
+	}
+
+	task.spawn(function()
+		repeat
+			game:GetService('RunService').RenderStepped:Wait()
+			pcall(function()
+				if not invalid_states[humanoid:GetState()] then
+					humanoid:ChangeState(Enum.HumanoidStateType.Running)
+				end
+			end)
+		until not reload
+	end)
+
+	task.spawn(function()
+		repeat
+			task.wait(.13)
+			if reload then old_health = humanoid.Health end
+		until humanoid.Health <= 0
+	end)
+
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+	humanoid.RequiresNeck = false
+	humanoid.BreakJointsOnDeath = false
+	pcall(function()
+		maid.remove("revive")
+	end)
+	maid.add('revive', humanoid:GetPropertyChangedSignal('Health'), function()
+		local current_health = humanoid.Health
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+		if old_health > current_health then
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+			humanoid.Parent = z.replicated_storage
+			z.replicated_storage:FindFirstChild('Humanoid').Parent = z.local_character
+
+			if current_health <= 5 then
+				maid.remove('revive')
+				task.delay(.02, function()
+					reload = false
+				end)
+			end
+		else
+			old_health = current_health
+		end
+	end)
+end)
+
+cmd_library.add({'thirdp', '3rdp', 'thirdperson'}, 'forces your camera to be third person', function()
+	notify('now third-person')
+
+	z.local_player.CameraMaxZoomDistance = 128
+	z.local_player.CameraMode = 'Classic'
+end)
+
+cmd_library.add({'swim', 'swimmode'}, 'swim in the air', function(vstorage, speed)
+	speed = tonumber(speed) or z.default_walkspeed
+	if vstorage.enabled then
+		return notify('swim is already enabled')
+	end
+	vstorage.enabled = true
+
+	notify('enabled swim')
+
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+	workspace.Gravity /= 10
+
+	local states = {
+		Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.FallingDown,
+		Enum.HumanoidStateType.Flying, Enum.HumanoidStateType.Freefall,
+		Enum.HumanoidStateType.GettingUp, Enum.HumanoidStateType.Jumping,
+		Enum.HumanoidStateType.Landed, Enum.HumanoidStateType.Physics,
+		Enum.HumanoidStateType.PlatformStanding, Enum.HumanoidStateType.Ragdoll,
+		Enum.HumanoidStateType.Running, Enum.HumanoidStateType.RunningNoPhysics,
+		Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.StrafingNoPhysics,
+		Enum.HumanoidStateType.Swimming
+	}
+
+	for _, state in pairs(states) do
+		humanoid:SetStateEnabled(state, false)
+	end
+
+	humanoid:ChangeState(Enum.HumanoidStateType.Swimming)
+
+	vstorage.old_speed = humanoid.WalkSpeed
+	humanoid.WalkSpeed = speed
+end)
+
+cmd_library.add({'unswim', 'unswimmode', 'stopswim'}, 'stop swimming in the air', function()
+	local vstorage = cmd_library.get_variable_storage('swim')
+	if not vstorage.enabled then
+		return notify('swim is already disabled')
+	end
+
+	notify('disabled swim')
+
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+	workspace.Gravity *= 10
+
+	local states = {
+		Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.FallingDown,
+		Enum.HumanoidStateType.Flying, Enum.HumanoidStateType.Freefall,
+		Enum.HumanoidStateType.GettingUp, Enum.HumanoidStateType.Jumping,
+		Enum.HumanoidStateType.Landed, Enum.HumanoidStateType.Physics,
+		Enum.HumanoidStateType.PlatformStanding, Enum.HumanoidStateType.Ragdoll,
+		Enum.HumanoidStateType.Running, Enum.HumanoidStateType.RunningNoPhysics,
+		Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.StrafingNoPhysics,
+		Enum.HumanoidStateType.Swimming
+	}
+
+	for _, state in pairs(states) do
+		humanoid:SetStateEnabled(state, true)
+	end
+
+	humanoid:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+
+	if tonumber(vstorage.old_speed) then
+		humanoid.WalkSpeed = vstorage.old_speed or z.default_walkspeed
+	end
+end)
+
+cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event of all parts using it', function()
+	notify('succesfully eradicated touched event')
+	pcall(function()
+		maid.remove("disable_touch_event")
+	end)
+	maid.add('disable_touch_event', z.run_service.Heartbeat, function()
+		local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+
+		if humanoid.Health < 1 then
+			maid.remove('disable_touch_event')
+			for _, v in ipairs(workspace:GetDescendants()) do
+				pcall(function() v.CanTouch = true end)
+			end
+			return
+		end
+	end)
+
+	for _, v in ipairs(workspace:GetDescendants()) do
+		pcall(function() v.CanTouch = false end)
+	end
+end)
+
+cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf'}, 'partfling on walkfling 😰 (optional third arg: torsopos)', function(_, name, torso_mode)
+	local targets = get_plr(name)
+	if not targets then 
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	notify('fetching all parts, your character will be reset')
+
+	for _, target in pairs(targets) do
+		local old_cframe = z.local_character.HumanoidRootPart.CFrame
+		local cam = workspace.CurrentCamera
+
+		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
+		z.local_player.SimulationRadius = 1000
+		wait(z.players.RespawnTime + 0.5)
+
+		local target_hrp = target.Character:WaitForChild('HumanoidRootPart')
+		z.local_player.SimulationRadius = 1000
+		z.local_character:WaitForChild('HumanoidRootPart').CFrame = old_cframe
+		workspace.CurrentCamera = cam
+		task.wait(0.2)
+
+		local parts = {}
+		local cycle_duration = 3
+		local distance = 18
+		local cycle_progress = 0
+
+		local is_player_part = function(part)
+			for _, plr in ipairs(z.players:GetPlayers()) do
+				if plr.Character and plr.Character:IsAncestorOf(part) then
+					return true
+				end
+			end
+			return false
+		end
+
+		local is_valid_part = function(part)
+			if part.Anchored or is_player_part(part) or part:IsDescendantOf(z.local_character) then
+				return false
+			end
+			if part.Parent ~= workspace and (part.Parent:FindFirstChildOfClass('Humanoid') or part.Parent.Parent and part.Parent.Parent:FindFirstChildOfClass('Humanoid')) then
+				return false
+			end
+			return #part:GetConnectedParts() < 2
+		end
+
+		for _, part in ipairs(workspace:GetDescendants()) do
+			if part:IsA('BasePart') and is_valid_part(part) then
+				table.insert(parts, part)
+			end
+		end
+
+		workspace.DescendantAdded:Connect(function(part)
+			if part:IsA('BasePart') and is_valid_part(part) then
+				table.insert(parts, part)
+			end
+		end)
+
+		task.wait(1)
+
+		maid.add('part_walkfling_'..target.Name, z.run_service.Heartbeat, function(dt)
+			if not target_hrp:IsDescendantOf(workspace) or not target:IsDescendantOf(game) then
+				maid.remove('part_walkfling_'..target.Name)
+				return
+			end
+
+			for i = #parts, 1, -1 do
+				local part = parts[i]
+
+				if not part:IsDescendantOf(game) then
+					table.remove(parts, i)
+					continue
+				end
+
+				pcall(function()
+					if part.ReceiveAge ~= 0 or part.Anchored then return end
+
+					part.CanCollide = false
+					part.Velocity = Vector3.new(0, 500000000000, 0)
+
+					if torso_mode ~= 'true' then
+						cycle_progress = (cycle_progress + dt / cycle_duration) % 1
+						local alpha = 2 * math.pi * cycle_progress
+						part.CFrame = CFrame.Angles(0, alpha, 0) * CFrame.new(0, 0, distance + part.Size.Magnitude) + target_hrp.Position
+					else
+						if target == z.local_player then
+							part.CFrame = target_hrp.CFrame
+						else
+							z.local_character.Humanoid:SetStateEnabled('Seated', false)
+							z.local_character.Humanoid.Sit = true
+							local offset_cframe = target_hrp.CFrame * CFrame.new(0, 0, -(17 + part.Size.Magnitude))
+							part.CFrame = offset_cframe
+							z.local_character:PivotTo(offset_cframe)
+						end
+					end
+				end)
+			end
+		end)
+	end
+end)
+
+cmd_library.add({'countcommands', 'countcmds'}, 'counts the commands very useful yes', function()
+	notify(#cmd_library._commands .. ' commands')
+end)
+
+cmd_library.add({'wallwalk', 'spiderman', 'ww'}, 'makes you walk on walls', function()
+	notify('activated spiderman mode')
+	loadstring(game:HttpGet('https://pastebin.com/raw/s4FjP97j'))()
+end)
+
+cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
+	local target_plr = get_plr(target)[1]
+	if not target_plr then
+		return notify(`player '{target and tostring(target) or ''}' doesn't exist`)
+	end
+
+	if not target_plr.Character or not target_plr.Character:FindFirstChild('Head') then
+		return notify(`{target_plr.Name} does not have a character or head`)
+	end
+
+	maid.add('ro_bang_connection', z.run_service.Stepped, function()
+		local cf = CFrame.new(0, 1.5, -1.5 - math.sin(os.clock() * 15)) * CFrame.Angles(0, math.rad(180), 0)
+
+		pcall(function()
+			local hrp = z.local_character and z.local_character:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				hrp.Velocity = Vector3.zero
+				hrp.RotVelocity = Vector3.zero
+				z.local_character:PivotTo(target_plr.Character.Head.CFrame * cf)
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'stoprobang', 'unbang', 'endbang'}, 'stop robang', function()
+	notify('stopped robang')
+	maid.remove('ro_bang_connection')
+end)
+
+cmd_library.add({'sit', 'togglesit'}, 'buckle up', function()
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+	if humanoid then
+		humanoid.Sit = not humanoid.Sit
+		notify('set sitting to ' .. tostring(humanoid.Sit))
+	end
+end)
+
+cmd_library.add({'freeze'}, 'freezes your character in place', function()
+	notify('you are now frozen')
+	pcall(function()
+		maid.remove("freeze_connection")
+	end)
+	maid.add('freeze_connection', z.run_service.Heartbeat, function()
+		pcall(function()
+			z.local_character.HumanoidRootPart.Anchored = true
+		end)
+	end)
+end)
+
+cmd_library.add({'unfreeze', 'thaw'}, 'unfreezes your character', function()
+	notify('you are now unfrozen')
+	maid.remove('freeze_connection')
+
+	pcall(function()
+		z.local_character.HumanoidRootPart.Anchored = false
+	end)
+end)
+
+cmd_library.add({'spin', 'spinbot'}, 'spins your character', function(vstorage, speed)
+	if vstorage.enabled then
+		return notify('spin is already enabled')
+	end
+
+	speed = tonumber(speed) or 20
+	vstorage.enabled = true
+	notify(`spinning at speed {speed}`)
+
+	local spin_part = Instance.new('BodyAngularVelocity')
+	spin_part.Name = 'spin_velocity'
+	hypernull(function()
+		spin_part.Parent = z.local_character.HumanoidRootPart
+	end)
+	hypernull(function()
+		spin_part.MaxTorque = Vector3.new(0, math.huge, 0)
+		spin_part.AngularVelocity = Vector3.new(0, speed, 0)
+	end)
+
+	vstorage.spin_part = spin_part
+end)
+
+cmd_library.add({'unspin', 'unspinbot'}, 'stops spinning your character', function()
+	local vstorage = cmd_library.get_variable_storage('spin')
+
+	if vstorage.enabled then
+		notify('stopped spinning')
+		vstorage.enabled = false
+
+		if vstorage.spin_part then
+			pcall(z.destroy, vstorage.spin_part)
+		end
+	else
+		notify('spin is not enabled')
+	end
+end)
+
+cmd_library.add({'day'}, 'sets time to day', function()
+	notify('time set to day')
+	z.lighting.ClockTime = 14
+end)
+
+cmd_library.add({'night'}, 'sets time to night', function()
+	notify('time set to night')
+	z.lighting.ClockTime = 0
+end)
+
+cmd_library.add({'time'}, 'sets the time of day', function(_, time)
+	time = tonumber(time) or 14
+	notify(`time set to {time}`)
+	z.lighting.ClockTime = time
+end)
+
+cmd_library.add({'fogend', 'fog'}, 'sets fog end distance', function(_, distance)
+	if tonumber(distance) then
+		distance = tonumber(distance)
+	else
+		distance = 100000
+	end
+	notify(`fog end set to {distance}`)
+	z.lighting.FogEnd = distance
+end)
+
+cmd_library.add({'brightness'}, 'sets brightness', function(_, value)
+	value = tonumber(value) or 2
+	notify(`brightness set to {value}`)
+	z.lighting.Brightness = value
+end)
+
+cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', function(_, size)
+	size = tonumber(size) or 10
+	notify(`hitbox size set to {size}`)
+	pcall(function()
+		maid.remove("hitbox_connection")
+	end)
+	maid.add('hitbox_connection', z.run_service.Heartbeat, function()
+		for _, plr in pairs(z.players:GetPlayers()) do
+			if plr ~= z.local_player and plr.Character then
+				local head = plr.Character:FindFirstChild('HumanoidRootPart')
+				if head then
+					head.Size = Vector3.new(size, size, size)
+					head.Transparency = 0.75
+					head.BrickColor = BrickColor.random()
+					head.CanCollide = false
+				end
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'unhitbox', 'untorsosize'}, 'resets rootpart hitbox', function()
+	notify('hitbox reset')
+	maid.remove('hitbox_connection')
+
+	for _, plr in pairs(z.players:GetPlayers()) do
+		if plr.Character and plr ~= z.local_player then
+			local head = plr.Character:FindFirstChild('HumanoidRootPart')
+			if head then
+				head.Size = Vector3.new(2, 1, 1)
+				head.Transparency = 1
+			end
+		end
+	end
+end)
+
+cmd_library.add({'orbit'}, 'orbit around a player', function(vstorage, name, distance, speed)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	local target = targets[1]
+	if vstorage.target then
+		return notify(`already orbiting {vstorage.target.Name}, use unorbit first`)
+	end
+
+	vstorage.target = target
+	vstorage.distance = tonumber(distance) or 10
+	vstorage.speed = tonumber(speed) or 2
+	vstorage.angle = 0
+
+	notify(`now orbiting {target.Name}`)
+
+	maid.add('orbit_connection', z.run_service.Heartbeat, function(dt)
+		pcall(function()
+			if vstorage.target and vstorage.target.Character and vstorage.target.Character:FindFirstChild('HumanoidRootPart') then
+				vstorage.angle = (vstorage.angle + dt * vstorage.speed) % (2 * math.pi)
+				local offset = CFrame.Angles(0, vstorage.angle, 0) * CFrame.new(0, 0, vstorage.distance)
+				z.local_character:PivotTo(vstorage.target.Character.HumanoidRootPart.CFrame * offset)
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'unorbit'}, 'stop orbiting', function()
+	local vstorage = cmd_library.get_variable_storage('orbit')
+
+	if vstorage.target then
+		notify(`stopped orbiting {vstorage.target.Name}`)
+		vstorage.target = nil
+		maid.remove('orbit_connection')
+	else
+		notify('you are not orbiting anyone')
+	end
+end)
+
+cmd_library.add({'serverhop', 'shop'}, 'hops to a different server', function()
+	notify('attempting to server hop')
+
+	local success, servers = pcall(function()
+		return z.http:JSONDecode(game:HttpGet(`https://games.roproxy.com/v1/games/{game.PlaceId}/servers/Public?sortOrder=Asc&limit=100`))
+	end)
+
+	if success and servers and servers.data then
+		for _, server in pairs(servers.data) do
+			if server.id ~= game.JobId and server.playing < server.maxPlayers then
+				z.teleport_service:TeleportToPlaceInstance(game.PlaceId, server.id, z.local_player)
+				return
+			end
+		end
+	end
+
+	notify('could not find a different server')
+end)
+
+cmd_library.add({'platformstand', 'pstand'}, 'enables platform stand', function()
+	notify('platform stand enabled')
+	z.local_character:FindFirstChildOfClass('Humanoid').PlatformStand = true
+end)
+
+cmd_library.add({'unplatformstand', 'unpstand'}, 'disables platform stand', function()
+	notify('platform stand disabled')
+	z.local_character:FindFirstChildOfClass('Humanoid').PlatformStand = false
+end)
+cmd_library.add({"enablecoreuis","showguis","enableuis"},"enables the coreguis",function()
+	notify("enabled every coregui")
+	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.All,true)
+end)
+cmd_library.add({'droptools', 'dtools'}, 'drops all tools', function()
+	notify('tools dropped')
+
+	pcall(function()
+		for _, tool in pairs(z.local_player.Backpack:GetChildren()) do
+			tool.Parent =  z.local_player.Character
+		end
+		task.delay(0.15,function()
+			for _, tool in pairs(z.local_character:GetChildren()) do
+				if tool:IsA('Tool') and tool.CanBeDropped == true then
+					tool.Parent = workspace
+				end
+			end
+			task.delay(0.05,function()
+				z.local_character:FindFirstChildOfClass("Humanoid"):UnequipTools()
+			end)
+		end)
+	end)
+end)
+
+cmd_library.add({'equiptools', 'etools'}, 'equips all tools', function()
+	notify('tools equipped')
+
+	pcall(function()
+		for _, tool in pairs(z.local_player.Backpack:GetChildren()) do
+			if tool:IsA('Tool') then
+				tool.Parent = z.local_character
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'unequiptools', 'utools'}, 'unequips all tools', function()
+	notify('tools unequipped')
+	z.local_character.Humanoid:UnequipTools()
+end)
+
+cmd_library.add({'animation', 'anim'}, 'plays an animation by id', function(_, id)
+	if not id then
+		return notify('provide an animation id')
+	end
+
+	notify(`playing animation {id}`)
+
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+	local animator = humanoid:FindFirstChildOfClass('Animator')
+
+	if not animator then
+		animator = Instance.new('Animator')
+		animator.Parent = humanoid
+	end
+
+	local animation = Instance.new('Animation')
+	animation.AnimationId = `rbxassetid://{id}`
+
+	local track = animator:LoadAnimation(animation)
+	track:Play()
+end)
+
+cmd_library.add({'stopanimations', 'stopanim'}, 'stops all playing animations', function()
+	notify('animations stopped')
+
+	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+	for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+		track:Stop()
+	end
+end)
+
+cmd_library.add({'age', 'accountage'}, 'shows account age', function(_, name)
+	local targets = get_plr(name) or {z.local_player}
+	if not targets then
+		return notify(`player {name and tostring(name) or ''} doesn't exist`)
+	end
+
+	for _, target in pairs(targets) do
+		local days = target.AccountAge
+		local creation_date = os.date('*t', os.time() - (days * 86400))
+
+		notify(`{target.Name}'s account age: {math.floor(days / 365)} year(s), {math.floor((days % 365) / 30)} month(s), {(days % 365) % 30} day(s)\n created on: {creation_date.month}/{creation_date.day}/{creation_date.year} (month/day/year)`)
+	end
+end)
+
+cmd_library.add({'placeid', 'pid'}, 'shows place id', function()
+	notify(`place id: {game.PlaceId}`)
+end)
+
+cmd_library.add({'jobid', 'jid'}, 'shows job id', function()
+	notify(`job id: {game.JobId}`)
+end)
+
+cmd_library.add({'fps'}, 'shows current fps', function()
+	local fps = math.floor(1 / z.run_service.Heartbeat:Wait())
+	notify(`fps: {fps}`)
+end)
+
+cmd_library.add({'ping'}, 'shows your ping', function()
+	local ping = z.local_player:GetNetworkPing() * 1000
+	notify(`ping: {math.floor(ping)}ms`)
+end)
+
+cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', function()
+	notify('anti-afk enabled')
+
+	local vu = game:GetService('VirtualUser')
+	pcall(function()
+		maid.remove("anti_afk")
+	end)
+	maid.add('anti_afk', z.local_player.Idled, function()
+		vu:CaptureController()
+		vu:ClickButton2(Vector2.new())
+	end)
+end)
+
+cmd_library.add({'unantiafk', 'unnoafk'}, 'disables anti-afk', function()
+	notify('anti-afk disabled')
+	maid.remove('anti_afk')
+end)
+
+cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', function(vstorage,speed)
+	if vstorage.enabled then
+		return notify('freecam already enabled')
+	end
+
+	vstorage.enabled = true
+	if tonumber(speed) then
+		vstorage.speed = tonumber(speed)
+	else
+		vstorage.speed = 1
+	end
+	notify('freecam enabled')
+
+	local cam = workspace.CurrentCamera
+	vstorage.old_subject = cam.CameraSubject
+	vstorage.old_parent = z.local_character.Parent
+	vstorage.old_speed = z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+	z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = 0
+	flight_part.CFrame = z.local_character:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 1
+	flight_part.CanCollide = false
+	workspace.CurrentCamera.CameraSubject = flight_part
+	z.local_character.Parent = nil
+	local control_module = require(z.local_player.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+	maid.add('freecam', z.run_service.Heartbeat, function()
+		pcall(function()
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+			z.local_character.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+
+			if z.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if z.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * vstorage.speed,
+				direction.Y * vstorage.speed,
+				direction.Z * vstorage.speed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
+		end)
+	end)
+end)
+
+cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', function()
+	local vstorage = cmd_library.get_variable_storage('freecam')
+
+	if not vstorage.enabled then
+		return notify('freecam not enabled')
+	end
+	vstorage.enabled = false
+	notify('freecam disabled')
+
+	maid.remove('freecam')
+	z.local_character.Parent = vstorage.old_parent
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	z.local_character:FindFirstChildOfClass("Humanoid").WalkSpeed = vstorage.old_speed or z.default_walkspeed
+	workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
+end)
+
+cmd_library.add({'fov'}, 'sets field of view', function(_, value)
+	value = tonumber(value) or 70
+	notify(`fov set to {value}`)
+	workspace.CurrentCamera.FieldOfView = value
+end)
+
+cmd_library.add({'hipheight', 'hheight'}, 'sets hip height', function(_, height)
+	height = tonumber(height) or 0
+	notify(`hip height set to {height}`)
+	z.local_character:FindFirstChildOfClass('Humanoid').HipHeight = height
+end)
+
+cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', function(vstorage, height)
+	height = tonumber(height) or 5
+	notify(`looping hip height at {height}`)
+	pcall(function()
+		maid.remove("loop_hip_height")
+	end)
+	maid.add('loop_hip_height', z.run_service.Heartbeat, function()
+		pcall(function()
+			z.local_character:FindFirstChildOfClass('Humanoid').HipHeight = height
+		end)
+	end)
+end)
+
+cmd_library.add({'unloophipheight', 'unloophheight'}, 'stops looping hip height', function()
+	notify('stopped looping hip height')
+	maid.remove('loop_hip_height')
+end)
+
+cmd_library.add({'tpwalk', 'teleportwalk'}, 'teleport when walking', function(vstorage, multiplier)
+	if vstorage.enabled then
+		return notify('tpwalk already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.multiplier = tonumber(multiplier) or 3
+	vstorage.last_tp = 0
+	vstorage.next_delay = math.random(10, 100) / 1000
+	notify(`tpwalk enabled with multiplier {vstorage.multiplier}`)
+
+	pcall(function()
+		maid.remove('tpwalk')
+	end)
+
+	maid.add('tpwalk', z.run_service.Heartbeat, function()
+		pcall(function()
+			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+			if humanoid.MoveDirection.Magnitude > 0 then
+				local current_time = os.clock()
+
+				if current_time - vstorage.last_tp >= vstorage.next_delay then
+					z.local_character:TranslateBy(humanoid.MoveDirection * vstorage.multiplier)
+					vstorage.last_tp = current_time
+					vstorage.next_delay = math.random(10, 80) / 1000
+				end
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'untpwalk', 'unteleportwalk'}, 'disables tpwalk', function()
+	local vstorage = cmd_library.get_variable_storage('tpwalk')
+
+	if not vstorage.enabled then
+		return notify('tpwalk not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('tpwalk disabled')
+	maid.remove('tpwalk')
+end)
+
+cmd_library.add({'maxzoom'}, 'sets max camera zoom distance', function(_, distance)
+	distance = tonumber(distance) or 128
+	notify(`max zoom set to {distance}`)
+	z.local_player.CameraMaxZoomDistance = distance
+end)
+
+cmd_library.add({'minzoom'}, 'sets min camera zoom distance', function(_, distance)
+	distance = tonumber(distance) or 0.5
+	notify(`min zoom set to {distance}`)
+	z.local_player.CameraMinZoomDistance = distance
+end)
+
+cmd_library.add({'fixcam', 'resetcam'}, 'resets camera properties', function()
+	notify('camera reset')
+
+	local cam = workspace.CurrentCamera
+	cam.CameraType = Enum.CameraType.Custom
+	cam.CameraSubject = z.local_character:FindFirstChildOfClass('Humanoid')
+	cam.FieldOfView = 70
+	z.local_player.CameraMaxZoomDistance = 128
+	z.local_player.CameraMinZoomDistance = 0.5
+end)
+
+cmd_library.add({'deleteplayer', 'delplayer'}, 'deletes a player\'s character client sided', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	for _, target in pairs(targets) do
+		if target.Character then
+			z.destroy(target.Character)
+			notify(`deleted {target.Name}`)
+		end
+	end
+end)
+
+cmd_library.add({'kick'}, 'kicks a player on client side', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	for _, target in pairs(targets) do
+		pcall(function()
+			target.Parent = nil
+		end)
+		notify(`kicked {target.Name}`)
+	end
+end)
+
+cmd_library.add({'skydive'}, 'launches you into the sky', function(_, height)
+	height = tonumber(height) or 500
+	notify(`launching {height} studs up`)
+
+	local hrp = z.local_character:FindFirstChild('HumanoidRootPart')
+	if hrp then
+		hrp.CFrame += Vector3.new(0, height, 0)
+	end
+end)
+
+cmd_library.add({'removesky'}, 'removes sky', function()
+	notify('sky removed')
+
+	for _, v in pairs(z.lighting:GetChildren()) do
+		if v:IsA('Sky') then
+			z.destroy(v)
+		end
+	end
+end)
+
+cmd_library.add({'ambient'}, 'sets ambient lighting', function(_, color)
+	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
+	notify('ambient set')
+	z.lighting.Ambient = parsed
+end)
+
+cmd_library.add({'outdoorambient'}, 'sets outdoor ambient', function(_, color)
+	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
+	notify('outdoor ambient set')
+	z.lighting.OutdoorAmbient = parsed
+end)
+
+cmd_library.add({'colorshift'}, 'sets color shift', function(_, top, bottom)
+	notify('color shift set')
+	z.lighting.ColorShift_Top = parse_hex(top) or Color3.new(0, 0, 0)
+	z.lighting.ColorShift_Bottom = parse_hex(bottom) or Color3.new(0, 0, 0)
+end)
+
+cmd_library.add({'fpsboost', 'performancemode'}, 'optimizes game for better fps, might freeze your game for a moment', function()
+	notify('applying fps boost')
+
+	for _, v in pairs(workspace:GetDescendants()) do
+		pcall(function()
+			if v:IsA('BasePart') then
+				v.Material = Enum.Material.SmoothPlastic
+				v.Reflectance = 0
+			elseif v:IsA('Decal') or v:IsA('Texture') then
+				z.destroy(v)
+			elseif v:IsA('ParticleEmitter') or v:IsA('Trail') or v:IsA('Smoke') or v:IsA('Fire') or v:IsA('Sparkles') then
+				z.destroy(v)
+			elseif v:IsA('MeshPart') then
+				v.Material = Enum.Material.SmoothPlastic
+				v.Reflectance = 0
+				v.TextureID = ''
+			elseif v:IsA('SpecialMesh') then
+				v.TextureId = ''
+			end
+		end)
+	end
+
+	for _, v in pairs(z.lighting:GetChildren()) do
+		if not v:IsA('Sky') and not v:IsA('Atmosphere') then
+			pcall(z.destroy, v)
+		end
+	end
+
+	pcall(function()
+		z.lighting.GlobalShadows = false
+		z.lighting.FogEnd = 100000
+		z.lighting.Brightness = 1
+	end)
+
+	notify('fps boost applied')
+end)
+
+cmd_library.add({'copyid'}, 'copies a player\'s user id to clipboard', function(_, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' does not exist`)
+	end
+
+	local target = targets[1]
+	setclipboard(tostring(target.UserId))
+	notify(`copied {target.Name}'s id: {target.UserId}`)
+end)
+
+cmd_library.add({'copyplace'}, 'copies place id to clipboard', function()
+	setclipboard(tostring(game.PlaceId))
+	notify(`copied place id: {game.PlaceId}`)
+end)
+
+cmd_library.add({'copyjob'}, 'copies job id to clipboard', function()
+	setclipboard(game.JobId)
+	notify('copied job id')
+end)
+
+cmd_library.add({'coords', 'position', 'pos'}, 'shows your current position', function()
+	local pos = z.local_character.HumanoidRootPart.Position
+	notify(`position: {math.floor(pos.X)}, {math.floor(pos.Y)}, {math.floor(pos.Z)}`)
+end)
+
+cmd_library.add({'tpcoords', 'tpc'}, 'teleport to coordinates', function(_, x, y, z_coord)
+	x = tonumber(x) or 0
+	y = tonumber(y) or 0
+	z_coord = tonumber(z_coord) or 0
+
+	notify(`teleporting to {x}, {y}, {z_coord}`)
+	z.local_character:PivotTo(CFrame.new(x, y, z_coord))
+end)
+
+cmd_library.add({'trail'}, 'adds trail to character', function(vstorage, color)
+	notify('trail added')
+
+	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
+
+	for _, part in pairs(z.local_character:GetDescendants()) do
+		if part:IsA('BasePart') and part.Name == 'HumanoidRootPart' then
+			local trail = Instance.new('Trail')
+			local a0 = Instance.new('Attachment', part)
+			local a1 = Instance.new('Attachment', part)
+			a0.Position = Vector3.new(0, part.Size.Y / 2, 0)
+			a1.Position = Vector3.new(0, -part.Size.Y / 2, 0)
+			trail.Attachment0 = a0
+			trail.Attachment1 = a1
+			trail.Color = ColorSequence.new(parsed)
+			trail.Lifetime = 1
+			trail.Parent = part
+		end
+	end
+end)
+
+cmd_library.add({'untrail'}, 'removes trail from character', function()
+	notify('trail removed')
+
+	for _, v in pairs(z.local_character:GetDescendants()) do
+		if v:IsA('Trail') then
+			z.destroy(v)
+		end
+	end
+end)
+
+cmd_library.add({'size', 'scale'}, 'changes character size', function(_, size)
+	size = tonumber(size) or 1
+	notify(`size set to {size}`)
+
+	z.local_character:ScaleTo(size)
+end)
+
+cmd_library.add({'spaz', 'seizure'}, 'makes your character spaz out', function(vstorage)
+	if vstorage.enabled then
+		return notify('spaz already enabled')
+	end
+
+	vstorage.enabled = true
+	notify('spaz enabled')
+	maid.add('spaz', z.run_service.Heartbeat, function()
+		pcall(function()
+			z.local_character.HumanoidRootPart.CFrame = z.local_character.HumanoidRootPart.CFrame * CFrame.Angles(
+				math.rad(math.random(-90, 90)),
+				math.rad(math.random(-90, 90)),
+				math.rad(math.random(-90, 90))
+			)
+		end)
+	end)
+end)
+
+cmd_library.add({'unspaz', 'unseizure'}, 'stops spaz', function()
+	local vstorage = cmd_library.get_variable_storage('spaz')
+
+	if not vstorage.enabled then
+		return notify('spaz not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('spaz disabled')
+	maid.remove('spaz')
+end)
+
+cmd_library.add({'clone'}, 'clones your character', function()
+	notify('character cloned')
+	z.local_character.Archivable = true
+	local clone = z.local_character:Clone()
+	clone.Parent = workspace
+
+	for _, v in pairs(clone:GetDescendants()) do
+		if v:IsA('Script') or v:IsA('LocalScript') then
+			z.destroy(v)
+		end
+	end
+end)
+
+cmd_library.add({'removeclones', 'clearclones'}, 'removes all clones', function()
+	notify('clones removed')
+
+	for _, v in pairs(workspace:GetChildren()) do
+		if v.Name == z.local_character.Name and v ~= z.local_character then
+			z.destroy(v)
+		end
+	end
+end)
+
+cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position with size [arg1] and with blastpressure [arg2]', function(_, size,blastpressure)
+	size = tonumber(size) or 10
+	blastpressure = tonumber(blastpressure) or true
+	notify(`exploding with size {size}`)
+
+	local explosion = Instance.new('Explosion')
+	explosion.Position = z.local_character.HumanoidRootPart.Position-Vector3.new(0,1,0)
+	explosion.BlastRadius = size
+	if blastpressure ~= true then
+		explosion.BlastPressure = blastpressure
+	end
+	explosion.DestroyJointRadiusPercent = 0
+	explosion.Parent = workspace
+end)
+
+cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', function(_, power)
+	power = tonumber(power) or 100
+	notify(`launching with power {power}`)
+	local bv = Instance.new('BodyVelocity')
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Velocity = Vector3.new(0, power, 0)
+	hypernull(function()
+		bv.Parent = z.local_character.HumanoidRootPart
+	end)
+
+	z.debris:AddItem(bv, 0.5)
+end)
+
+cmd_library.add({'rainbow'}, 'makes you rainbow colored', function(vstorage)
+	if vstorage.enabled then
+		return notify('rainbow already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.hue = 0
+	notify('rainbow enabled')
+
+	maid.add('rainbow', z.run_service.Heartbeat, function(dt)
+		vstorage.hue = (vstorage.hue + dt * 0.5) % 1
+		local color = Color3.fromHSV(vstorage.hue, 1, 1)
+
+		for _, part in pairs(z.local_character:GetDescendants()) do
+			if part:IsA('BasePart') then
+				part.Color = color
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'unrainbow'}, 'stops rainbow', function()
+	local vstorage = cmd_library.get_variable_storage('rainbow')
+
+	if not vstorage.enabled then
+		return notify('rainbow not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('rainbow disabled')
+	maid.remove('rainbow')
+end)
+
+cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', function()
+	notify('lighting reset')
+
+	z.lighting.Ambient = Color3.fromRGB(138, 138, 138)
+	z.lighting.OutdoorAmbient = Color3.fromRGB(128, 128, 128)
+	z.lighting.ColorShift_Top = Color3.new(0, 0, 0)
+	z.lighting.ColorShift_Bottom = Color3.new(0, 0, 0)
+	z.lighting.FogColor = Color3.fromRGB(191, 191, 191)
+	z.lighting.FogEnd = 100000
+	z.lighting.Brightness = 2
+	z.lighting.ClockTime = 14
+end)
+
+cmd_library.add({'saveinstance', 'savegame'}, 'saves the game instance', function()
+	notify('saving instance')
+	saveinstance(game)
+end)
+
+cmd_library.add({'aimbot'}, 'aims at nearest player', function(vstorage, fov_size)
+	if vstorage.enabled then
+		return notify('aimbot already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.fov = tonumber(fov_size) or 200
+	notify(`aimbot enabled with fov {vstorage.fov}`)
+
+	maid.add('aimbot', z.run_service.RenderStepped, function()
+		local target = get_closest_player(vstorage.fov)
+
+		if target and target.Character and target.Character:FindFirstChild('Head') then
+			workspace.CurrentCamera.CFrame = CFrame.new(workspace.CurrentCamera.CFrame.Position, target.Character.Head.Position)
+		end
+	end)
+end)
+
+cmd_library.add({'unaimbot'}, 'disables aimbot', function()
+	local vstorage = cmd_library.get_variable_storage('aimbot')
+
+	if not vstorage.enabled then
+		return notify('aimbot not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('aimbot disabled')
+	maid.remove('aimbot')
+end)
+
+cmd_library.add({'showfov'}, 'shows fov circle', function(vstorage, fov, color)
+	fov = tonumber(fov) or 200
+
+	if vstorage.enabled and vstorage.fov == fov then
+		return notify('fov circle already enabled')
+	end
+
+	vstorage.fov = fov
+
+	local fov_circle = vstorage.circle
+	if fov_circle then
+		z.destroy(fov_circle)
+		vstorage.circle = nil
+	end
+
+	vstorage.enabled = true
+	notify(`fov circle enabled with radius {fov}`)
+
+	local fov_circle = Instance.new('ScreenGui', z.core_gui)
+	fov_circle.Name = 'fov_circle'
+	fov_circle.IgnoreGuiInset = true
+	fov_circle.ResetOnSpawn = false
+	vstorage.circle = fov_circle
+
+	local circle = Instance.new('ImageLabel')
+	circle.Image = 'rbxassetid://10131954007'
+	circle.Size = UDim2.new(0, fov, 0, fov)
+	circle.Position = UDim2.new(0.5, 0, 0.5, 0)
+	circle.BackgroundTransparency = 1
+	circle.ImageColor3 = color and parse_hex(color) or Color3.fromRGB(176, 126, 215)
+	circle.ImageTransparency = 0
+	circle.AnchorPoint = Vector2.new(0.5, 0.5)
+	circle.Parent = fov_circle
+end)
+
+cmd_library.add({'hidefov'}, 'hides fov circle', function()
+	local vstorage = cmd_library.get_variable_storage('showfov')
+
+	if not vstorage.enabled then
+		return notify('fov circle not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('fov circle disabled')
+
+	local fov_circle = vstorage.circle
+	if fov_circle then
+		z.destroy(fov_circle)
+		vstorage.circle = nil
+	end
+end)
+
+cmd_library.add({'silentaim'}, 'silent aim at nearest player', function(vstorage, fov_size)
+	if vstorage.enabled then
+		return notify('silent aim already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.fov = tonumber(fov_size) or 200
+	notify(`silent aim enabled with fov {vstorage.fov}`)
+
+	vstorage.old_index = nil
+	vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
+		if vstorage.enabled and self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
+			local target = get_closest_player(vstorage.fov)
+
+			if target and target.Character and target.Character:FindFirstChild('Head') then
+				if key == 'Hit' then
+					return target.Character.Head.CFrame
+				elseif key == 'Target' then
+					return target.Character.Head
+				end
+			end
+		end
+
+		return vstorage.old_index(self, key)
+	end)
+end)
+
+cmd_library.add({'unsilentaim'}, 'disables silent aim', function()
+	local vstorage = cmd_library.get_variable_storage('silentaim')
+
+	if not vstorage.enabled then
+		return notify('silent aim not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('silent aim disabled')
+end)
+
+cmd_library.add({'refresh', 'ref'}, 'respawns character at current position', function()
+	notify('refreshing character')
+
+	local old_pos = z.local_character:GetPivot()
+	z.local_character:BreakJoints()
+
+	task.wait(z.players.RespawnTime + 0.1)
+	z.local_character:PivotTo(old_pos)
+end)
+
+cmd_library.add({'zerovelocity', 'zerovel', 'novel'}, 'stops all velocity on your character', function()
+	notify('velocity stopped')
+
+	for _, part in pairs(z.local_character:GetDescendants()) do
+		if part:IsA('BasePart') then
+			part.Velocity = Vector3.zero
+			part.RotVelocity = Vector3.zero
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end)
+
+cmd_library.add({'removehats', 'removeaccessories', 'rhats'}, 'removes all accessories', function()
+	notify('accessories removed')
+
+	for _, v in pairs(z.local_character:GetDescendants()) do
+		if v:IsA('Accessory') then
+			z.destroy(v)
+		end
+	end
+end)
+
+cmd_library.add({'walkto', 'pathfind'}, 'walks to a player', function(vstorage, name)
+	local targets = get_plr(name)
+	if not targets then
+		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
+	end
+
+	local target = targets[1]
+	if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+		return notify(`{target.Name} has no character`)
+	end
+
+	notify(`walking to {target.Name}`)
+	z.local_character:FindFirstChildOfClass('Humanoid'):MoveTo(target.Character.HumanoidRootPart.Position)
+end)
+
+cmd_library.add({'stopwalkto', 'stoppath'}, 'stops walking', function()
+	notify('stopped walking')
+	z.local_character:FindFirstChildOfClass('Humanoid'):MoveTo(z.local_character.HumanoidRootPart.Position)
+end)
+
+
+cmd_library.add({'chat', 'say'}, 'says something in chat', function(_, ...)
+	local message = table.concat({...}, ' ')
+	if message == '' then
+		return notify('provide a message to say')
+	end
+
+	notify(`saying '{message}'`)
+
+	if z.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
+		z.text_chat_service.TextChannels.RBXGeneral:SendAsync(message)
+	else
+		z.replicated_storage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, 'All')
+	end
+end)
+
+cmd_library.add({'spamchat'}, 'spams chat with a message, first arg: interval, second arg: message', function(vstorage, interval, ...)
+	if vstorage.enabled then
+		return notify('spam chat already enabled')
+	end
+
+	local message = table.concat({...}, ' ')
+	if message == '' then
+		return notify('provide a message to spam')
+	end
+	interval = tonumber(interval) or .5
+
+	vstorage.enabled = true
+	vstorage.message = message
+	notify(`spamming '{message}'`)
+
+	while task.wait(interval) and vstorage.enabled do
+		if z.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
+			pcall(function()
+				z.text_chat_service.TextChannels.RBXGeneral:SendAsync(vstorage.message)
+			end)
+		else
+			pcall(function()
+				z.replicated_storage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(vstorage.message, 'All')
+			end)
+		end
+	end
+end)
+
+cmd_library.add({'unspamchat'}, 'stops spam chat', function()
+	local vstorage = cmd_library.get_variable_storage('spamchat')
+
+	if not vstorage.enabled then
+		return notify('spam chat not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('spam chat disabled')
+end)
+
+cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', function(vstorage, range)
+	if vstorage.enabled then
+		return notify('auto pickup already enabled')
+	end
+
+	range = range and tonumber(range) or 10
+
+	vstorage.enabled = true
+	notify('auto pickup enabled')
+
+	maid.add('auto_pickup', z.run_service.Heartbeat, function()
+		for _, v in pairs(workspace:GetDescendants()) do
+			if v:IsA('Tool') and (z.local_character.HumanoidRootPart.Position - v.Handle.Position).Magnitude <= range then
+				firetouchinterest(v.Handle)
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'unautopickup', 'unapickup'}, 'disables auto pickup', function()
+	local vstorage = cmd_library.get_variable_storage('autopickup')
+
+	if not vstorage.enabled then
+		return notify('auto pickup not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('auto pickup disabled')
+	maid.remove('auto_pickup')
+end)
+
+cmd_library.add({'spam'}, 'spams a command', function(vstorage, times, ...)
+	times = tonumber(times) or 10
+	local args = {...}
+	local cmd_name = args[1]
+	table.remove(args, 1)
+
+	notify(`spamming command '{cmd_name}' {times} times`)
+
+	for i = 1, times do
+		cmd_library.execute(cmd_name, unpack(args))
+		task.wait(0.1)
+	end
+end)
+
+cmd_library.add({'reach'}, 'sets tool reach', function(vstorage, size)
+	size = tonumber(size) or 10
+	notify(`reach set to {size}`)
+	pcall(function()
+		maid.remove("reach")
+	end)
+	maid.add('reach', z.run_service.Heartbeat, function()
+		for _, tool in pairs(z.local_character:GetChildren()) do
+			if tool:IsA('Tool') and tool:FindFirstChild('Handle') then
+				tool.Handle.Size = Vector3.new(size, size, size)
+				tool.Handle.Transparency = .5
+			end
+		end
+	end)
+end)
+
+cmd_library.add({'cframeloop', 'cfloop'}, 'cframe speed (fast movement)', function(vstorage, speed)
+	if vstorage.enabled then
+		return notify('cframe loop already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.speed = tonumber(speed) or 2
+	notify(`cframe loop enabled with speed {vstorage.speed}`)
+	pcall(function()
+		maid.remove("cframe_loop")
+	end)
+	maid.add('cframe_loop', z.run_service.Heartbeat, function()
+		pcall(function()
+			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+			if humanoid.MoveDirection.Magnitude > 0 then
+				z.local_character.HumanoidRootPart.CFrame += humanoid.MoveDirection * vstorage.speed
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'uncframeloop', 'uncfloop'}, 'stop cframe speed', function()
+	local vstorage = cmd_library.get_variable_storage('cfloop')
+	if not vstorage.enabled then
+		return notify('cframe loop already disabled')
+	end
+
+	vstorage.enabled = false
+	maid.remove('cframe_loop')
+	notify(`cframe loop disabled`)
+end)
+
+cmd_library.add({'hncframeloop', 'hncfloop'}, 'cframe speed (bypass, laggy)', function(vstorage, speed)
+	if vstorage.enabled then
+		return notify('hn cframe loop already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.speed = tonumber(speed) or 2
+	notify(`hn cframe loop enabled with speed {vstorage.speed}`)
+	pcall(function()
+		maid.remove("cframe_loop")
+	end)
+	maid.add('hn_cframe_loop', z.run_service.Heartbeat, function()
+		pcall(function()
+			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+			if humanoid.MoveDirection.Magnitude > 0 then
+				hypernull(function()
+					z.local_character.HumanoidRootPart.CFrame += humanoid.MoveDirection * vstorage.speed
+				end)
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'discord','invite'},'Copies the Discord invite',function()
+	if setclipboard then
+		setclipboard("https://discord.gg/StHSWMjcnk")
+		notify("Discord invite copied to clipboard")
+	else
+		notify("Discord invite not supported by your executor")
+	end
+end)
+
+cmd_library.add({'unhncframeloop', 'unhncfloop'}, 'stop hn cframeloop', function()
+	local vstorage = cmd_library.get_variable_storage('hncfloop')
+	if not vstorage.enabled then
+		return notify('hn cframe loop already disabled')
+	end
+
+	vstorage.enabled = false
+	maid.remove('hn_cframe_loop')
+	notify(`hn cframe loop disabled`)
+end)
+
+z.real_char, z.fakechars = nil, {}
+cmd_library.add({'fakecharacter', 'fakechar', 'fc'}, 'creates a r6 fake character that you can control', function()
+	notify('creating r6 fake character')
+
+	local desc = z.players:GetHumanoidDescriptionFromUserId(z.local_player.UserId)
+	local new_character = z.players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R6)
+	new_character.Name = z.local_player.Name
+	new_character.Humanoid.DisplayName = z.local_player.DisplayName
+
+	if not z.real_char then
+		z.real_char = z.local_character
+		z.real_char.Parent = nil
+	else
+		table.insert(z.fakechars, z.local_character)
+	end
+
+	new_character:PivotTo(z.local_character:GetPivot())
+	z.local_player.Character = new_character
+	z.local_character = new_character
+	new_character.Parent = workspace
+end)
+
+cmd_library.add({'r15fakecharacter', 'r15fakechar', 'r15fc'}, 'creates a r15 fake character that you can control', function()
+	notify('creating r15 fake character')
+
+	local desc = z.players:GetHumanoidDescriptionFromUserId(z.local_player.UserId)
+	local new_character = z.players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	new_character.Name = z.local_player.Name
+	new_character.Humanoid.DisplayName = z.local_player.DisplayName
+
+	if not z.real_char then
+		z.real_char = z.local_character
+		z.real_char.Parent = nil
+	else
+		table.insert(z.fakechars, z.local_character)
+	end
+
+	new_character:PivotTo(z.local_character:GetPivot())
+	z.local_player.Character = new_character
+	z.local_character = new_character
+	new_character.Parent = workspace
+end)
+
+cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to your real character', function()
+	if not z.real_char then
+		return notify('you are not using a fake character')
+	end
+
+	notify('returning to real character')
+
+	local current_pos = z.local_character:GetPivot()
+
+	for _, fake in pairs(z.fakechars) do
+		pcall(z.destroy, fake)
+	end
+
+	if z.local_character ~= z.real_char then
+		pcall(z.destroy, z.local_character)
+	end
+
+	z.real_char.Parent = workspace
+	z.local_player.Character = z.real_char
+	z.local_character = z.real_char
+	task.wait(0.2)
+	z.real_char:PivotTo(current_pos)
+	workspace.CurrentCamera.CameraSubject = z.real_char:FindFirstChildOfClass('Humanoid')
+
+	for _, v in pairs(z.real_char:GetDescendants()) do
+		if v:IsA('LocalScript') then
+			v.Enabled = false
+			v.Enabled = true
+		end
+	end
+
+	table.clear(z.fakechars)
+	z.real_char = nil
+end)
+
+-- ui slop
+
+local cmdbar_ui = ui.commandbox_ui:Clone()
+cmdbar_ui:WaitForChild('main_container')
+cmdbar_ui.Parent = game:GetService('CoreGui')
+
+local main_container = cmdbar_ui.main_container
+local cmdbox = main_container:WaitForChild('command_box')
+local pos_open_box = main_container.Position
+local pos_closed_box = UDim2.new(0.5, 0, 0, -35)
+
+local tween_ui = function(element, duration, properties, close)
+	z.tween_service:Create(element, TweenInfo.new(duration, Enum.EasingStyle.Sine, close and Enum.EasingDirection.Out or Enum.EasingDirection.In), properties):Play()
+end
+
+task.wait(.1)
+tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
+
+maid.add('open_cmd_bar', z.user_input_service.InputBegan, function(k,i)
+	if k.KeyCode == Enum.KeyCode.Quote and i == false then
+		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
+		cmdbox:CaptureFocus()
+		repeat
+			cmdbox.Text = ''; z.run_service.Heartbeat:Wait()
+		until cmdbox.Text == ''
+	end
+end)
+
+cmdbox.FocusLost:Connect(function(enter)
+	tween_ui(main_container, 0.1, {Position = pos_closed_box}, true)
+	if not enter then return end
+
+	local text = cmdbox.Text
+	if text ~= '' and text ~= ' ' then
+		local args = text:split(' ')
+		local cmd_name = args[1]
+		table.remove(args, 1)
+
+		cmd_library.execute(cmd_name, unpack(args))
+	end
+
+	cmdbox.Text = ''
+end)
+notify('join the discord .gg/StHSWMjcnk')
+notify('opadmin loaded, press \' to open the cmdbar')
