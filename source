@@ -3397,6 +3397,255 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 	z.real_char = nil
 end)
 
+cmd_library.add({'mirror', 'mimic'}, 'become their mirror and copy their movements', function(vstorage, name, distance)
+	local targets = get_plr(name)
+	if not targets or #targets == 0 then
+		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
+	end
+
+	local target = targets[1]
+	if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+		return notify(`{target.Name} has no character`)
+	end
+
+	if vstorage.target then
+		return notify(`already mirroring {vstorage.target.Name}, use unmirror first`)
+	end
+
+	vstorage.target = target
+	vstorage.distance = tonumber(distance) or 5
+
+	notify(`now mirroring {target.Name}`)
+
+	maid.add('mirror_connection', z.run_service.Heartbeat, function()
+		pcall(function()
+			if not vstorage.target or not vstorage.target.Character or not vstorage.target.Character:FindFirstChild('HumanoidRootPart') then
+				maid.remove('mirror_connection')
+				vstorage.target = nil
+				return
+			end
+
+			local target_hrp = vstorage.target.Character.HumanoidRootPart
+			local target_humanoid = vstorage.target.Character:FindFirstChildOfClass('Humanoid')
+			local local_humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+
+			if target_humanoid and local_humanoid then
+				local offset = CFrame.new(0, 0, vstorage.distance)
+				local mirror_cf = target_hrp.CFrame * offset
+
+				z.local_character:PivotTo(mirror_cf)
+				z.local_character.HumanoidRootPart.Velocity = Vector3.zero
+				z.local_character.HumanoidRootPart.RotVelocity = Vector3.zero
+
+				if target_humanoid.Jump then
+					local_humanoid.Jump = true
+				end
+
+				if target_humanoid.Sit then
+					local_humanoid.Sit = true
+				end
+			end
+		end)
+	end)
+end)
+
+cmd_library.add({'unmirror', 'unmimic'}, 'stop mirroring', function()
+	local vstorage = cmd_library.get_variable_storage('mirror')
+
+	if vstorage.target then
+		notify(`stopped mirroring {vstorage.target.Name}`)
+		vstorage.target = nil
+		maid.remove('mirror_connection')
+	else
+		notify('you are not mirroring anyone')
+	end
+end)
+
+cmd_library.add({'partstorm', 'pstorm', 'partrain'}, 'rain parts on a player', function(vstorage, name, intensity)
+	local targets = get_plr(name)
+	if not targets or #targets == 0 then
+		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
+	end
+
+	local target = targets[1]
+	if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+		return notify(`{target.Name} has no character`)
+	end
+
+	if vstorage.enabled then
+		return notify('partstorm already active, use unpartstorm first')
+	end
+
+	vstorage.enabled = true
+	vstorage.intensity = tonumber(intensity) or 3
+	vstorage.target = target
+
+	notify(`raining parts on {target.Name}`)
+
+	local old_cframe = z.local_character:GetPivot()
+	z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
+	z.local_player.SimulationRadius = 1000
+	task.wait(z.players.RespawnTime + 0.5)
+	z.local_character:WaitForChild('HumanoidRootPart').CFrame = old_cframe
+	workspace.CurrentCamera = workspace.CurrentCamera
+	task.wait(0.2)
+
+	local parts = {}
+	local part_limit = vstorage.intensity * 5
+
+	for _, part in ipairs(workspace:GetDescendants()) do
+		if part:IsA('BasePart') and not part.Anchored and #part:GetConnectedParts() < 2 then
+			if not part.Parent:FindFirstChildOfClass('Humanoid') and not part.Parent.Parent:FindFirstChildOfClass('Humanoid') then
+				if not part:IsDescendantOf(z.local_character) then
+					table.insert(parts, part)
+					if #parts >= part_limit then break end
+				end
+			end
+		end
+	end
+
+	if #parts == 0 then
+		vstorage.enabled = false
+		return notify('no parts found for storm')
+	end
+
+	notify(`found {#parts} parts for storm`)
+
+	maid.add('partstorm_connection', z.run_service.Heartbeat, function()
+		if not vstorage.enabled then
+			maid.remove('partstorm_connection')
+			return
+		end
+
+		if not vstorage.target.Character or not vstorage.target.Character:FindFirstChild('HumanoidRootPart') then
+			vstorage.enabled = false
+			maid.remove('partstorm_connection')
+			notify('target lost, stopping partstorm')
+			return
+		end
+
+		local target_hrp = vstorage.target.Character.HumanoidRootPart
+
+		for i = #parts, 1, -1 do
+			local part = parts[i]
+
+			if not part:IsDescendantOf(workspace) then
+				table.remove(parts, i)
+				continue
+			end
+
+			pcall(function()
+				if part.ReceiveAge ~= 0 or part.Anchored then return end
+
+				part.CanCollide = true
+				part.Velocity = Vector3.new(
+					math.random(-50, 50),
+					math.random(100, 300),
+					math.random(-50, 50)
+				)
+
+				local random_offset = Vector3.new(
+					math.random(-20, 20),
+					math.random(30, 60),
+					math.random(-20, 20)
+				)
+
+				part.CFrame = CFrame.new(target_hrp.Position + random_offset)
+			end)
+		end
+
+		if #parts == 0 then
+			vstorage.enabled = false
+			maid.remove('partstorm_connection')
+			notify('partstorm ended, no more parts')
+		end
+	end)
+end)
+
+cmd_library.add({'unpartstorm', 'unpstorm', 'unpartrain'}, 'stops the part storm', function()
+	local vstorage = cmd_library.get_variable_storage('partstorm')
+
+	if not vstorage.enabled then
+		return notify('partstorm is not active')
+	end
+
+	vstorage.enabled = false
+	maid.remove('partstorm_connection')
+	notify('partstorm stopped')
+end)
+
+cmd_library.add({'annoy'}, 'teleport spam around a player', function(vstorage, name, speed)
+	local targets = get_plr(name)
+	if not targets or #targets == 0 then
+		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
+	end
+
+	local target = targets[1]
+	if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+		return notify(`{target.Name} has no character`)
+	end
+
+	if vstorage.enabled then
+		return notify('annoy already active, use unannoy first')
+	end
+
+	vstorage.enabled = true
+	vstorage.target = target
+	vstorage.speed = tonumber(speed) or 0.1
+
+	notify(`now annoying {target.Name}`)
+
+	local positions = {
+		CFrame.new(5, 0, 0),
+		CFrame.new(-5, 0, 0),
+		CFrame.new(0, 5, 0),
+		CFrame.new(0, -5, 0),
+		CFrame.new(0, 0, 5),
+		CFrame.new(0, 0, -5),
+		CFrame.new(3, 3, 3),
+		CFrame.new(-3, -3, -3)
+	}
+
+	local index = 1
+
+	maid.add('annoy_connection', z.run_service.Heartbeat, function()
+		if not vstorage.enabled then
+			maid.remove('annoy_connection')
+			return
+		end
+
+		if not vstorage.target.Character or not vstorage.target.Character:FindFirstChild('HumanoidRootPart') then
+			vstorage.enabled = false
+			maid.remove('annoy_connection')
+			notify('target lost, stopping annoy')
+			return
+		end
+
+		local target_hrp = vstorage.target.Character.HumanoidRootPart
+
+		pcall(function()
+			z.local_character:PivotTo(target_hrp.CFrame * positions[index])
+			z.local_character.HumanoidRootPart.Velocity = Vector3.zero
+		end)
+
+		if tick() % vstorage.speed < 0.016 then
+			index = index % #positions + 1
+		end
+	end)
+end)
+
+cmd_library.add({'unannoy'}, 'stops annoying', function()
+	local vstorage = cmd_library.get_variable_storage('annoy')
+
+	if not vstorage.enabled then
+		return notify('annoy is not active')
+	end
+
+	vstorage.enabled = false
+	maid.remove('annoy_connection')
+	notify('stopped annoying')
+end)
+
 -- ui slop
 
 local cmdbar_ui = ui.commandbox_ui:Clone()
@@ -3426,12 +3675,8 @@ button.MouseButton1Click:Connect(function()
 	if open then
 		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
 		tween_ui(button, 0.15, {Position = pos_open_button}, false)
-		button.Text = 'close'
-		cmdbox:CaptureFocus()
-	else
-		tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
-		tween_ui(button, 0.15, {Position = pos_closed_button}, false)
 		button.Text = 'open'
+		cmdbox:CaptureFocus()
 	end
 end)
 
