@@ -865,7 +865,6 @@ cmd_library.add({'respawnpoint', 'illusion', 'rp'}, 'makes your respawnpoint be 
 				hypernull(function()
 					z.local_character:PivotTo(death_pos)
 				end)
-				maid.remove("resetspawn")
 				if health > 1 then
 					has_died = false
 				end
