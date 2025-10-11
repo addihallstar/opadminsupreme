@@ -1135,6 +1135,7 @@ end)
 cmd_library.add({'unairwalk','unairw','unfloat'},'turns off airwalk', function()
 	local vstorage = cmd_library.get_variable_storage('airwalk')
 	if vstorage.air_walk_part then
+		vstorage.enabled = false
 		pcall(function()
 			z.destroy(vstorage.air_walk_part)
 			vstorage.air_walk_part = nil
