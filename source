@@ -42,7 +42,7 @@ local maid;maid = {
 	_tasks = {},
 	_cleaner = z.connect(z.run_service.Stepped, function()
 		for name, task in pairs(maid._tasks) do
-			if typeof(task) == 'RBXScriptConnection' and not task.Connected then
+			if typeof(task) == 'RBXScriptConnection' and not task.Connected and not name:find('$PROTECTED') then
 				maid._tasks[name] = nil
 			end
 		end
@@ -53,9 +53,9 @@ local maid;maid = {
 			maid:remove(name)
 		end
 		if important == 1 then
-		maid._tasks[name..'$PROTECTED'] = z.connect(signal, fn)
+			maid._tasks[name..'$PROTECTED'] = z.connect(signal, fn)
 		else
-		maid._tasks[name] = z.connect(signal, fn)
+			maid._tasks[name] = z.connect(signal, fn)
 		end
 	end,
 
@@ -343,7 +343,9 @@ cmd_library.add({'esp', 'playeresp', 'toggleesp'}, `toggles esp. optional args: 
 				local head = plr.Character:FindFirstChild('Head')
 				if head then
 					local esp_gui = head:FindFirstChild('ESPThingYes')
-					if esp_gui then esp_gui:Destroy() end
+					if esp_gui then
+						pcall(z.destroy, esp_gui)
+					end
 				end
 
 				if z.highlights[plr] then
@@ -573,20 +575,14 @@ cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to specified n
 	power = tonumber(power) or 32
 
 	notify(`setting jumppower to {power} in a loop`)
-
-	pcall(function()
-		if vstorage.enabled then
-			maid.remove('loopjp')
-			z.local_character:FindFirstChildOfClass('Humanoid').JumpPower = vstorage.old_power
-		end
-	end)
-
+	vstorage.enabled = true
 	vstorage.old_power = z.local_character:FindFirstChildOfClass('Humanoid').JumpPower
+
 	maid.add('loopjp', z.run_service.Heartbeat, function()
 		pcall(function()
 			local hum = z.local_character:WaitForChild('Humanoid')
 			hum.UseJumpPower = true
-			hum.JumpPower = tonumber(power) or z.default_jumppower
+			hum.JumpPower = power
 		end)
 	end)
 end)
@@ -607,15 +603,9 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified n
 	speed = tonumber(speed) or 32
 
 	notify(`setting walkspeed to {speed} in a loop`)
-
-	pcall(function()
-		if vstorage.enabled then
-			maid.remove('loopws')
-			z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed
-		end
-	end)
-
+	vstorage.enabled = true
 	vstorage.old_speed = z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed
+
 	maid.add('loopws', z.run_service.Heartbeat, function()
 		pcall(function()
 			z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = speed
@@ -659,7 +649,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 	flight_part.Anchored = true
 	flight_part.Transparency = 1
 	flight_part.CanCollide = false
-	
+
 	maid.add('flight', z.run_service.Heartbeat, function()
 		pcall(function()
 			local old_pos = flight_part.Position
@@ -830,20 +820,24 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', function(vstorage,speed)
 end)
 
 cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', function()
-	local vstorage = cmd_library.get_variable_storage('hnfly')
+	local vstorage = cmd_library.get_variable_storage('bfly')
 
 	if vstorage.enabled then
 		notify('disabled bypass flight')
 		maid.remove('bypassfly_connection')
 		vstorage.enabled = false
-		maid.add('anti_anti_teleport_connection_for_fly',z.run_service.Heartbeat,function()
-			z.local_character.Parent = vstorage.old_parent
-			z.local_character:PivotTo(vstorage.part.CFrame)
-		end)
-		task.delay(0.5,function()
-			maid.remove('anti_anti_teleport_connection_for_fly')
-			vstorage.part:Destroy()
-		end)
+
+		if vstorage.part then
+			maid.add('anti_anti_teleport_connection_for_fly', z.run_service.Heartbeat, function()
+				z.local_character.Parent = vstorage.old_parent
+				z.local_character:PivotTo(vstorage.part.CFrame)
+			end)
+			task.delay(0.5, function()
+				maid.remove('anti_anti_teleport_connection_for_fly')
+				pcall(function() vstorage.part:Destroy() end)
+			end)
+		end
+
 		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 		z.local_character:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or z.default_walkspeed
 		workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
@@ -856,7 +850,7 @@ cmd_library.add({'respawnpoint', 'illusion', 'rp'}, 'makes your respawnpoint be 
 	notify('enabled illusion')
 	local has_died = false
 	local death_pos
-	
+
 	maid.add('resetspawn', z.run_service.Heartbeat, function() -- will overwrite if already exists
 		pcall(function()
 			local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
@@ -1154,43 +1148,32 @@ cmd_library.add({'unairwalk','unairw','unfloat'},'turns off airwalk', function()
 end)
 
 cmd_library.add({'airwalk', 'airw','float'}, 'turns on airwalk', function(vstorage)
+	if vstorage.enabled then
+		return notify('airwalk already enabled')
+	end
+
+	vstorage.enabled = true
 	notify('enabled airwalk')
 
-	task.spawn(function()
-		local function AirWalk()
+	local air_walk_part = Instance.new('Part', workspace)
+	air_walk_part.Size = Vector3.new(7, 2, 3)
+	air_walk_part.Transparency = 1
+	air_walk_part.Anchored = true
+	air_walk_part.CanCollide = true
+	air_walk_part.Name = tostring(z.http:GenerateGUID())
+	vstorage.air_walk_part = air_walk_part
+
+	maid.add('air_walk', z.run_service.Heartbeat, function()
+		if vstorage.enabled and air_walk_part and air_walk_part.Parent then
 			pcall(function()
-				maid.remove('air_walk')
+				air_walk_part.CFrame = z.local_character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
 			end)
-			pcall(function()
-				z.destroy(vstorage.air_walk_part)
-			end)
-			local AirWPart = Instance.new('Part', workspace)
-			vstorage.air_walk_part = AirWPart
-			local crtl = true
-			local Mouse = game:GetService('Players').LocalPlayer:GetMouse()
-			AirWPart.Size = Vector3.new(7, 2, 3)
-			AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
-			AirWPart.Transparency = 1
-			AirWPart.Anchored = true
-			AirWPart.Name = tostring(game:GetService('HttpService'):GenerateGUID())
-			maid.add('air_walk',z.run_service.Heartbeat,function()
-				pcall(function()
-					z.destroy(AirWPart)
-					AirWPart = nil
-				end)
-				AirWPart = Instance.new('Part', workspace)
-				vstorage.air_walk_part = AirWPart
-				AirWPart.Size = Vector3.new(7, 2, 3)
-				AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
-				AirWPart.Transparency = 1
-				AirWPart.Anchored = true
-				AirWPart.Name = tostring(game:GetService('HttpService'):GenerateGUID())
-				pcall(function()
-					AirWPart.CFrame = game:GetService('Players').LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(0, -4, 0)
-				end)
-			end)
+		else
+			maid.remove('air_walk')
+			z.destroy(air_walk_part)
+			vstorage.air_walk_part = nil
+			vstorage.enabled = false
 		end
-		AirWalk()
 	end)
 end)
 
@@ -1224,16 +1207,15 @@ cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for othe
 		vstorage.used = true
 		task.spawn(function()
 			local position = z.local_character.HumanoidRootPart.Position
-			wait(.1)
+			task.wait(.1)
 			z.local_character:MoveTo(position + Vector3.new(0, 1000000, 0))
-			wait(.1)
+			task.wait(.1)
 			local hrpc = z.local_character.HumanoidRootPart:Clone()
-			wait(.1)
+			task.wait(.1)
 			local hrp = z.local_character.HumanoidRootPart
 			pcall(z.destroy, hrp)
-
 			hrpc.Parent = z.local_character
-			task.delay(.2,function()
+			task.delay(.2, function()
 				z.local_character:MoveTo(position)
 			end)
 		end)
@@ -1255,29 +1237,33 @@ cmd_library.add({'seatbring', 'sbring'}, 'the seat kidnap 😱😱 real', functi
 			tool = z.local_character:FindFirstChildOfClass('Tool')
 		end
 
+		local seat = tool:FindFirstChildWhichIsA('Seat', true)
+		if not seat then
+			return notify('tool does not have a seat')
+		end
+
 		notify(`bringing {target.Name} to you`)
 
-		local seat = tool:FindFirstChildWhichIsA('Seat', true)
 		local old_pos = z.local_character:GetPivot()
 		local start_time = tick()
 		local target_char = target.Character
-		local target_hrp = target_char.HumanoidRootPart
+		if not target_char then continue end
+
+		local target_hrp = target_char:FindFirstChild('HumanoidRootPart')
 		local target_humanoid = target_char:FindFirstChildOfClass('Humanoid')
+		if not target_hrp or not target_humanoid then continue end
 
 		repeat
 			local predicted_pos = predict_movement(target, 9)
+			if not predicted_pos then break end
 
-			if seat then
-				firetouchinterest(seat, target_hrp, 0)
-				firetouchinterest(seat, target_hrp, 1)
-			end
+			firetouchinterest(seat, target_hrp, 0)
+			firetouchinterest(seat, target_hrp, 1)
 			z.local_character:PivotTo(predicted_pos * CFrame.new(-4, 0, 3))
 			z.run_service.Heartbeat:Wait()
 
-			if seat then
-				firetouchinterest(seat, target_hrp, 0)
-				firetouchinterest(seat, target_hrp, 1)
-			end
+			firetouchinterest(seat, target_hrp, 0)
+			firetouchinterest(seat, target_hrp, 1)
 			z.local_character:PivotTo(predicted_pos * CFrame.new(4, 0, 3))
 			z.run_service.Heartbeat:Wait()
 			z.run_service.Heartbeat:Wait()
@@ -1534,10 +1520,13 @@ cmd_library.add({'unview', 'unspectate', 'endview'}, 'stop spectating', function
 end)
 
 
-cmd_library.add({'noclip'}, 'walk through stuff', function()
-	pcall(function()
-		maid.remove('noclip_connection')
-	end)
+cmd_library.add({'noclip'}, 'walk through stuff', function(vstorage)
+	if vstorage.enabled then
+		return notify('noclip already enabled')
+	end
+
+	vstorage.enabled = true
+	notify('noclip enabled')
 
 	maid.add('noclip_connection', z.run_service.Stepped, function()
 		if z.local_character then
@@ -1548,8 +1537,6 @@ cmd_library.add({'noclip'}, 'walk through stuff', function()
 			end
 		end
 	end)
-
-	notify('noclip enabled')
 end)
 
 z.sim_range_reset = false
@@ -1640,121 +1627,166 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 		return notify(`player {name and tostring(name) or ''} does't exist`)
 	end
 
-	local function trap_player(target, part_num, excluded_parts)
-		if not target then return end
-
-		local part = get_closest_part()
-
-		while part and table.find(excluded_parts, part) do
-			table.insert(excluded_parts, part)
-			part = get_closest_part()
-		end
-
-		if not part then
-			return notify('there is nothing to parttrap with')
-		end
-
-		local old_part_cf = part.CFrame
-		local old_char_cf = z.local_character:GetPivot()
-
-		if not network_check(part) then
-			local start_time = tick()
-			repeat
-				z.local_character:PivotTo(part.CFrame)
-				z.run_service.RenderStepped:Wait()
-			until network_check(part) or z.sim_range_reset or tick() - start_time >= 5
-
-			if not network_check(part) and not z.sim_range_reset then
-				notify('attempt to gain ownership timed out, consider using reloadnetwork')
-				return
+	local function PartFling(target,number,excluded)
+		if target then
+			local function NetworkCheck(Part)
+				return Part.ReceiveAge == 0
 			end
-		end
-
-		z.local_character:PivotTo(old_char_cf)
-		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-
-		local weld_target
-		if part_num >= 2 and part_num ~= 6 then
-			weld_target = target.Character:FindFirstChild('Torso') or target.Character.HumanoidRootPart
-		else
-			weld_target = target.Character.Head
-		end
-
-		local anchor_part = Instance.new('Part', workspace)
-		anchor_part.Anchored = true
-		anchor_part.Size = weld_target.Size
-		anchor_part.CFrame = weld_target.CFrame
-		anchor_part.Orientation = Vector3.new(0, 90, 0)
-		anchor_part.Transparency = 1
-		anchor_part.CanCollide = false
-
-		local weld_data = {Part0 = part, Part1 = anchor_part}
-		local old_pos = part.Position
-		local is_positioned = false
-		local stored_cf
-
-		maid.add('part_trap_connection_' .. part_num, z.run_service.Heartbeat, function()
-			local humanoid = target.Character:FindFirstChild('Humanoid')
-			if not humanoid or humanoid.Health <= 1 or z.sim_range_reset then
-				maid.remove('part_trap_follow')
-				maid.remove('part_trap_connection_' .. part_num)
-				pcall(function()
-					part.Position = old_pos
-					part.Velocity = Vector3.zero
-					part.CFrame = old_part_cf
-					anchor_part:Destroy()
-				end)
-				return
-			end
-
-			z.local_player.SimulationRadius = 1000
-
-			if humanoid.MoveDirection.Magnitude > 0 and not is_positioned then
-				local move_offsets = {
-					CFrame.new(0, 15, 0), CFrame.new(0, 15, -1.5), CFrame.new(0, 15, 1.5),
-					CFrame.new(-1.5, 15, 0), CFrame.new(1.5, 15, 0), CFrame.new(0, 15, 0),
-					CFrame.new(0, 15, 0), CFrame.new(0, 15, 0)
-				}
-				part.CFrame = weld_data.Part1.CFrame * move_offsets[part_num]
-			else
-				if not is_positioned then
-					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
-
-					local positions = {
-						{cf = CFrame.new(0, 2, 0), rot = Vector3.new(0, 0, 0)},
-						{cf = CFrame.new(0, 0.75, -1.75), rot = Vector3.new(90, 90, 0)},
-						{cf = CFrame.new(0, 0.5, 1.75), rot = Vector3.new(90, 90, 0)},
-						{cf = CFrame.new(-1.75, 0.75, 0), rot = Vector3.new(90, 0, 0)},
-						{cf = CFrame.new(1.95, 0.75, 0), rot = Vector3.new(90, 0, 0)},
-						{cf = CFrame.new(0, 2, 0), rot = Vector3.new(0, 90, 0)},
-						{cf = CFrame.new(0, -2, 0), rot = Vector3.new(0, 90, 0)},
-						{cf = CFrame.new(0, -2, 0), rot = Vector3.new(0, 0, 0)}
-					}
-
-					local pos_data = positions[part_num]
-					part.CFrame = weld_data.Part1.CFrame * pos_data.cf
-					part.Orientation = pos_data.rot
-					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
-					stored_cf = part.CFrame
-
-					if part_num < 8 then
-						table.insert(excluded_parts, part)
-						trap_player(target, part_num + 1, excluded_parts)
+			local function getclosestpart()
+				local bestpart
+				local biggestmagnitude 
+				for _, v in ipairs(workspace:GetDescendants()) do
+					if v:IsA('BasePart') or v:IsA('Part') or v:IsA('MeshPart') or v:IsA('UnionOperation') then
+						if v.Anchored == false and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(game:GetService('Players').LocalPlayer.Character) then
+							if biggestmagnitude == nil or biggestmagnitude ~= nil and (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude < biggestmagnitude then
+								if #v:GetConnectedParts() < 2 then
+									if table.find(excluded,v) then
+										continue
+									end
+									biggestmagnitude = (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude
+									bestpart = v
+								end
+							end
+						end
 					end
-					is_positioned = true
+				end
+				return bestpart
+			end
+			local Part = getclosestpart()
+			if Part == nil then notify('there is nothing to parttrap with') return end
+			local oldcframepart;oldcframepart = Part.CFrame
+			local oldcf=game:GetService('Players').LocalPlayer.Character:GetPivot()
+			if NetworkCheck(Part) == false then
+				local otick;otick = tick()
+				repeat
+					game:GetService('Players').LocalPlayer.Character:PivotTo(Part.CFrame)
+					game:GetService('RunService').RenderStepped:Wait()
+				until NetworkCheck(Part) == true or z.sim_range_reset== true or tick()-otick >= 5
+				if NetworkCheck(Part) == true then
 				else
-					part.CFrame = stored_cf
-					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
-					part.CanCollide = false
+					if z.sim_range_reset == false then
+						notify('attempt to gain ownership timed out, consider using reloadnetwork')
+						return
+					end
+				end
+			else
+			end
+			game:GetService('Players').LocalPlayer.Character:PivotTo(oldcf)
+			game:GetService('Players').LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+			local weld = {Part1 = target.Character.Head,Part0 = Part}
+			if number >= 2 and number ~= 6  then
+				if target.Character:FindFirstChild('Torso') then
+					weld.Part1 = target.Character.Torso
+				else
+					weld.Part1 = target.Character.HumanoidRootPart
 				end
 			end
-		end)
+			local parttest = Instance.new('Part',workspace)
+			parttest.Anchored = true
+			parttest.Size = weld.Part1.Size
+			parttest.CFrame = weld.Part1.CFrame
+			parttest.Orientation = Vector3.new(0,90,0)
+			parttest.Transparency = 1
+			parttest.CanCollide = false
+			parttest.Parent = workspace
+			weld.Part1 = parttest
+			local conexttion
+			local oldpos=Part.Position
+			local allowed = true
+			local oldpartcframeeeee = nil
+			maid.add('part_trap_connection_'..number,z.run_service.Heartbeat,function()
+				if target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
+					maid.remove('part_trap_follow')
+					maid.remove('part_trap_connection_'..number)
+					maid.add("removing_trap_connection_"..number,z.run_service.Heartbeat,function()
+						Part.CanCollide = true
+					end)
+					task.delay(1,function()
+						maid.remove("removing_trap_connection_"..number)
+					end)
+				else
+					game:GetService('Players').LocalPlayer.SimulationRadius = 1000
+				end
+
+				if target.Character.Humanoid.MoveDirection.Magnitude > 1 and allowed == true then
+					if number == 1 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 2 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,-1.5)
+					elseif number == 3 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,1.5)
+					elseif number == 4 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.5,15,0)
+					elseif number == 5 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(1.5,15,0)
+					elseif number == 6 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 7 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					elseif number == 8 then
+						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+					end
+				else
+					if allowed == true then
+						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						if number == 1 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
+							Part.Orientation = Vector3.new(0,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 2 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.75,-1.75)
+							Part.Orientation=Vector3.new(90,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 3 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.5,1.75)
+							Part.Orientation=Vector3.new(90,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 4 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(-2,0.75,0)
+							Part.Orientation=Vector3.new(90,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 5 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(1.95,0.75,0)
+							Part.Orientation=Vector3.new(90,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 6 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
+							Part.Orientation = Vector3.new(0,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 7 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
+							Part.Orientation = Vector3.new(0,90,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						elseif number == 8 then
+							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
+							Part.Orientation = Vector3.new(0,0,0)
+							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						end
+						oldpartcframeeeee = Part.CFrame
+					else
+						Part.CFrame = oldpartcframeeeee
+						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
+						Part.CanCollide = false
+						Part.CFrame = oldpartcframeeeee
+					end
+					if allowed == true then
+						if number+1 < 9 then
+							table.insert(excluded,Part)
+							PartFling(target,number+1,excluded)
+						else
+						end
+					end
+					allowed = false
+				end
+			end)
+		end
 	end
 
 	for _, target in pairs(targets) do
-		notify('attempted trap on ' .. target.Name)
-		trap_player(target, 1, {})
-		task.wait(0.5)
+		notify('attempted trap on '..target.Name)
+
+		PartFling(target,1,{})
+		task.wait(.5)
 	end
 end)
 
@@ -1786,13 +1818,27 @@ cmd_library.add({'uninfjump', 'uninfinitejump'}, 'infinite unjump', function()
 end)
 
 cmd_library.add({'clip'}, 'stop walking through stuff', function()
+	local vstorage = cmd_library.get_variable_storage('noclip')
+
+	if not vstorage.enabled then
+		return notify('noclip is not enabled')
+	end
+
+	vstorage.enabled = false
 	maid.remove('noclip_connection')
 	notify('disabled noclip')
+
+	for _, v in pairs(z.local_character:GetChildren()) do
+		if v:IsA('BasePart') then
+			v.CanCollide = true
+		end
+	end
 
 	if z.local_character and z.local_character:FindFirstChild('HumanoidRootPart') then
 		z.local_character.HumanoidRootPart.CFrame += Vector3.new(0, 3, 0)
 	end
 end)
+
 cmd_library.add({'unantivoid','unantiv'},'disables anti void',function()
 	maid.remove('anti_void_connection')
 	notify('disabled antivoid')
@@ -1816,13 +1862,16 @@ cmd_library.add({'antivoid','antiv'},'stops the void from killing you.',function
 	end)
 end)
 
-cmd_library.add({'revive'}, 'attempts to stop oneshots', function()
+cmd_library.add({'revive'}, 'attempts to stop oneshots', function(vstorage)
+	if vstorage.enabled then
+		return notify('revive already enabled')
+	end
+
 	notify('activated revive')
+	vstorage.enabled = true
 
 	local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
-
 	local old_health = humanoid.Health
-	local reload = true
 
 	local invalid_states = {
 		[Enum.HumanoidStateType.FallingDown] = true,
@@ -1832,31 +1881,34 @@ cmd_library.add({'revive'}, 'attempts to stop oneshots', function()
 		[Enum.HumanoidStateType.Freefall] = true
 	}
 
-	task.spawn(function()
-		repeat
-			game:GetService('RunService').RenderStepped:Wait()
-			pcall(function()
-				if not invalid_states[humanoid:GetState()] then
-					humanoid:ChangeState(Enum.HumanoidStateType.Running)
-				end
-			end)
-		until not reload
+	maid.add('revive_state', z.run_service.Heartbeat, function()
+		if not vstorage.enabled then
+			maid.remove('revive_state')
+			return
+		end
+		pcall(function()
+			if not invalid_states[humanoid:GetState()] then
+				humanoid:ChangeState(Enum.HumanoidStateType.Running)
+			end
+		end)
 	end)
 
-	task.spawn(function()
-		repeat
-			task.wait(.13)
-			if reload then old_health = humanoid.Health end
-		until humanoid.Health <= 0
+	maid.add('revive_health_update', z.run_service.Heartbeat, function()
+		if vstorage.enabled and humanoid.Health > 0 then
+			old_health = humanoid.Health
+		end
 	end)
 
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
 	humanoid.RequiresNeck = false
 	humanoid.BreakJointsOnDeath = false
-	pcall(function()
-		maid.remove('revive')
-	end)
+
 	maid.add('revive', humanoid:GetPropertyChangedSignal('Health'), function()
+		if not vstorage.enabled then
+			maid.remove('revive')
+			return
+		end
+
 		local current_health = humanoid.Health
 		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
@@ -1866,10 +1918,10 @@ cmd_library.add({'revive'}, 'attempts to stop oneshots', function()
 			z.replicated_storage:FindFirstChild('Humanoid').Parent = z.local_character
 
 			if current_health <= 5 then
+				vstorage.enabled = false
 				maid.remove('revive')
-				task.delay(.02, function()
-					reload = false
-				end)
+				maid.remove('revive_state')
+				maid.remove('revive_health_update')
 			end
 		else
 			old_health = current_health
@@ -1972,6 +2024,7 @@ cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event 
 	end
 end)
 
+
 cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling 😰 (optional third arg: torsopos)', function(_, name, torso_mode)
 	local targets = get_plr(name)
 	if not targets then 
@@ -1986,9 +2039,14 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 
 		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(15)
 		z.local_player.SimulationRadius = 1000
-		wait(z.players.RespawnTime + 0.5)
+		task.wait(z.players.RespawnTime + 0.5)
 
-		local target_hrp = target.Character:WaitForChild('HumanoidRootPart')
+		if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+			notify(`{target.Name} has no character`)
+			continue
+		end
+
+		local target_hrp = target.Character.HumanoidRootPart
 		z.local_player.SimulationRadius = 1000
 		z.local_character:WaitForChild('HumanoidRootPart').CFrame = old_cframe
 		workspace.CurrentCamera = cam
@@ -2024,7 +2082,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			end
 		end
 
-		workspace.DescendantAdded:Connect(function(part)
+		local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
 			if part:IsA('BasePart') and is_valid_part(part) then
 				table.insert(parts, part)
 			end
@@ -2033,8 +2091,9 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 		task.wait(1)
 
 		maid.add('part_walkfling_'..target.Name, z.run_service.Heartbeat, function(dt)
-			if not target_hrp:IsDescendantOf(workspace) or not target:IsDescendantOf(game) then
+			if not target.Character or not target_hrp:IsDescendantOf(workspace) or not target:IsDescendantOf(game) then
 				maid.remove('part_walkfling_'..target.Name)
+				desc_added_conn:Disconnect()
 				return
 			end
 
@@ -2060,8 +2119,11 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 						if target == z.local_player then
 							part.CFrame = target_hrp.CFrame
 						else
-							z.local_character.Humanoid:SetStateEnabled('Seated', false)
-							z.local_character.Humanoid.Sit = true
+							local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+							if humanoid then
+								humanoid:SetStateEnabled('Seated', false)
+								humanoid.Sit = true
+							end
 							local offset_cframe = target_hrp.CFrame * CFrame.new(0, 0, -(17 + part.Size.Magnitude))
 							part.CFrame = offset_cframe
 							z.local_character:PivotTo(offset_cframe)
@@ -2079,23 +2141,35 @@ end)
 
 cmd_library.add({'wallwalk', 'spiderman', 'ww'}, 'makes you walk on walls', function()
 	notify('activated spiderman mode')
-	loadstring(game:HttpGet('https://pastebin.com/raw/s4FjP97j'))()
+	local success, err = pcall(function()
+		loadstring(game:HttpGet('https://pastebin.com/raw/s4FjP97j'))()
+	end)
+	if not success then
+		notify('failed to load wallwalk: ' .. tostring(err))
+	end
 end)
 
 cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
-	local target_plr = get_plr(target)[1]
-	if not target_plr then
+	local target_plr = get_plr(target)
+	if not target_plr or #target_plr == 0 then
 		return notify(`player '{target and tostring(target) or ''}' doesn't exist`)
 	end
+	target_plr = target_plr[1]
 
 	if not target_plr.Character or not target_plr.Character:FindFirstChild('Head') then
 		return notify(`{target_plr.Name} does not have a character or head`)
 	end
 
-	maid.add('ro_bang_connection', z.run_service.Stepped, function()
-		local cf = CFrame.new(0, 1.5, -1.5 - math.sin(os.clock() * 15)) * CFrame.Angles(0, math.rad(180), 0)
+	notify(`banging {target_plr.Name}`)
 
+	maid.add('ro_bang_connection', z.run_service.Stepped, function()
 		pcall(function()
+			if not target_plr.Character or not target_plr.Character:FindFirstChild('Head') then
+				maid.remove('ro_bang_connection')
+				return
+			end
+
+			local cf = CFrame.new(0, 1.5, -1.5 - math.sin(os.clock() * 15)) * CFrame.Angles(0, math.rad(180), 0)
 			local hrp = z.local_character and z.local_character:FindFirstChild('HumanoidRootPart')
 			if hrp then
 				hrp.Velocity = Vector3.zero
@@ -2105,6 +2179,7 @@ cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
 		end)
 	end)
 end)
+
 
 cmd_library.add({'stoprobang', 'unbang', 'endbang'}, 'stop robang', function()
 	notify('stopped robang')
@@ -2121,7 +2196,7 @@ end)
 
 cmd_library.add({'freeze'}, 'freezes your character in place', function()
 	notify('you are now frozen')
-	
+
 	maid.add('freeze_connection', z.run_service.Heartbeat, function()
 		pcall(function()
 			z.local_character.HumanoidRootPart.Anchored = true
@@ -3365,9 +3440,9 @@ maid.add('open_cmd_bar', z.user_input_service.InputBegan, function(k,i)
 		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
 		tween_ui(button, 0.15, {Position = pos_open_button}, false)
 		open = true
-		
+
 		cmdbox:CaptureFocus()
-		
+
 		repeat
 			cmdbox.Text = ''; z.run_service.Heartbeat:Wait()
 		until cmdbox.Text == ''
@@ -3378,7 +3453,7 @@ cmdbox.FocusLost:Connect(function(enter)
 	tween_ui(main_container, 0.1, {Position = pos_closed_box}, true)
 	tween_ui(button, 0.1, {Position = pos_closed_button}, true)
 	open = false
-	
+
 	if not enter and not z.is_mobile then return end
 
 	local text = cmdbox.Text
