@@ -142,13 +142,50 @@ local hypernull;hypernull = function(fn, ...)
 	fn(...)
 end
 
+local active_notifications = {}
+local max_notifications = 10
+
+local function remove_notification(text_label)
+	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+	local tween = z.tween_service:Create(text_label, tween_info, {
+		BackgroundTransparency = 1,
+		TextTransparency = 1
+	})
+
+	tween:Play()
+	tween.Completed:Connect(function()
+		for i, notif in ipairs(active_notifications) do
+			if notif.label == text_label then
+				table.remove(active_notifications, i)
+				break
+			end
+		end
+		text_label:Destroy()
+	end)
+end
+
+local function remove_oldest_notification()
+	if #active_notifications > 0 then
+		local oldest = active_notifications[1]
+		if oldest.timer then
+			task.cancel(oldest.timer)
+		end
+		remove_notification(oldest.label)
+	end
+end
+
 local notify = function(text)
+	if #active_notifications >= max_notifications then
+		remove_oldest_notification()
+	end
+
 	local text_label = notif_template:Clone()
 	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 
 	text_label.Parent = notif_list
 	text_label.Visible = true
-	text_label.Text = ' '..text..' '
+	text_label.Text = ` {text} `
 	text_label.BackgroundTransparency = 1
 	text_label.TextTransparency = 1
 
@@ -157,14 +194,17 @@ local notify = function(text)
 		TextTransparency = 0
 	}):Play()
 
-	task.delay(4, function()
-		z.tween_service:Create(text_label, tween_info, {
-			BackgroundTransparency = 1,
-			TextTransparency = 1
-		}):Play()
-	end)
+	local notification_data = {
+		label = text_label,
+		created_at = tick(),
+		timer = nil
+	}
 
-	z.debris:AddItem(text_label, 5)
+	table.insert(active_notifications, notification_data)
+
+	notification_data.timer = task.delay(4, function()
+		remove_notification(text_label)
+	end)
 end
 
 local parse_hex = function(hex)
@@ -319,7 +359,6 @@ local cmd_library;cmd_library = {
 	end,
 }
 
--- commands slop
 --[[
 cmd_library.add({'alias1', 'alias2'}, 'description', function(variable_storage, ...)
 
@@ -1303,7 +1342,10 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', function(_, na
 end)
 
 cmd_library.add({'test'}, 'test the status of the notification system', function()
-	notify('notification system working')
+	for i = 1,20 do
+		notify('notification system working')
+		task.wait(.1)
+	end
 end)
 
 cmd_library.add({'fling'}, 'uses velocity to fling people', function(_, name)
@@ -1495,7 +1537,7 @@ end)
 cmd_library.add({'unfollow','stopfollow'}, 'stop following', function()
 	local vstorage = cmd_library.get_variable_storage('follow')
 	if vstorage.target then
-		maid.remove(notify'follow_connection')
+		maid.remove('follow_connection')
 		notify('stopped following '.. (vstorage.target and vstorage.target.Name or 'the player'))
 		vstorage.target = nil
 	else
@@ -1574,232 +1616,388 @@ cmd_library.add({'reloadnetwork','reloadnet','rnetwork','rnet'}, 'resets your si
 	end)
 end)
 
-cmd_library.add({'partfling', 'pf', 'partf'},'Flings someone using parts, far more undetectable and works in collisions off.', function(_, name)
-	local function PartFling(target)
-		if target then
-			local Part = get_closest_part()
-			if Part == nil then notify('there is nothing to partfling with') return end
-			local oldcframepart = Part.CFrame
-			local oldcf = z.local_character:GetPivot()
-			if network_check(Part) == false then
-				local otick;otick = tick()
-				notify('using reloadnetwork would make partfling work better')
-				repeat
-					z.local_character:PivotTo(Part.CFrame)
-					z.run_service.RenderStepped:Wait()
-				until network_check(Part) == true or z.sim_range_reset == true or tick()-otick >= 5
-				if network_check(Part) == true then
-					notify('successfully gained part ownership and used partfling on '..target.Name)
-				else
-					if z.sim_range_reset == false then
-						notify('attempt to gain ownership timed out, consider using reloadnetwork')
-						z.local_character:PivotTo(oldcf)
-						return
+cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
+	local velocity = tonumber(vel) or 2500
+	
+	local function find_owned_part()
+		local closest_part = nil
+		local closest_distance = math.huge
+		local char_pos = z.local_character:GetPivot().Position
+		
+		for _, obj in pairs(workspace:GetDescendants()) do
+			if obj:IsA('BasePart') and obj.Anchored == false and not obj:IsDescendantOf(z.local_character) and network_check(obj) == true then
+				if not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') then
+					local distance = (obj.Position - char_pos).Magnitude
+					if distance < closest_distance then
+						closest_distance = distance
+						closest_part = obj
 					end
 				end
-			else
-				notify('attempted partfling on '..target.Name)
 			end
-			z.local_character:PivotTo(oldcf)
-			z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-			Part.Velocity = Vector3.new(0,5000,0)
-			local weld = {Part1 = target.Character.HumanoidRootPart,Part0 = Part}
-			local conexttion
-			local oldpos=Part.Position
-			maid.add('partfling_connection',z.run_service.Heartbeat,function()
-				if network_check(Part) ~= true or weld.Part1.Velocity.Magnitude >= 100 then
-					maid.remove('partfling_connection')
-					pcall(function()
-						Part.Position = oldpos
-						Part.Velocity = Vector3.zero
-						Part.CFrame = oldcframepart
-					end)
-				else
-					z.local_player.SimulationRadius = 1000
-					Part.Velocity = Vector3.new(0,500*5,0)
-					Part.CFrame = weld.Part1.CFrame
+		end
+		
+		return closest_part
+	end
+	
+	local function part_fling(target)
+		if not target then return end
+		
+		if target == z.local_player then
+			notify('cannot partfling yourself')
+			return
+		end
+		
+		local part = find_owned_part()
+		local already_owned = part ~= nil
+		
+		if not part then
+			part = get_closest_part()
+		end
+		
+		if part == nil then 
+			notify('there is nothing to partfling with') 
+			return 
+		end
+		
+		if part:IsDescendantOf(z.local_character) then
+			notify('cannot use your own character parts for partfling')
+			return
+		end
+		
+		local old_cframe_part = part.CFrame
+		local old_cf = z.local_character:GetPivot()
+		local old_pos = part.Position
+		local old_anchored = part.Anchored
+		local old_can_collide = part.CanCollide
+		
+		if not already_owned then
+			local start_tick = tick()
+			notify('no owned parts found, attempting to gain ownership')
+			repeat
+				z.local_character:PivotTo(part.CFrame)
+				z.run_service.RenderStepped:Wait()
+			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
+			
+			if network_check(part) == true then
+				notify(`successfully gained part ownership and used partfling on {target.Name}`)
+			else
+				if z.sim_range_reset == false then
+					notify('attempt to gain ownership timed out, consider using reloadnetwork')
+					z.local_character:PivotTo(old_cf)
+					return
 				end
+			end
+		else
+			notify(`using owned part for partfling on {target.Name} with velocity {velocity}`)
+		end
+		
+		z.local_character:PivotTo(old_cf)
+		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+		
+		local target_hrp = target.Character and target.Character:FindFirstChild('HumanoidRootPart')
+		if not target_hrp then 
+			notify(`target {target.Name} has no HumanoidRootPart`)
+			return 
+		end
+		
+		local target_original_pos = target_hrp.Position
+		local fling_start_tick = tick()
+		
+		part.Anchored = false
+		part.CanCollide = false
+		
+		part.AssemblyLinearVelocity = Vector3.new(0, velocity * 2, 0)
+		
+		local fling_detected = false
+		local max_distance_reached = 0
+		local lost_ownership_tick = nil
+		
+		local function cleanup_part()
+			pcall(function()
+				part.Anchored = old_anchored
+				part.CanCollide = old_can_collide
+				part.AssemblyLinearVelocity = Vector3.zero
+				part.Position = old_pos
+				part.CFrame = old_cframe_part
 			end)
 		end
+		pcall(function()
+			maid.remove("partfling_connection")
+		end)
+		maid.add('partfling_connection', z.run_service.Heartbeat, function()
+			if not target_hrp or not target_hrp.Parent then
+				maid.remove('partfling_connection')
+				cleanup_part()
+				notify(`target {target.Name} no longer exists`)
+				return
+			end
+			
+			local time_elapsed = tick() - fling_start_tick
+			local distance_from_original = (target_hrp.Position - target_original_pos).Magnitude
+			max_distance_reached = math.max(max_distance_reached, distance_from_original)
+			
+			if distance_from_original >= 100 and time_elapsed <= 1 then
+				fling_detected = true
+				maid.remove('partfling_connection')
+				cleanup_part()
+				notify(`successfully flung {target.Name} (distance: {math.floor(distance_from_original)} studs in {math.floor(time_elapsed * 100) / 100}s)`)
+				return
+			end
+			
+			if fling_detected then
+				maid.remove('partfling_connection')
+				cleanup_part()
+				return
+			end
+			
+			if time_elapsed >= 10 then
+				maid.remove('partfling_connection')
+				cleanup_part()
+				if max_distance_reached >= 100 then
+					notify(`successfully flung {target.Name} (max distance: {math.floor(max_distance_reached)} studs)`)
+				else
+					notify(`partfling on {target.Name} timed out (max distance: {math.floor(max_distance_reached)} studs)`)
+				end
+				return
+			end
+			
+			if network_check(part) ~= true then
+				if lost_ownership_tick == nil then
+					lost_ownership_tick = tick()
+					cleanup_part()
+				end
+				
+				local time_since_lost = tick() - lost_ownership_tick
+				
+				if time_since_lost >= 1 then
+					maid.remove('partfling_connection')
+					
+					if max_distance_reached >= 100 then
+						notify(`successfully flung {target.Name} (distance: {math.floor(max_distance_reached)} studs, lost ownership)`)
+					else
+						notify(`lost ownership of part while flinging {target.Name} (only moved {math.floor(max_distance_reached)} studs)`)
+					end
+				end
+				return
+			end
+			
+			z.local_player.SimulationRadius = 1000
+			part.Anchored = false
+			part.CanCollide = false
+			part.AssemblyLinearVelocity = Vector3.new(0, velocity, 0)
+			part.CFrame = target_hrp.CFrame
+		end)
 	end
+	
 	local targets = get_plr(name)
 	if not targets then
-		return notify(`player {name and tostring(name) or ''} does't exist`)
+		return notify(`player {name and tostring(name) or ''} doesn't exist`)
 	end
 
 	for _, target in pairs(targets) do
-		PartFling(target)
-		task.wait(.5)
+		part_fling(target)
+		task.wait(0.5)
 	end
 end)
 
 cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monkey', function(vstorage, name)
 	local targets = get_plr(name)
 	if not targets then
-		return notify(`player {name and tostring(name) or ''} does't exist`)
+		return notify(`player {name and tostring(name) or ''} doesn't exist`)
 	end
 
-	local function PartFling(target,number,excluded)
-		if target then
-			local function NetworkCheck(Part)
-				return Part.ReceiveAge == 0
-			end
-			local function getclosestpart()
-				local bestpart
-				local biggestmagnitude 
-				for _, v in ipairs(workspace:GetDescendants()) do
-					if v:IsA('BasePart') or v:IsA('Part') or v:IsA('MeshPart') or v:IsA('UnionOperation') then
-						if v.Anchored == false and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(game:GetService('Players').LocalPlayer.Character) then
-							if biggestmagnitude == nil or biggestmagnitude ~= nil and (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude < biggestmagnitude then
-								if #v:GetConnectedParts() < 2 then
-									if table.find(excluded,v) then
-										continue
-									end
-									biggestmagnitude = (game:GetService('Players').LocalPlayer.Character.Head.Position-v.Position).Magnitude
-									bestpart = v
-								end
-							end
-						end
+	local function find_owned_part(excluded)
+		local closest_part = nil
+		local closest_distance = math.huge
+		local char_pos = z.local_character:GetPivot().Position
+
+		for _, obj in pairs(workspace:GetDescendants()) do
+			if obj:IsA('BasePart') and obj.Anchored == false and not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') and not obj:IsDescendantOf(z.local_character) then
+				if #obj:GetConnectedParts() < 2 and not table.find(excluded, obj) and network_check(obj) == true then
+					local distance = (obj.Position - char_pos).Magnitude
+					if distance < closest_distance then
+						closest_distance = distance
+						closest_part = obj
 					end
 				end
-				return bestpart
 			end
-			local Part = getclosestpart()
-			if Part == nil then notify('there is nothing to parttrap with') return end
-			local oldcframepart;oldcframepart = Part.CFrame
-			local oldcf=game:GetService('Players').LocalPlayer.Character:GetPivot()
-			if NetworkCheck(Part) == false then
-				local otick;otick = tick()
-				repeat
-					game:GetService('Players').LocalPlayer.Character:PivotTo(Part.CFrame)
-					game:GetService('RunService').RenderStepped:Wait()
-				until NetworkCheck(Part) == true or z.sim_range_reset== true or tick()-otick >= 5
-				if NetworkCheck(Part) == true then
-				else
-					if z.sim_range_reset == false then
-						notify('attempt to gain ownership timed out, consider using reloadnetwork')
-						z.local_character:PivotTo(oldcf)
-						return
+		end
+
+		return closest_part
+	end
+
+	local function get_closest_unowned_part(excluded)
+		local best_part = nil
+		local smallest_magnitude = nil
+
+		for _, v in ipairs(workspace:GetDescendants()) do
+			if v:IsA('BasePart') and v.Anchored == false and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(z.local_character) then
+				if smallest_magnitude == nil or (z.local_character.Head.Position - v.Position).Magnitude < smallest_magnitude then
+					if #v:GetConnectedParts() < 2 and not table.find(excluded, v) then
+						smallest_magnitude = (z.local_character.Head.Position - v.Position).Magnitude
+						best_part = v
 					end
+				end
+			end
+		end
+
+		return best_part
+	end
+
+	local function part_trap(target, number, excluded)
+		if not target or not target.Character then return end
+
+		local part = find_owned_part(excluded)
+		local already_owned = part ~= nil
+
+		if not part then
+			part = get_closest_unowned_part(excluded)
+		end
+
+		if part == nil then 
+			if number == 1 then
+				notify('there is nothing to parttrap with')
+			end
+			return 
+		end
+
+		local old_cframe_part = part.CFrame
+		local old_cf = z.local_character:GetPivot()
+
+		if not already_owned then
+			local start_tick = tick()
+			repeat
+				z.local_character:PivotTo(part.CFrame)
+				z.run_service.RenderStepped:Wait()
+			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
+
+			if network_check(part) ~= true then
+				if z.sim_range_reset == false then
+					if number == 1 then
+						notify('attempt to gain ownership timed out, consider using reloadnetwork')
+					end
+					z.local_character:PivotTo(old_cf)
+					return
+				end
+			end
+		end
+
+		z.local_character:PivotTo(old_cf)
+		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+
+		local weld_part1 = target.Character:FindFirstChild('Head')
+		if number >= 2 and number ~= 6 then
+			if target.Character:FindFirstChild('Torso') then
+				weld_part1 = target.Character.Torso
+			else
+				weld_part1 = target.Character:FindFirstChild('HumanoidRootPart')
+			end
+		end
+
+		if not weld_part1 then return end
+
+		local part_test = Instance.new('Part', workspace)
+		part_test.Anchored = true
+		part_test.Size = weld_part1.Size
+		part_test.CFrame = weld_part1.CFrame
+		part_test.Orientation = Vector3.new(0, 90, 0)
+		part_test.Transparency = 1
+		part_test.CanCollide = false
+
+		local allowed = true
+		local old_part_cframe = nil
+		local recursion_done = false
+
+		maid.add(`part_trap_connection_{number}`, z.run_service.Heartbeat, function()
+			if not target or not target.Character or not target.Character:IsDescendantOf(game) or not target.Character:FindFirstChild('Humanoid') or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
+				maid.remove('part_trap_follow')
+				maid.remove(`part_trap_connection_{number}`)
+				pcall(function() part_test:Destroy() end)
+				maid.add(`removing_trap_connection_{number}`, z.run_service.Heartbeat, function()
+					part.CanCollide = true
+				end)
+				task.delay(1, function()
+					maid.remove(`removing_trap_connection_{number}`)
+				end)
+				return
+			end
+
+			z.local_player.SimulationRadius = 1000
+
+			local move_magnitude = target.Character.Humanoid.MoveDirection.Magnitude
+
+			if move_magnitude > 0.1 and allowed == true then
+				if number == 1 then
+					part.CFrame = part_test.CFrame * CFrame.new(0, 15, 0)
+				elseif number == 2 then
+					part.CFrame = part_test.CFrame * CFrame.new(0, 15, -1.5)
+				elseif number == 3 then
+					part.CFrame = part_test.CFrame * CFrame.new(0, 15, 1.5)
+				elseif number == 4 then
+					part.CFrame = part_test.CFrame * CFrame.new(-1.5, 15, 0)
+				elseif number == 5 then
+					part.CFrame = part_test.CFrame * CFrame.new(1.5, 15, 0)
+				elseif number >= 6 then
+					part.CFrame = part_test.CFrame * CFrame.new(0, 15, 0)
 				end
 			else
-			end
-			game:GetService('Players').LocalPlayer.Character:PivotTo(oldcf)
-			game:GetService('Players').LocalPlayer.Character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-			local weld = {Part1 = target.Character.Head,Part0 = Part}
-			if number >= 2 and number ~= 6  then
-				if target.Character:FindFirstChild('Torso') then
-					weld.Part1 = target.Character.Torso
-				else
-					weld.Part1 = target.Character.HumanoidRootPart
-				end
-			end
-			local parttest = Instance.new('Part',workspace)
-			parttest.Anchored = true
-			parttest.Size = weld.Part1.Size
-			parttest.CFrame = weld.Part1.CFrame
-			parttest.Orientation = Vector3.new(0,90,0)
-			parttest.Transparency = 1
-			parttest.CanCollide = false
-			parttest.Parent = workspace
-			weld.Part1 = parttest
-			local conexttion
-			local oldpos=Part.Position
-			local allowed = true
-			local oldpartcframeeeee = nil
-			maid.add('part_trap_connection_'..number,z.run_service.Heartbeat,function()
-				if target == nil or target.Character == nil or target.Character:IsDescendantOf(game) == false or target.Character:FindFirstChild('Humanoid') == nil or target.Character.Humanoid.Health <= 1 or z.sim_range_reset == true then
-					maid.remove('part_trap_follow')
-					maid.remove('part_trap_connection_'..number)
-					maid.add("removing_trap_connection_"..number,z.run_service.Heartbeat,function()
-						Part.CanCollide = true
-					end)
-					task.delay(1,function()
-						maid.remove("removing_trap_connection_"..number)
-					end)
-				else
-					game:GetService('Players').LocalPlayer.SimulationRadius = 1000
-				end
+				if allowed == true then
+					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
 
-				if target.Character.Humanoid.MoveDirection.Magnitude > 1 and allowed == true then
 					if number == 1 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(0, 2, 0)
+						part.Orientation = Vector3.new(0, 0, 0)
 					elseif number == 2 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,-1.5)
+						part.CFrame = part_test.CFrame * CFrame.new(0, 0.75, -1.75)
+						part.Orientation = Vector3.new(90, 90, 0)
 					elseif number == 3 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,1.5)
+						part.CFrame = part_test.CFrame * CFrame.new(0, 0.5, 1.75)
+						part.Orientation = Vector3.new(90, 90, 0)
 					elseif number == 4 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(-1.5,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(-2, 0.75, 0)
+						part.Orientation = Vector3.new(90, 0, 0)
 					elseif number == 5 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(1.5,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(1.95, 0.75, 0)
+						part.Orientation = Vector3.new(90, 0, 0)
 					elseif number == 6 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(0, 2, 0)
+						part.Orientation = Vector3.new(0, 90, 0)
 					elseif number == 7 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(0, -2, 0)
+						part.Orientation = Vector3.new(0, 90, 0)
 					elseif number == 8 then
-						Part.CFrame = weld.Part1.CFrame*CFrame.new(0,15,0)
+						part.CFrame = part_test.CFrame * CFrame.new(0, -2, 0)
+						part.Orientation = Vector3.new(0, 0, 0)
 					end
-				else
-					if allowed == true then
-						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						if number == 1 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
-							Part.Orientation = Vector3.new(0,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 2 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.75,-1.75)
-							Part.Orientation=Vector3.new(90,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 3 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,0.5,1.75)
-							Part.Orientation=Vector3.new(90,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 4 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(-2,0.75,0)
-							Part.Orientation=Vector3.new(90,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 5 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(1.95,0.75,0)
-							Part.Orientation=Vector3.new(90,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 6 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,2,0)
-							Part.Orientation = Vector3.new(0,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 7 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
-							Part.Orientation = Vector3.new(0,90,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						elseif number == 8 then
-							Part.CFrame = weld.Part1.CFrame*CFrame.new(0,-2,0)
-							Part.Orientation = Vector3.new(0,0,0)
-							Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						end
-						oldpartcframeeeee = Part.CFrame
-					else
-						Part.CFrame = oldpartcframeeeee
-						Part.Velocity = Vector3.new(14.46262424,14.46262424,14.46262424)+Vector3.new(0,math.cos(tick()*10)/100,0)
-						Part.CanCollide = false
-						Part.CFrame = oldpartcframeeeee
+
+					old_part_cframe = part.CFrame
+
+					if not recursion_done and number < 8 then
+						recursion_done = true
+						table.insert(excluded, part)
+						part_trap(target, number + 1, excluded)
 					end
-					if allowed == true then
-						if number+1 < 9 then
-							table.insert(excluded,Part)
-							PartFling(target,number+1,excluded)
-						else
-						end
-					end
+
 					allowed = false
+				else
+					part.CFrame = old_part_cframe
+					part.Velocity = Vector3.new(14.46262424, 14.46262424, 14.46262424) + Vector3.new(0, math.cos(tick() * 10) / 100, 0)
+					part.CanCollide = false
 				end
-			end)
-		end
+			end
+
+			if part_test and weld_part1 then
+				pcall(function()
+					part_test.CFrame = weld_part1.CFrame
+				end)
+			end
+		end)
 	end
 
 	for _, target in pairs(targets) do
-		notify('attempted trap on '..target.Name)
-
-		PartFling(target,1,{})
-		task.wait(.5)
+		notify(`attempted trap on {target.Name}`)
+		part_trap(target, 1, {})
+		task.wait(0.5)
 	end
 end)
 
@@ -2162,6 +2360,26 @@ cmd_library.add({'wallwalk', 'spiderman', 'ww'}, 'makes you walk on walls', func
 	end
 end)
 
+cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes', function()
+	notify('loading remote spy')
+	local success, err = pcall(function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Octo-Spy/refs/heads/main/Main.lua'))()
+	end)
+	if not success then
+		notify('failed to load remotespy: ' .. tostring(err))
+	end
+end)
+
+cmd_library.add({'dex'}, 'dex explorer (dex++)', function()
+	notify('loading dex')
+	local success, err = pcall(function()
+		loadstring(game:HttpGet("https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++"))()
+	end)
+	if not success then
+		notify('failed to load dex: ' .. tostring(err))
+	end
+end)
+
 cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
 	local target_plr = get_plr(target)
 	if not target_plr or #target_plr == 0 then
@@ -2192,7 +2410,6 @@ cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
 		end)
 	end)
 end)
-
 
 cmd_library.add({'stoprobang', 'unbang', 'endbang'}, 'stop robang', function()
 	notify('stopped robang')
@@ -2247,6 +2464,7 @@ cmd_library.add({'spin', 'spinbot'}, 'spins your character', function(vstorage, 
 
 	vstorage.spin_part = spin_part
 end)
+
 
 cmd_library.add({'unspin', 'unspinbot'}, 'stops spinning your character', function()
 	local vstorage = cmd_library.get_variable_storage('spin')
@@ -2926,15 +3144,13 @@ end)
 
 cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position with size [arg1] and with blastpressure [arg2]', function(_, size,blastpressure)
 	size = tonumber(size) or 10
-	blastpressure = tonumber(blastpressure) or true
+	blastpressure = tonumber(blastpressure) or 500000
 	notify(`exploding with size {size}`)
 
 	local explosion = Instance.new('Explosion')
 	explosion.Position = z.local_character.HumanoidRootPart.Position-Vector3.new(0,1,0)
 	explosion.BlastRadius = size
-	if blastpressure ~= true then
-		explosion.BlastPressure = blastpressure
-	end
+	explosion.BlastPressure = blastpressure
 	explosion.DestroyJointRadiusPercent = 0
 	explosion.Parent = workspace
 end)
@@ -3657,6 +3873,7 @@ cmd_library.add({'unannoy'}, 'stops annoying', function()
 	notify('stopped annoying')
 end)
 
+
 cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 	local Clone = Instance.new("HopperBin")
 	local Hammer = Instance.new("HopperBin")
@@ -3673,8 +3890,8 @@ cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 end)
 
 
+-- ui thing
 
--- ui slop
 
 local cmdbar_ui = ui.commandbox_ui:Clone()
 cmdbar_ui:WaitForChild('main_container')
