@@ -142,13 +142,50 @@ local hypernull;hypernull = function(fn, ...)
 	fn(...)
 end
 
+local active_notifications = {}
+local max_notifications = 10
+
+local function remove_notification(text_label)
+	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+
+	local tween = z.tween_service:Create(text_label, tween_info, {
+		BackgroundTransparency = 1,
+		TextTransparency = 1
+	})
+
+	tween:Play()
+	tween.Completed:Connect(function()
+		for i, notif in ipairs(active_notifications) do
+			if notif.label == text_label then
+				table.remove(active_notifications, i)
+				break
+			end
+		end
+		text_label:Destroy()
+	end)
+end
+
+local function remove_oldest_notification()
+	if #active_notifications > 0 then
+		local oldest = active_notifications[1]
+		if oldest.timer then
+			task.cancel(oldest.timer)
+		end
+		remove_notification(oldest.label)
+	end
+end
+
 local notify = function(text)
+	if #active_notifications >= max_notifications then
+		remove_oldest_notification()
+	end
+
 	local text_label = notif_template:Clone()
 	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 
 	text_label.Parent = notif_list
 	text_label.Visible = true
-	text_label.Text = ' '..text..' '
+	text_label.Text = ` {text} `
 	text_label.BackgroundTransparency = 1
 	text_label.TextTransparency = 1
 
@@ -157,14 +194,17 @@ local notify = function(text)
 		TextTransparency = 0
 	}):Play()
 
-	task.delay(4, function()
-		z.tween_service:Create(text_label, tween_info, {
-			BackgroundTransparency = 1,
-			TextTransparency = 1
-		}):Play()
-	end)
+	local notification_data = {
+		label = text_label,
+		created_at = tick(),
+		timer = nil
+	}
 
-	z.debris:AddItem(text_label, 5)
+	table.insert(active_notifications, notification_data)
+
+	notification_data.timer = task.delay(4, function()
+		remove_notification(text_label)
+	end)
 end
 
 local parse_hex = function(hex)
@@ -1301,7 +1341,10 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', function(_, na
 end)
 
 cmd_library.add({'test'}, 'test the status of the notification system', function()
-	notify('notification system working')
+	for i = 1,20 do
+		notify('notification system working')
+		task.wait(.1)
+	end
 end)
 
 cmd_library.add({'fling'}, 'uses velocity to fling people', function(_, name)
@@ -1493,7 +1536,7 @@ end)
 cmd_library.add({'unfollow','stopfollow'}, 'stop following', function()
 	local vstorage = cmd_library.get_variable_storage('follow')
 	if vstorage.target then
-		maid.remove(notify'follow_connection')
+		maid.remove('follow_connection')
 		notify('stopped following '.. (vstorage.target and vstorage.target.Name or 'the player'))
 		vstorage.target = nil
 	else
@@ -1574,12 +1617,12 @@ end)
 
 cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
 	local velocity = tonumber(vel) or 2500
-
+	
 	local function find_owned_part()
 		local closest_part = nil
 		local closest_distance = math.huge
 		local char_pos = z.local_character:GetPivot().Position
-
+		
 		for _, obj in pairs(workspace:GetDescendants()) do
 			if obj:IsA('BasePart') and obj.Anchored == false and not obj:IsDescendantOf(z.local_character) and network_check(obj) == true then
 				if not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') then
@@ -1591,41 +1634,41 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				end
 			end
 		end
-
+		
 		return closest_part
 	end
-
+	
 	local function part_fling(target)
 		if not target then return end
-
+		
 		if target == z.local_player then
 			notify('cannot partfling yourself')
 			return
 		end
-
+		
 		local part = find_owned_part()
 		local already_owned = part ~= nil
-
+		
 		if not part then
 			part = get_closest_part()
 		end
-
+		
 		if part == nil then 
 			notify('there is nothing to partfling with') 
 			return 
 		end
-
+		
 		if part:IsDescendantOf(z.local_character) then
 			notify('cannot use your own character parts for partfling')
 			return
 		end
-
+		
 		local old_cframe_part = part.CFrame
 		local old_cf = z.local_character:GetPivot()
 		local old_pos = part.Position
 		local old_anchored = part.Anchored
 		local old_can_collide = part.CanCollide
-
+		
 		if not already_owned then
 			local start_tick = tick()
 			notify('no owned parts found, attempting to gain ownership')
@@ -1633,7 +1676,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				z.local_character:PivotTo(part.CFrame)
 				z.run_service.RenderStepped:Wait()
 			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
-
+			
 			if network_check(part) == true then
 				notify(`successfully gained part ownership and used partfling on {target.Name}`)
 			else
@@ -1646,28 +1689,28 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 		else
 			notify(`using owned part for partfling on {target.Name} with velocity {velocity}`)
 		end
-
+		
 		z.local_character:PivotTo(old_cf)
 		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-
+		
 		local target_hrp = target.Character and target.Character:FindFirstChild('HumanoidRootPart')
 		if not target_hrp then 
 			notify(`target {target.Name} has no HumanoidRootPart`)
 			return 
 		end
-
+		
 		local target_original_pos = target_hrp.Position
 		local fling_start_tick = tick()
-
+		
 		part.Anchored = false
 		part.CanCollide = false
-
+		
 		part.AssemblyLinearVelocity = Vector3.new(0, velocity * 2, 0)
-
+		
 		local fling_detected = false
 		local max_distance_reached = 0
 		local lost_ownership_tick = nil
-
+		
 		local function cleanup_part()
 			pcall(function()
 				part.Anchored = old_anchored
@@ -1677,7 +1720,9 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				part.CFrame = old_cframe_part
 			end)
 		end
-
+		pcall(function()
+			maid.remove("partfling_connection")
+		end)
 		maid.add('partfling_connection', z.run_service.Heartbeat, function()
 			if not target_hrp or not target_hrp.Parent then
 				maid.remove('partfling_connection')
@@ -1685,11 +1730,11 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				notify(`target {target.Name} no longer exists`)
 				return
 			end
-
+			
 			local time_elapsed = tick() - fling_start_tick
 			local distance_from_original = (target_hrp.Position - target_original_pos).Magnitude
 			max_distance_reached = math.max(max_distance_reached, distance_from_original)
-
+			
 			if distance_from_original >= 100 and time_elapsed <= 1 then
 				fling_detected = true
 				maid.remove('partfling_connection')
@@ -1697,13 +1742,13 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				notify(`successfully flung {target.Name} (distance: {math.floor(distance_from_original)} studs in {math.floor(time_elapsed * 100) / 100}s)`)
 				return
 			end
-
+			
 			if fling_detected then
 				maid.remove('partfling_connection')
 				cleanup_part()
 				return
 			end
-
+			
 			if time_elapsed >= 10 then
 				maid.remove('partfling_connection')
 				cleanup_part()
@@ -1714,18 +1759,18 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				end
 				return
 			end
-
+			
 			if network_check(part) ~= true then
 				if lost_ownership_tick == nil then
 					lost_ownership_tick = tick()
 					cleanup_part()
 				end
-
+				
 				local time_since_lost = tick() - lost_ownership_tick
-
+				
 				if time_since_lost >= 1 then
 					maid.remove('partfling_connection')
-
+					
 					if max_distance_reached >= 100 then
 						notify(`successfully flung {target.Name} (distance: {math.floor(max_distance_reached)} studs, lost ownership)`)
 					else
@@ -1734,7 +1779,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 				end
 				return
 			end
-
+			
 			z.local_player.SimulationRadius = 1000
 			part.Anchored = false
 			part.CanCollide = false
@@ -1742,7 +1787,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			part.CFrame = target_hrp.CFrame
 		end)
 	end
-
+	
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
@@ -3098,15 +3143,13 @@ end)
 
 cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position with size [arg1] and with blastpressure [arg2]', function(_, size,blastpressure)
 	size = tonumber(size) or 10
-	blastpressure = tonumber(blastpressure) or true
+	blastpressure = tonumber(blastpressure) or 500000
 	notify(`exploding with size {size}`)
 
 	local explosion = Instance.new('Explosion')
 	explosion.Position = z.local_character.HumanoidRootPart.Position-Vector3.new(0,1,0)
 	explosion.BlastRadius = size
-	if blastpressure ~= true then
-		explosion.BlastPressure = blastpressure*500000
-	end
+	explosion.BlastPressure = blastpressure
 	explosion.DestroyJointRadiusPercent = 0
 	explosion.Parent = workspace
 end)
