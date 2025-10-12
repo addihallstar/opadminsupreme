@@ -108,19 +108,58 @@ do
 	end,1)
 end
 
-local ui = game:GetObjects('rbxassetid://131430979206692')[1]:Clone()
+local ui = game:GetObjects('rbxassetid://102338830611620')[1]:Clone()
 local commands_gui = ui.commands_ui:Clone()
 local notif_gui = ui.notification_ui:Clone()
 local chatlog_gui = ui.chat_logs:Clone()
 chatlog_gui.Name = 'chat_logs'
 if not ui then return error('failed to get gui') end
+local search_box = commands_gui.main_container:WaitForChild('search')
+local commands_container = commands_gui.main_container:WaitForChild('commands')
 do
 	commands_gui:WaitForChild('main_container')
 	local x_button = commands_gui.main_container:WaitForChild('close')
+	local search_box = commands_gui.main_container:WaitForChild('search')
+	local commands_container = commands_gui.main_container:WaitForChild('commands')
 
 	maid.add('close_button_MouseButton1Up', x_button.MouseButton1Up, function()
 		commands_gui.Enabled = false
-	end,1)
+	end, 1)
+
+	maid.add('command_search', search_box:GetPropertyChangedSignal('Text'), function()
+		local search_text = search_box.Text:lower()
+
+		for _, label in pairs(commands_container:GetChildren()) do
+			if label:IsA('TextLabel') then
+				if search_text == '' then
+					label.Visible = true
+				else
+					local command_names = label.Text:split(':')[1]:lower()
+
+					local found = false
+					for _, name in pairs(command_names:split(',')) do
+						local trimmed_name = name:gsub('^%s*(.-)%s*$', '%1')
+						if trimmed_name:find('^' .. search_text) or trimmed_name == search_text then
+							found = true
+							break
+						end
+					end
+
+					label.Visible = found
+				end
+			end
+		end
+	end, 1)
+
+	maid.add('command_search_focus', search_box.Focused, function()
+		search_box.PlaceholderText = 'type to search...'
+	end, 1)
+
+	maid.add('command_search_unfocus', search_box.FocusLost, function()
+		if search_box.Text == '' then
+			search_box.PlaceholderText = 'search commands'
+		end
+	end, 1)
 
 	commands_gui.Parent = z.core_gui
 	notif_gui.Parent = z.core_gui
@@ -502,7 +541,7 @@ cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chatlogs', func
 	notify('chatlogs not enabled')
 end)
 
-cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage inflicted 50 times and adds reach', function(vstorage, reach)
+cmd_library.add({'instakillreach', 'instksreach'}, '[reach: number] - always applies newest damage inflicted 50 times and adds reach', function(vstorage, reach)
 	local reach_size = tonumber(reach) or 40
 
 	local tool = z.local_player.Character:FindFirstChildOfClass('Tool') or z.local_player.Backpack:FindFirstChildOfClass('Tool')
@@ -525,7 +564,7 @@ cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage
 	end)
 end)
 
-cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown ability', function(vstorage, name)
+cmd_library.add({'grabtp'}, '[name: string] - only works on ink game, you also need takedown ability', function(vstorage, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -556,7 +595,7 @@ cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown abil
 	end
 end)
 
-cmd_library.add({'speed','walkspeed','ws'}, 'sets your walkspeed to [NUM], set num as blank to be default speed', function(vstorage, speed)
+cmd_library.add({'speed','walkspeed','ws'}, '[speed: number] - sets your walkspeed to [NUM], set num as blank to be default speed', function(vstorage, speed)
 	if tonumber(speed) then
 		notify(`speed set to {tonumber(speed)}`)
 	else
@@ -568,7 +607,7 @@ cmd_library.add({'speed','walkspeed','ws'}, 'sets your walkspeed to [NUM], set n
 	end)
 end)
 
-cmd_library.add({'jump','jumppower','jp'}, 'sets your jumppower to [NUM], set num as blank to be default jumppower', function(vstorage, power)
+cmd_library.add({'jump','jumppower','jp'}, '[power: number] - sets your jumppower to [NUM], set num as blank to be default jumppower', function(vstorage, power)
 	if tonumber(power) then
 		notify(`jumppower set to {tonumber(power)}`)
 	else
@@ -612,7 +651,7 @@ cmd_library.add({'unloopjumppower', 'unloopjp'}, 'disables loopjumppower', funct
 	end
 end)
 
-cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to specified number in a loop', function(vstorage, power)
+cmd_library.add({'loopjumppower', 'loopjp'}, '[power: number] - sets your jumppower to specified number in a loop', function(vstorage, power)
 	power = tonumber(power) or 32
 
 	notify(`setting jumppower to {power} in a loop`)
@@ -640,7 +679,7 @@ cmd_library.add({'unloopwalkspeed', 'unloopws'}, 'disables loopwalkspeed', funct
 	end
 end)
 
-cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified number in a loop', function(vstorage, speed)
+cmd_library.add({'loopwalkspeed', 'loopws'}, '[speed: number] - sets your walkspeed to specified number in a loop', function(vstorage, speed)
 	speed = tonumber(speed) or 32
 
 	notify(`setting walkspeed to {speed} in a loop`)
@@ -653,14 +692,16 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to specified n
 		end)
 	end)
 end)
-cmd_library.add({"commandswitching","cmdswitching","cmdswitch"},"use true/false to allow command switching (if mobile fly turns to mobilefly)",function(vstorage,arg)
+
+cmd_library.add({'commandswitching','cmdswitching','cmdswitch'},'[allow: boolean] - allow command switching (if mobile fly turns to mobilefly)',function(vstorage,arg)
 	local valuething = false
-	if arg:lower() == "true" then
+	if arg:lower() == 'true' then
 		valuething = true
 	end
 	z.allow_command_switching = valuething
-	notify("commandswitching set to "..tostring(valuething))
+	notify('commandswitching set to '..tostring(valuething))
 end)
+
 cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
 	if z.is_mobile and z.allow_command_switching then
 		cmd_library.execute('unmobilefly')
@@ -678,7 +719,7 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', function()
 	end
 end)
 
-cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
+cmd_library.add({'fly', 'cframefly'}, '[flyspeed: number] - enable flight', function(vstorage, speed)
 	if z.is_mobile and z.allow_command_switching then
 		cmd_library.execute('mobilefly',speed)
 		return
@@ -731,7 +772,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', function(vstorage, speed)
 	end)
 end)
 
-cmd_library.add({'mobilefly', 'mobilecframefly', 'mobilecffly'}, 'mobile fly', function(vstorage, flyspeed)
+cmd_library.add({'mobilefly', 'mobilecframefly', 'mobilecffly'}, '[flyspeed: number] - mobile fly', function(vstorage, flyspeed)
 	if vstorage.enabled then
 		return notify('mobile fly already enabled')
 	end
@@ -913,7 +954,7 @@ cmd_library.add({'respawnpoint', 'illusion', 'rp'}, 'makes your respawnpoint be 
 				hypernull(function()
 					z.local_character:PivotTo(death_pos)
 				end)
-				maid.remove("resetspawn")
+				maid.remove('resetspawn')
 				if health > 1 then
 					has_died = false
 				end
@@ -1001,7 +1042,7 @@ cmd_library.add({'unantifling', 'unafling', 'unantif'}, 'disables antifling', fu
 	end
 end)
 
-cmd_library.add({'gettools','tools'},'attempts to steal tools from others',function()
+cmd_library.add({'gettools','tools'}, 'attempts to steal tools from others', function()
 	local count = 0
 
 	for _, v in ipairs(workspace:GetDescendants()) do
@@ -1271,7 +1312,7 @@ cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for othe
 	end
 end)
 
-cmd_library.add({'seatbring', 'sbring'}, 'the seat kidnap 😱😱 real', function(_, name)
+cmd_library.add({'seatbring', 'sbring'}, '[player: string] - bring a player using a seat tool', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -1322,7 +1363,7 @@ cmd_library.add({'seatbring', 'sbring'}, 'the seat kidnap 😱😱 real', functi
 	end
 end)
 
-cmd_library.add({'to', 'goto'}, 'teleport infront of the target', function(_, name)
+cmd_library.add({'to', 'goto'}, '[player: string] - teleport infront of the target', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`) 
@@ -1347,7 +1388,7 @@ cmd_library.add({'test'}, 'test the status of the notification system', function
 	end
 end)
 
-cmd_library.add({'fling'}, 'uses velocity to fling people', function(_, name)
+cmd_library.add({'fling'}, '[player: string] - uses velocity to fling people', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -1431,7 +1472,7 @@ cmd_library.add({'respawn', 'reset', 'die'}, 'reset your character yes', functio
 	z.local_character.Humanoid.Health = 0
 end)
 
-cmd_library.add({'gravity'}, 'sets workspace gravity value to [NUM]', function(_, gravity)
+cmd_library.add({'gravity'}, '[gravity: number] - sets workspace gravity value to [gravity]', function(_, gravity)
 	gravity = tonumber(gravity) or 196.2
 	notify(`gravity set to {gravity}`)
 	workspace.Gravity = gravity
@@ -1503,7 +1544,7 @@ cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', funct
 	end
 end)
 
-cmd_library.add({'follow', 'chase'}, 'lock onto another player instantly', function(vstorage, name)
+cmd_library.add({'follow', 'chase'}, '[player: string] - lock onto another player instantly', function(vstorage, name)
 	local targets = get_plr(name)
 	local target = targets[1]
 
@@ -1544,7 +1585,7 @@ cmd_library.add({'unfollow','stopfollow'}, 'stop following', function()
 	end
 end)
 
-cmd_library.add({'view','spectate'}, 'spectate another player', function(vstorage, name)
+cmd_library.add({'view','spectate'}, '[player: string] - spectate another player', function(vstorage, name)
 	local targets = get_plr(name)
 	local target = targets[1]
 
@@ -1615,7 +1656,7 @@ cmd_library.add({'reloadnetwork','reloadnet','rnetwork','rnet'}, 'resets your si
 	end)
 end)
 
-cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
+cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number] - flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
 	local velocity = tonumber(vel) or 2500
 	
 	local function find_owned_part()
@@ -1721,7 +1762,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			end)
 		end
 		pcall(function()
-			maid.remove("partfling_connection")
+			maid.remove('partfling_connection')
 		end)
 		maid.add('partfling_connection', z.run_service.Heartbeat, function()
 			if not target_hrp or not target_hrp.Parent then
@@ -1799,7 +1840,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 	end
 end)
 
-cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monkey', function(vstorage, name)
+cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in a cage like a monkey', function(vstorage, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
@@ -2146,7 +2187,7 @@ cmd_library.add({'thirdp', '3rdp', 'thirdperson'}, 'forces your camera to be thi
 	z.local_player.CameraMode = 'Classic'
 end)
 
-cmd_library.add({'swim', 'swimmode'}, 'swim in the air', function(vstorage, speed)
+cmd_library.add({'swim', 'swimmode'}, '[speed: number] - swim in the air', function(vstorage, speed)
 	speed = tonumber(speed) or z.default_walkspeed
 	if vstorage.enabled then
 		return notify('swim is already enabled')
@@ -2235,7 +2276,7 @@ cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event 
 end)
 
 
-cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling 😰 (optional third arg: torsopos)', function(_, name, torso_mode)
+cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '[player: string, torso_mode: boolean] - partfling on walkfling 😰', function(_, name, torso_mode)
 	local targets = get_plr(name)
 	if not targets then 
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -2372,14 +2413,14 @@ end)
 cmd_library.add({'dex'}, 'dex explorer (dex++)', function()
 	notify('loading dex')
 	local success, err = pcall(function()
-		loadstring(game:HttpGet("https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++"))()
+		loadstring(game:HttpGet('https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++'))()
 	end)
 	if not success then
 		notify('failed to load dex: ' .. tostring(err))
 	end
 end)
 
-cmd_library.add({'robang', 'bang'}, 'robang someone', function(vstorage, target)
+cmd_library.add({'robang', 'bang'}, '[player: string] - robang someone', function(vstorage, target)
 	local target_plr = get_plr(target)
 	if not target_plr or #target_plr == 0 then
 		return notify(`player '{target and tostring(target) or ''}' doesn't exist`)
@@ -2442,7 +2483,7 @@ cmd_library.add({'unfreeze', 'thaw'}, 'unfreezes your character', function()
 	end)
 end)
 
-cmd_library.add({'spin', 'spinbot'}, 'spins your character', function(vstorage, speed)
+cmd_library.add({'spin', 'spinbot'}, '[speed: number] - spins your character', function(vstorage, speed)
 	if vstorage.enabled then
 		return notify('spin is already enabled')
 	end
@@ -2490,13 +2531,13 @@ cmd_library.add({'night'}, 'sets time to night', function()
 	z.lighting.ClockTime = 0
 end)
 
-cmd_library.add({'time'}, 'sets the time of day', function(_, time)
+cmd_library.add({'time'}, '[time: number] - sets the time of day', function(_, time)
 	time = tonumber(time) or 14
 	notify(`time set to {time}`)
 	z.lighting.ClockTime = time
 end)
 
-cmd_library.add({'fogend', 'fog'}, 'sets fog end distance', function(_, distance)
+cmd_library.add({'fogend', 'fog'}, '[distance: number] - sets fog end distance', function(_, distance)
 	if tonumber(distance) then
 		distance = tonumber(distance)
 	else
@@ -2506,13 +2547,13 @@ cmd_library.add({'fogend', 'fog'}, 'sets fog end distance', function(_, distance
 	z.lighting.FogEnd = distance
 end)
 
-cmd_library.add({'brightness'}, 'sets brightness', function(_, value)
+cmd_library.add({'brightness'}, '[value: number] - sets brightness', function(_, value)
 	value = tonumber(value) or 2
 	notify(`brightness set to {value}`)
 	z.lighting.Brightness = value
 end)
 
-cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', function(_, size)
+cmd_library.add({'hitbox', 'torsosize'}, '[size: number] - makes rootpart hitbox bigger', function(_, size)
 	size = tonumber(size) or 10
 	notify(`hitbox size set to {size}`)
 	pcall(function()
@@ -2548,7 +2589,7 @@ cmd_library.add({'unhitbox', 'untorsosize'}, 'resets rootpart hitbox', function(
 	end
 end)
 
-cmd_library.add({'orbit'}, 'orbit around a player', function(vstorage, name, distance, speed)
+cmd_library.add({'orbit'}, '[player: string, distance: number, speed: number] - orbit around a player', function(vstorage, name, distance, speed)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -2661,7 +2702,7 @@ cmd_library.add({'unequiptools', 'utools'}, 'unequips all tools', function()
 	z.local_character.Humanoid:UnequipTools()
 end)
 
-cmd_library.add({'animation', 'anim'}, 'plays an animation by id', function(_, id)
+cmd_library.add({'animation', 'anim'}, '[id: number] - plays an animation by id', function(_, id)
 	if not id then
 		return notify('provide an animation id')
 	end
@@ -2692,7 +2733,7 @@ cmd_library.add({'stopanimations', 'stopanim'}, 'stops all playing animations', 
 	end
 end)
 
-cmd_library.add({'age', 'accountage'}, 'shows account age', function(_, name)
+cmd_library.add({'age', 'accountage'}, '[player: string] - shows account age', function(_, name)
 	local targets = get_plr(name) or {z.local_player}
 	if not targets then
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
@@ -2742,7 +2783,7 @@ cmd_library.add({'unantiafk', 'unnoafk'}, 'disables anti-afk', function()
 	maid.remove('anti_afk')
 end)
 
-cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', function(vstorage,speed)
+cmd_library.add({'freecam', 'fcam'}, '[speed: number] - detach camera from character', function(vstorage,speed)
 	if vstorage.enabled then
 		return notify('freecam already enabled')
 	end
@@ -2816,19 +2857,19 @@ cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', functio
 	workspace.CurrentCamera.CameraSubject = vstorage.old_subject or z.local_character:FindFirstChildOfClass('Humanoid')
 end)
 
-cmd_library.add({'fov'}, 'sets field of view', function(_, value)
+cmd_library.add({'fov'}, '[fov: number] - sets field of view', function(_, value)
 	value = tonumber(value) or 70
 	notify(`fov set to {value}`)
 	workspace.CurrentCamera.FieldOfView = value
 end)
 
-cmd_library.add({'hipheight', 'hheight'}, 'sets hip height', function(_, height)
+cmd_library.add({'hipheight', 'hheight'}, '[height: number] - sets hip height', function(_, height)
 	height = tonumber(height) or 0
 	notify(`hip height set to {height}`)
 	z.local_character:FindFirstChildOfClass('Humanoid').HipHeight = height
 end)
 
-cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', function(vstorage, height)
+cmd_library.add({'loophipheight', 'loophheight'}, '[height: number] - loops hip height', function(vstorage, height)
 	height = tonumber(height) or 5
 	notify(`looping hip height at {height}`)
 	pcall(function()
@@ -2846,7 +2887,7 @@ cmd_library.add({'unloophipheight', 'unloophheight'}, 'stops looping hip height'
 	maid.remove('loop_hip_height')
 end)
 
-cmd_library.add({'tpwalk', 'teleportwalk'}, 'teleport when walking', function(vstorage, multiplier)
+cmd_library.add({'tpwalk', 'teleportwalk'}, '[multiplier: number] - teleport when walking', function(vstorage, multiplier)
 	if vstorage.enabled then
 		return notify('tpwalk already enabled')
 	end
@@ -2889,13 +2930,13 @@ cmd_library.add({'untpwalk', 'unteleportwalk'}, 'disables tpwalk', function()
 	maid.remove('tpwalk')
 end)
 
-cmd_library.add({'maxzoom'}, 'sets max camera zoom distance', function(_, distance)
+cmd_library.add({'maxzoom'}, '[distance: number] - sets max camera zoom distance', function(_, distance)
 	distance = tonumber(distance) or 128
 	notify(`max zoom set to {distance}`)
 	z.local_player.CameraMaxZoomDistance = distance
 end)
 
-cmd_library.add({'minzoom'}, 'sets min camera zoom distance', function(_, distance)
+cmd_library.add({'minzoom'}, '[distance: number] - sets min camera zoom distance', function(_, distance)
 	distance = tonumber(distance) or 0.5
 	notify(`min zoom set to {distance}`)
 	z.local_player.CameraMinZoomDistance = distance
@@ -2912,7 +2953,7 @@ cmd_library.add({'fixcam', 'resetcam'}, 'resets camera properties', function()
 	z.local_player.CameraMinZoomDistance = 0.5
 end)
 
-cmd_library.add({'deleteplayer', 'delplayer'}, 'deletes a player\'s character client sided', function(_, name)
+cmd_library.add({'deleteplayer', 'delplayer'}, '[player: string] - deletes a player\'s character client sided', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -2926,7 +2967,7 @@ cmd_library.add({'deleteplayer', 'delplayer'}, 'deletes a player\'s character cl
 	end
 end)
 
-cmd_library.add({'kick'}, 'kicks a player on client side', function(_, name)
+cmd_library.add({'kick'}, '[player: string] - kicks a player on client side', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -2940,7 +2981,7 @@ cmd_library.add({'kick'}, 'kicks a player on client side', function(_, name)
 	end
 end)
 
-cmd_library.add({'skydive'}, 'launches you into the sky', function(_, height)
+cmd_library.add({'skydive'}, '[height: number] - launches you into the sky', function(_, height)
 	height = tonumber(height) or 500
 	notify(`launching {height} studs up`)
 
@@ -2960,19 +3001,19 @@ cmd_library.add({'removesky'}, 'removes sky', function()
 	end
 end)
 
-cmd_library.add({'ambient'}, 'sets ambient lighting', function(_, color)
+cmd_library.add({'ambient'}, '[color: hex] - sets ambient lighting', function(_, color)
 	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
 	notify('ambient set')
 	z.lighting.Ambient = parsed
 end)
 
-cmd_library.add({'outdoorambient'}, 'sets outdoor ambient', function(_, color)
+cmd_library.add({'outdoorambient'}, '[color: hex] - sets outdoor ambient', function(_, color)
 	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
 	notify('outdoor ambient set')
 	z.lighting.OutdoorAmbient = parsed
 end)
 
-cmd_library.add({'colorshift'}, 'sets color shift', function(_, top, bottom)
+cmd_library.add({'colorshift'}, '[top: hex, bottom: hex] - sets color shift', function(_, top, bottom)
 	notify('color shift set')
 	z.lighting.ColorShift_Top = parse_hex(top) or Color3.new(0, 0, 0)
 	z.lighting.ColorShift_Bottom = parse_hex(bottom) or Color3.new(0, 0, 0)
@@ -3015,7 +3056,7 @@ cmd_library.add({'fpsboost', 'performancemode'}, 'optimizes game for better fps,
 	notify('fps boost applied')
 end)
 
-cmd_library.add({'copyid'}, 'copies a player\'s user id to clipboard', function(_, name)
+cmd_library.add({'copyid'}, '[player: string] - copies a player\'s user id to clipboard', function(_, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' does not exist`)
@@ -3041,7 +3082,7 @@ cmd_library.add({'coords', 'position', 'pos'}, 'shows your current position', fu
 	notify(`position: {math.floor(pos.X)}, {math.floor(pos.Y)}, {math.floor(pos.Z)}`)
 end)
 
-cmd_library.add({'tpcoords', 'tpc'}, 'teleport to coordinates', function(_, x, y, z_coord)
+cmd_library.add({'tpcoords', 'tpc'}, '[x: number, y: number, z: number] - teleport to coordinates', function(_, x, y, z_coord)
 	x = tonumber(x) or 0
 	y = tonumber(y) or 0
 	z_coord = tonumber(z_coord) or 0
@@ -3050,7 +3091,7 @@ cmd_library.add({'tpcoords', 'tpc'}, 'teleport to coordinates', function(_, x, y
 	z.local_character:PivotTo(CFrame.new(x, y, z_coord))
 end)
 
-cmd_library.add({'trail'}, 'adds trail to character', function(vstorage, color)
+cmd_library.add({'trail'}, '[color: hex] - adds trail to character', function(vstorage, color)
 	notify('trail added')
 
 	local parsed = parse_hex(color) or Color3.fromRGB(255, 255, 255)
@@ -3081,7 +3122,7 @@ cmd_library.add({'untrail'}, 'removes trail from character', function()
 	end
 end)
 
-cmd_library.add({'size', 'scale'}, 'changes character size', function(_, size)
+cmd_library.add({'size', 'scale'}, '[size: number] - changes character size', function(_, size)
 	size = tonumber(size) or 1
 	notify(`size set to {size}`)
 
@@ -3141,7 +3182,7 @@ cmd_library.add({'removeclones', 'clearclones'}, 'removes all clones', function(
 	end
 end)
 
-cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position with size [arg1] and with blastpressure [arg2]', function(_, size,blastpressure)
+cmd_library.add({'explode', 'explosion'}, '[size: number, blast_pressure: number] - creates explosion at your position', function(_, size,blastpressure)
 	size = tonumber(size) or 10
 	blastpressure = tonumber(blastpressure) or 500000
 	notify(`exploding with size {size}`)
@@ -3154,7 +3195,7 @@ cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position wi
 	explosion.Parent = workspace
 end)
 
-cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', function(_, power)
+cmd_library.add({'rocket', 'launch'}, '[power: number] - launches you like a rocket', function(_, power)
 	power = tonumber(power) or 100
 	notify(`launching with power {power}`)
 	local bv = Instance.new('BodyVelocity')
@@ -3185,7 +3226,7 @@ cmd_library.add({'saveinstance', 'savegame'}, 'saves the game instance', functio
 	saveinstance(game)
 end)
 
-cmd_library.add({'aimbot'}, 'aims at nearest player', function(vstorage, fov_size)
+cmd_library.add({'aimbot'}, '[fov: number] - aims at nearest player', function(vstorage, fov_size)
 	if vstorage.enabled then
 		return notify('aimbot already enabled')
 	end
@@ -3215,7 +3256,7 @@ cmd_library.add({'unaimbot'}, 'disables aimbot', function()
 	maid.remove('aimbot')
 end)
 
-cmd_library.add({'showfov'}, 'shows fov circle', function(vstorage, fov, color)
+cmd_library.add({'showfov'}, '[fov: number, color: hex] - shows fov circle', function(vstorage, fov, color)
 	fov = tonumber(fov) or 200
 
 	if vstorage.enabled and vstorage.fov == fov then
@@ -3267,7 +3308,7 @@ cmd_library.add({'hidefov'}, 'hides fov circle', function()
 	end
 end)
 
-cmd_library.add({'silentaim'}, 'silent aim at nearest player', function(vstorage, fov_size)
+cmd_library.add({'silentaim'}, '[fov: number] - silent aim at nearest player', function(vstorage, fov_size)
 	if vstorage.enabled then
 		return notify('silent aim already enabled')
 	end
@@ -3338,7 +3379,7 @@ cmd_library.add({'removehats', 'removeaccessories', 'rhats'}, 'removes all acces
 	end
 end)
 
-cmd_library.add({'walkto', 'pathfind'}, 'walks to a player', function(vstorage, name)
+cmd_library.add({'walkto', 'pathfind'}, '[player: string] - walks to a player', function(vstorage, name)
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
@@ -3359,7 +3400,7 @@ cmd_library.add({'stopwalkto', 'stoppath'}, 'stops walking', function()
 end)
 
 
-cmd_library.add({'chat', 'say'}, 'says something in chat', function(_, ...)
+cmd_library.add({'chat', 'say'}, '[message: string] - says something in chat', function(_, ...)
 	local message = table.concat({...}, ' ')
 	if message == '' then
 		return notify('provide a message to say')
@@ -3374,7 +3415,7 @@ cmd_library.add({'chat', 'say'}, 'says something in chat', function(_, ...)
 	end
 end)
 
-cmd_library.add({'spamchat'}, 'spams chat with a message, first arg: interval, second arg: message', function(vstorage, interval, ...)
+cmd_library.add({'spamchat'}, '[interval: number, message: string] - spams chat with a message', function(vstorage, interval, ...)
 	if vstorage.enabled then
 		return notify('spam chat already enabled')
 	end
@@ -3413,7 +3454,7 @@ cmd_library.add({'unspamchat'}, 'stops spam chat', function()
 	notify('spam chat disabled')
 end)
 
-cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', function(vstorage, range)
+cmd_library.add({'autopickup', 'apickup'}, '[range: number] - automatically picks up tools', function(vstorage, range)
 	if vstorage.enabled then
 		return notify('auto pickup already enabled')
 	end
@@ -3444,7 +3485,7 @@ cmd_library.add({'unautopickup', 'unapickup'}, 'disables auto pickup', function(
 	maid.remove('auto_pickup')
 end)
 
-cmd_library.add({'spam'}, 'spams a command', function(vstorage, times, ...)
+cmd_library.add({'spam'}, '[times: number, command: string] - spams a command', function(vstorage, times, ...)
 	times = tonumber(times) or 10
 	local args = {...}
 	local cmd_name = args[1]
@@ -3458,7 +3499,7 @@ cmd_library.add({'spam'}, 'spams a command', function(vstorage, times, ...)
 	end
 end)
 
-cmd_library.add({'reach'}, 'sets tool reach', function(vstorage, size)
+cmd_library.add({'reach'}, '[size: number] - sets tool reach', function(vstorage, size)
 	size = tonumber(size) or 10
 	notify(`reach set to {size}`)
 	pcall(function()
@@ -3474,7 +3515,7 @@ cmd_library.add({'reach'}, 'sets tool reach', function(vstorage, size)
 	end)
 end)
 
-cmd_library.add({'cframeloop', 'cfloop'}, 'cframe speed (fast movement)', function(vstorage, speed)
+cmd_library.add({'cframeloop', 'cfloop'}, '[speed: number] - cframe speed (fast movement)', function(vstorage, speed)
 	if vstorage.enabled then
 		return notify('cframe loop already enabled')
 	end
@@ -3506,7 +3547,7 @@ cmd_library.add({'uncframeloop', 'uncfloop'}, 'stop cframe speed', function()
 	notify(`cframe loop disabled`)
 end)
 
-cmd_library.add({'hncframeloop', 'hncfloop'}, 'cframe speed (bypass, laggy)', function(vstorage, speed)
+cmd_library.add({'hncframeloop', 'hncfloop'}, '[speed: number] - cframe speed (bypass, laggy)', function(vstorage, speed)
 	if vstorage.enabled then
 		return notify('hn cframe loop already enabled')
 	end
@@ -3529,7 +3570,7 @@ cmd_library.add({'hncframeloop', 'hncfloop'}, 'cframe speed (bypass, laggy)', fu
 	end)
 end)
 
-cmd_library.add({'discord','invite'},'copies the Discord invite',function()
+cmd_library.add({'discord','invite'}, 'copies the discord invite', function()
 	if setclipboard then
 		setclipboard('https://discord.gg/StHSWMjcnk')
 		notify('discord invite copied to clipboard')
@@ -3625,7 +3666,7 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 	z.real_char = nil
 end)
 
-cmd_library.add({'mirror', 'mimic'}, 'become their mirror and copy their movements', function(vstorage, name, distance)
+cmd_library.add({'mirror', 'mimic'}, '[player: string, distance: number] - become their mirror and copy their movements', function(vstorage, name, distance)
 	local targets = get_plr(name)
 	if not targets or #targets == 0 then
 		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
@@ -3689,7 +3730,7 @@ cmd_library.add({'unmirror', 'unmimic'}, 'stop mirroring', function()
 	end
 end)
 
-cmd_library.add({'partstorm', 'pstorm', 'partrain'}, 'rain parts on a player', function(vstorage, name, intensity)
+cmd_library.add({'partstorm', 'pstorm', 'partrain'}, '[player: string, intensity: number] - rain parts on a player', function(vstorage, name, intensity)
 	local targets = get_plr(name)
 	if not targets or #targets == 0 then
 		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
@@ -3800,7 +3841,7 @@ cmd_library.add({'unpartstorm', 'unpstorm', 'unpartrain'}, 'stops the part storm
 	notify('partstorm stopped')
 end)
 
-cmd_library.add({'annoy'}, 'teleport spam around a player', function(vstorage, name, speed)
+cmd_library.add({'annoy'}, '[player: string, speed: number] - teleport spam around a player', function(vstorage, name, speed)
 	local targets = get_plr(name)
 	if not targets or #targets == 0 then
 		return notify(`player '{name and tostring(name) or ''}' doesn't exist`)
@@ -3872,10 +3913,10 @@ cmd_library.add({'unannoy'}, 'stops annoying', function()
 	notify('stopped annoying')
 end)
 
-cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
-	local Clone = Instance.new("HopperBin")
-	local Hammer = Instance.new("HopperBin")
-	local Grab = Instance.new("HopperBin")
+cmd_library.add({'btools','bt'},'vives client-sided btools',function()
+	local Clone = Instance.new('HopperBin')
+	local Hammer = Instance.new('HopperBin')
+	local Grab = Instance.new('HopperBin')
 
 	Clone.BinType = Enum.BinType.Clone
 	Hammer.BinType = Enum.BinType.Hammer
@@ -3884,8 +3925,9 @@ cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 	Clone.Parent = z.local_player.Backpack
 	Hammer.Parent = z.local_player.Backpack
 	Grab.Parent = z.local_player.Backpack
-	notify("Gave btools.")
+	notify('gave btools')
 end)
+
 
 -- ui thing
 
@@ -3895,7 +3937,7 @@ cmdbar_ui.Parent = game:GetService('CoreGui')
 
 local main_container = cmdbar_ui.main_container
 local cmdbox = main_container:WaitForChild('command_box')
-local button = cmdbar_ui:WaitForChild('mobile_open')
+local button = main_container:WaitForChild('mobile_open')
 local pos_open_box = main_container.Position
 local pos_open_button = button.Position
 local pos_closed_box = UDim2.new(0.5, 0, 0, -35)
@@ -3908,14 +3950,14 @@ end
 
 task.wait(.1)
 tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
-tween_ui(cmdbar_ui.mobile_open, 0.15, {Position = pos_closed_button}, true)
+--tween_ui(button, 0.15, {Position = pos_closed_button}, true)
 
 local open = false
 button.MouseButton1Click:Connect(function()
 	open = not open
 	if open then
 		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
-		tween_ui(button, 0.15, {Position = pos_open_button}, false)
+		--tween_ui(button, 0.15, {Position = pos_open_button}, false)
 		button.Text = 'open'
 		cmdbox:CaptureFocus()
 	end
@@ -3924,7 +3966,7 @@ end)
 maid.add('open_cmd_bar', z.user_input_service.InputBegan, function(k,i)
 	if k.KeyCode == Enum.KeyCode.Quote and i == false then
 		tween_ui(main_container, 0.15, {Position = pos_open_box}, false)
-		tween_ui(button, 0.15, {Position = pos_open_button}, false)
+		--tween_ui(button, 0.15, {Position = pos_open_button}, false)
 		open = true
 
 		cmdbox:CaptureFocus()
@@ -3937,7 +3979,7 @@ end,1)
 
 cmdbox.FocusLost:Connect(function(enter)
 	tween_ui(main_container, 0.1, {Position = pos_closed_box}, true)
-	tween_ui(button, 0.1, {Position = pos_closed_button}, true)
+	--tween_ui(button, 0.1, {Position = pos_closed_button}, true)
 	open = false
 
 	if not enter and not z.is_mobile then return end
