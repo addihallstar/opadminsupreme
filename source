@@ -199,6 +199,9 @@ local get_plr = function(name)
 			end
 		end
 		return others
+	elseif lower_name == '@view' then
+		return {z.players:GetPlayerFromCharacter(workspace.CurrentCamera.CameraSubject.Parent)}
+	
 	end
 
 	lower_name = lower_name:gsub('%s', '')
