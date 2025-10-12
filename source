@@ -3913,7 +3913,7 @@ cmd_library.add({'unannoy'}, 'stops annoying', function()
 	notify('stopped annoying')
 end)
 
-cmd_library.add({'btools','bt'},'vives client-sided btools',function()
+cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 	local Clone = Instance.new('HopperBin')
 	local Hammer = Instance.new('HopperBin')
 	local Grab = Instance.new('HopperBin')
