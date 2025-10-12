@@ -201,7 +201,7 @@ local get_plr = function(name)
 		return others
 	elseif lower_name == '@view' then
 		return {z.players:GetPlayerFromCharacter(workspace.CurrentCamera.CameraSubject.Parent)}
-	
+
 	end
 
 	lower_name = lower_name:gsub('%s', '')
@@ -3656,6 +3656,23 @@ cmd_library.add({'unannoy'}, 'stops annoying', function()
 	maid.remove('annoy_connection')
 	notify('stopped annoying')
 end)
+
+cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
+	local Clone = Instance.new("HopperBin")
+	local Hammer = Instance.new("HopperBin")
+	local Grab = Instance.new("HopperBin")
+	
+	Clone.BinType = Enum.BinType.Clone
+	Hammer.BinType = Enum.BinType.Hammer
+	Grab.BinType = Enum.BinType.Grab
+	
+	Clone.Parent = z.local_player.Backpack
+	Hammer.Parent = z.local_player.Backpack
+	Grab.Parent = z.local_player.Backpack
+	notify("Gave btools.")
+end)
+
+
 
 -- ui slop
 
