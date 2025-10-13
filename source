@@ -1408,60 +1408,19 @@ cmd_library.add({'fling'}, '[player: string] - uses velocity to fling people', f
 		local cam = workspace.CurrentCamera
 
 		local old_pos = hrp.CFrame
-		local max_vel = Vector3.new(99999, 99999, 99999)
-		local zero_vel = Vector3.new(0, 0, 0)
-
-		hrp.Transparency = .5
-		hrp.BrickColor = BrickColor.new('Persimmon')
-		motor.Enabled = false
-		cam.CameraSubject = target_char.Head
-		hrp.CFrame = target_char:GetPivot()
-		humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-
-		local temp_model = Instance.new('Model', workspace)
-		Instance.new('Humanoid', temp_model).Name = '1'
-
-		local start_time = tick()
-		repeat
-			hrp.Parent = temp_model
-			hrp.Position = target_hrp.Position + target_humanoid.MoveDirection * 11
-			hrp.Velocity = max_vel
-			hrp.AssemblyAngularVelocity = max_vel
-			task.wait()
-		until target_hrp.Velocity.Magnitude >= 99 or tick() - start_time >= 3
-
-		temp_model:Destroy()
-		task.wait(.1)
-
-		cam.CameraSubject = z.local_character.Head
-		hrp.Parent = z.local_character
-
-		for i = 1, 2 do
-			hrp.Velocity = zero_vel
-			hrp.AssemblyAngularVelocity = zero_vel
-			hrp.AssemblyLinearVelocity = zero_vel
-
-			for _, part in pairs(z.local_character:GetDescendants()) do
-				if part:IsA('BasePart') then
-					part.AssemblyLinearVelocity = zero_vel
-				end
+		local max_vel = Vector3.new(2500,2500,2500)
+		local zero_vel = Vector3.zero
+		local oldtick = tick()
+		maid.add("velfling_connection",z.run_service.Heartbeat,function()
+			if target_hrp.Velocity.Magnitude < 100 and tick()-oldtick < 5 then
+				hrp.CFrame = predict_movement(game:GetService("Players"):GetPlayerFromCharacter(target_char),((target_humanoid.WalkSpeed*68.75)/100))
+				hrp.Velocity = max_vel
+			else
+				hrp.Velocity = zero_vel
+				z.local_character:PivotTo(old_pos)
+				maid.remove("velfling_connection")
 			end
-
-			if i == 1 then task.wait(0.1) end
-		end
-
-		motor.Enabled = true
-		humanoid:ChangeState(Enum.HumanoidStateType.Running)
-		hrp.Transparency = 1
-		z.local_character.Head.Anchored = false
-
-		start_time = tick()
-		repeat
-			workspace:BulkMoveTo({hrp}, {old_pos})
-			task.wait()
-		until tick() - start_time >= 0.3
-
-		cam.CameraSubject = humanoid
+		end)
 	end
 end)
 
@@ -1685,7 +1644,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 		local old_anchored = part.Anchored
 		local old_can_collide = part.CanCollide
 		local start_tick = tick()
-		
+
 		repeat
 			z.local_character:PivotTo(part.CFrame)
 			z.run_service.RenderStepped:Wait()
@@ -4146,7 +4105,7 @@ end
 task.wait(.1)
 tween_ui(main_container, 0.15, {Position = pos_closed_box}, true)
 --tween_ui(button, 0.15, {Position = pos_closed_button}, true)
-
+--die
 local open = false
 button.MouseButton1Click:Connect(function()
 	open = not open
