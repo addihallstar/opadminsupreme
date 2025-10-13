@@ -2292,16 +2292,6 @@ cmd_library.add({'countcommands', 'countcmds'}, 'counts the commands very useful
 	notify(#cmd_library._commands .. ' commands')
 end)
 
-cmd_library.add({'wallwalk', 'spiderman', 'ww'}, 'makes you walk on walls', function()
-	notify('activated spiderman mode')
-	local success, err = pcall(function()
-		loadstring(game:HttpGet('https://pastebin.com/raw/s4FjP97j'))()
-	end)
-	if not success then
-		notify('failed to load wallwalk: ' .. tostring(err))
-	end
-end)
-
 cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes', function()
 	notify('loading remote spy')
 	local success, err = pcall(function()
