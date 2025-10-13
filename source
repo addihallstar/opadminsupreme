@@ -269,7 +269,7 @@ local get_plr = function(name)
 	elseif lower_name == '@me' then
 		return {z.local_player}
 	elseif lower_name == '@all' then
-		return all_plrs
+		return all_plrs		
 	elseif lower_name == '@others' then
 		local others = {}
 		for _, plr in next, all_plrs do
@@ -1658,100 +1658,70 @@ end)
 
 cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number] - flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
 	local velocity = tonumber(vel) or 2500
-	
-	local function find_owned_part()
-		local closest_part = nil
-		local closest_distance = math.huge
-		local char_pos = z.local_character:GetPivot().Position
-		
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA('BasePart') and obj.Anchored == false and not obj:IsDescendantOf(z.local_character) and network_check(obj) == true then
-				if not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') then
-					local distance = (obj.Position - char_pos).Magnitude
-					if distance < closest_distance then
-						closest_distance = distance
-						closest_part = obj
-					end
-				end
-			end
-		end
-		
-		return closest_part
-	end
-	
+
 	local function part_fling(target)
 		if not target then return end
-		
+
 		if target == z.local_player then
 			notify('cannot partfling yourself')
 			return
 		end
-		
-		local part = find_owned_part()
-		local already_owned = part ~= nil
-		
-		if not part then
-			part = get_closest_part()
-		end
-		
+
+		local part = get_closest_part()
+
 		if part == nil then 
 			notify('there is nothing to partfling with') 
 			return 
 		end
-		
+
 		if part:IsDescendantOf(z.local_character) then
 			notify('cannot use your own character parts for partfling')
 			return
 		end
-		
+
 		local old_cframe_part = part.CFrame
 		local old_cf = z.local_character:GetPivot()
 		local old_pos = part.Position
 		local old_anchored = part.Anchored
 		local old_can_collide = part.CanCollide
+		local start_tick = tick()
 		
-		if not already_owned then
-			local start_tick = tick()
-			notify('no owned parts found, attempting to gain ownership')
-			repeat
-				z.local_character:PivotTo(part.CFrame)
-				z.run_service.RenderStepped:Wait()
-			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
-			
-			if network_check(part) == true then
-				notify(`successfully gained part ownership and used partfling on {target.Name}`)
-			else
-				if z.sim_range_reset == false then
-					notify('attempt to gain ownership timed out, consider using reloadnetwork')
-					z.local_character:PivotTo(old_cf)
-					return
-				end
-			end
+		repeat
+			z.local_character:PivotTo(part.CFrame)
+			z.run_service.RenderStepped:Wait()
+		until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
+
+		if network_check(part) == true then
+			notify(`successfully gained part ownership and used partfling on {target.Name} with velocity {velocity}`)
 		else
-			notify(`using owned part for partfling on {target.Name} with velocity {velocity}`)
+			if z.sim_range_reset == false then
+				notify('attempt to gain ownership timed out, consider using reloadnetwork')
+				z.local_character:PivotTo(old_cf)
+				return
+			end
 		end
-		
+
 		z.local_character:PivotTo(old_cf)
 		z.local_character:FindFirstChildOfClass('Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
-		
+
 		local target_hrp = target.Character and target.Character:FindFirstChild('HumanoidRootPart')
 		if not target_hrp then 
 			notify(`target {target.Name} has no HumanoidRootPart`)
 			return 
 		end
-		
+
 		local target_original_pos = target_hrp.Position
 		local fling_start_tick = tick()
-		
+
 		part.Anchored = false
 		part.CanCollide = false
-		
+
 		part.AssemblyLinearVelocity = Vector3.new(0, velocity * 2, 0)
-		
+
 		local fling_detected = false
 		local max_distance_reached = 0
 		local lost_ownership_tick = nil
-		
+
 		local function cleanup_part()
 			pcall(function()
 				part.Anchored = old_anchored
@@ -1771,11 +1741,11 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 				notify(`target {target.Name} no longer exists`)
 				return
 			end
-			
+
 			local time_elapsed = tick() - fling_start_tick
 			local distance_from_original = (target_hrp.Position - target_original_pos).Magnitude
 			max_distance_reached = math.max(max_distance_reached, distance_from_original)
-			
+
 			if distance_from_original >= 100 and time_elapsed <= 1 then
 				fling_detected = true
 				maid.remove('partfling_connection')
@@ -1783,13 +1753,13 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 				notify(`successfully flung {target.Name} (distance: {math.floor(distance_from_original)} studs in {math.floor(time_elapsed * 100) / 100}s)`)
 				return
 			end
-			
+
 			if fling_detected then
 				maid.remove('partfling_connection')
 				cleanup_part()
 				return
 			end
-			
+
 			if time_elapsed >= 10 then
 				maid.remove('partfling_connection')
 				cleanup_part()
@@ -1800,18 +1770,18 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 				end
 				return
 			end
-			
+
 			if network_check(part) ~= true then
 				if lost_ownership_tick == nil then
 					lost_ownership_tick = tick()
 					cleanup_part()
 				end
-				
+
 				local time_since_lost = tick() - lost_ownership_tick
-				
+
 				if time_since_lost >= 1 then
 					maid.remove('partfling_connection')
-					
+
 					if max_distance_reached >= 100 then
 						notify(`successfully flung {target.Name} (distance: {math.floor(max_distance_reached)} studs, lost ownership)`)
 					else
@@ -1820,7 +1790,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 				end
 				return
 			end
-			
+
 			z.local_player.SimulationRadius = 1000
 			part.Anchored = false
 			part.CanCollide = false
@@ -1828,7 +1798,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 			part.CFrame = target_hrp.CFrame
 		end)
 	end
-	
+
 	local targets = get_plr(name)
 	if not targets then
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
@@ -1846,27 +1816,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
 	end
 
-	local function find_owned_part(excluded)
-		local closest_part = nil
-		local closest_distance = math.huge
-		local char_pos = z.local_character:GetPivot().Position
-
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA('BasePart') and obj.Anchored == false and not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') and not obj:IsDescendantOf(z.local_character) then
-				if #obj:GetConnectedParts() < 2 and not table.find(excluded, obj) and network_check(obj) == true then
-					local distance = (obj.Position - char_pos).Magnitude
-					if distance < closest_distance then
-						closest_distance = distance
-						closest_part = obj
-					end
-				end
-			end
-		end
-
-		return closest_part
-	end
-
-	local function get_closest_unowned_part(excluded)
+	local function get_closest_part_e(excluded)
 		local best_part = nil
 		local smallest_magnitude = nil
 
@@ -1887,12 +1837,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 	local function part_trap(target, number, excluded)
 		if not target or not target.Character then return end
 
-		local part = find_owned_part(excluded)
-		local already_owned = part ~= nil
-
-		if not part then
-			part = get_closest_unowned_part(excluded)
-		end
+		local part = get_closest_part_e(excluded)
 
 		if part == nil then 
 			if number == 1 then
@@ -1904,21 +1849,19 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 		local old_cframe_part = part.CFrame
 		local old_cf = z.local_character:GetPivot()
 
-		if not already_owned then
-			local start_tick = tick()
-			repeat
-				z.local_character:PivotTo(part.CFrame)
-				z.run_service.RenderStepped:Wait()
-			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
+		local start_tick = tick()
+		repeat
+			z.local_character:PivotTo(part.CFrame)
+			z.run_service.RenderStepped:Wait()
+		until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
 
-			if network_check(part) ~= true then
-				if z.sim_range_reset == false then
-					if number == 1 then
-						notify('attempt to gain ownership timed out, consider using reloadnetwork')
-					end
-					z.local_character:PivotTo(old_cf)
-					return
+		if network_check(part) ~= true then
+			if z.sim_range_reset == false then
+				if number == 1 then
+					notify('attempt to gain ownership timed out, consider using reloadnetwork')
 				end
+				z.local_character:PivotTo(old_cf)
+				return
 			end
 		end
 
@@ -3928,6 +3871,258 @@ cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 	notify('gave btools')
 end)
 
+cmd_library.add({'antideath', 'antikill', 'autodeath'}, '[min_health: number] - teleports away from danger when health is low (default: 20)', function(vstorage, min_health)
+	if vstorage.enabled then
+		return notify('anti-death already enabled')
+	end
+
+	vstorage.enabled = true
+	vstorage.min_health = tonumber(min_health) or 20
+	notify(`anti-death enabled (threshold: {vstorage.min_health} HP)`)
+
+	local function setup_antideath()
+		local humanoid = z.local_character:FindFirstChildOfClass('Humanoid')
+		if not humanoid then return end
+
+		local last_health = humanoid.Health
+		local safe_position = z.local_character:GetPivot()
+		local damage_source = nil
+		local teleport_count = 0
+		local last_damage_tick = 0
+		local is_escaping = false
+		local last_teleport_time = 0
+
+		local function find_damage_source()
+			local hrp = z.local_character:FindFirstChild('HumanoidRootPart')
+			if not hrp then return nil end
+
+			local sources = {}
+
+			for _, plr in pairs(z.players:GetPlayers()) do
+				if plr ~= z.local_player and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
+					local distance = (hrp.Position - plr.Character.HumanoidRootPart.Position).Magnitude
+					if distance < 30 then
+						local has_tool = plr.Character:FindFirstChildOfClass('Tool')
+						table.insert(sources, {type = 'player', source = plr, name = plr.Name, distance = distance, priority = has_tool and 1 or 2})
+					end
+				end
+			end
+
+			for _, obj in pairs(workspace:GetDescendants()) do
+				if obj:IsA('BasePart') and obj.Parent ~= z.local_character then
+					local distance = (hrp.Position - obj.Position).Magnitude
+					local obj_name = obj.Name:lower()
+
+					if (obj_name:find('kill') or obj_name:find('damage') or obj_name:find('lava') or obj_name:find('death') or obj_name:find('fire') or obj_name:find('trap')) and distance < 25 then
+						table.insert(sources, {type = 'hazard', source = obj, name = obj.Name, distance = distance, priority = 2})
+					end
+
+					if obj.Velocity.Magnitude > 60 and distance < 15 then
+						table.insert(sources, {type = 'projectile', source = obj, name = obj.Name, distance = distance, priority = 1})
+					end
+				end
+			end
+
+			table.sort(sources, function(a, b)
+				if a.priority == b.priority then
+					return a.distance < b.distance
+				end
+				return a.priority < b.priority
+			end)
+
+			return sources[1]
+		end
+
+		local function teleport_to_safety()
+			local hrp = z.local_character:FindFirstChild('HumanoidRootPart')
+			if not hrp then return end
+
+			if tick() - last_teleport_time < 0.15 then return end
+			last_teleport_time = tick()
+
+			teleport_count += 1
+			is_escaping = true
+
+			local escape_pos
+
+			if damage_source then
+				local source_pos
+
+				if damage_source.type == 'player' and damage_source.source.Character and damage_source.source.Character:FindFirstChild('HumanoidRootPart') then
+					source_pos = damage_source.source.Character.HumanoidRootPart.Position
+					notify(`escaping from {damage_source.name}`)
+				elseif damage_source.source and damage_source.source:IsA('BasePart') then
+					source_pos = damage_source.source.Position
+					notify(`escaping from {damage_source.type}`)
+				end
+
+				if source_pos then
+					local escape_direction = (hrp.Position - source_pos).Unit
+					local escape_distance = damage_source.type == 'player' and 70 or 50
+					escape_pos = hrp.Position + (escape_direction * escape_distance) + Vector3.new(0, 20, 0)
+				else
+					escape_pos = safe_position.Position + Vector3.new(0, 10, 0)
+				end
+			else
+				if (safe_position.Position - hrp.Position).Magnitude > 200 then
+					local random_offset = Vector3.new(
+						math.random(-80, 80),
+						math.random(20, 50),
+						math.random(-80, 80)
+					)
+					escape_pos = hrp.Position + random_offset
+					notify('escaping to random position')
+				else
+					escape_pos = safe_position.Position + Vector3.new(0, 15, 0)
+					notify('returning to safe position')
+				end
+			end
+
+			for i = 1, 3 do
+				pcall(function()
+					z.local_character:PivotTo(CFrame.new(escape_pos))
+
+					for _, part in pairs(z.local_character:GetDescendants()) do
+						if part:IsA('BasePart') then
+							part.Velocity = Vector3.zero
+							part.AssemblyLinearVelocity = Vector3.zero
+							part.AssemblyAngularVelocity = Vector3.zero
+							part.RotVelocity = Vector3.zero
+						end
+					end
+				end)
+
+				if i < 3 then
+					task.wait(0.05)
+				end
+			end
+
+			task.delay(0.8, function()
+				is_escaping = false
+			end)
+		end
+
+		maid.add('antideath_health_monitor', humanoid:GetPropertyChangedSignal('Health'), function()
+			if not vstorage.enabled then
+				maid.remove('antideath_health_monitor')
+				maid.remove('antideath_heartbeat')
+				return
+			end
+
+			pcall(function()
+				local current_health = humanoid.Health
+
+				if current_health <= 0 then
+					maid.remove('antideath_health_monitor')
+					maid.remove('antideath_heartbeat')
+					return
+				end
+
+				if current_health < last_health then
+					last_damage_tick = tick()
+					damage_source = find_damage_source()
+
+					if current_health <= vstorage.min_health then
+						teleport_to_safety()
+					end
+				end
+
+				last_health = current_health
+			end)
+		end)
+
+		maid.add('antideath_heartbeat', z.run_service.Heartbeat, function()
+			if not vstorage.enabled then
+				maid.remove('antideath_health_monitor')
+				maid.remove('antideath_heartbeat')
+				return
+			end
+
+			pcall(function()
+				local current_health = humanoid.Health
+
+				if current_health <= 0 then
+					maid.remove('antideath_health_monitor')
+					maid.remove('antideath_heartbeat')
+					return
+				end
+
+				if current_health > vstorage.min_health + 40 and current_health >= last_health and not is_escaping then
+					local hrp = z.local_character:FindFirstChild('HumanoidRootPart')
+					if hrp and hrp.Position.Y > workspace.FallenPartsDestroyHeight + 50 then
+						safe_position = z.local_character:GetPivot()
+					end
+				end
+
+				if tick() - last_damage_tick < 2 and current_health <= vstorage.min_health then
+					if not is_escaping then
+						local health_before = current_health
+						task.wait(0.15)
+
+						if humanoid.Health < health_before and humanoid.Health > 0 then
+							damage_source = find_damage_source()
+							teleport_to_safety()
+						end
+					end
+				end
+
+				if tick() - last_damage_tick > 5 then
+					teleport_count = 0
+				end
+
+				if teleport_count >= 10 then
+					notify('excessive damage - returning to safe spawn')
+					teleport_count = 0
+					local spawn = workspace:FindFirstChild('SpawnLocation') or workspace:FindFirstChildOfClass('SpawnLocation')
+					if spawn then
+						z.local_character:PivotTo(spawn.CFrame + Vector3.new(0, 5, 0))
+					else
+						z.local_character:PivotTo(CFrame.new(0, 100, 0))
+					end
+
+					for _, part in pairs(z.local_character:GetDescendants()) do
+						if part:IsA('BasePart') then
+							part.Velocity = Vector3.zero
+							part.AssemblyLinearVelocity = Vector3.zero
+							part.AssemblyAngularVelocity = Vector3.zero
+						end
+					end
+				end
+			end)
+		end)
+	end
+
+	setup_antideath()
+
+	maid.add('antideath_character_respawn', z.local_player.CharacterAdded, function(character)
+		if not vstorage.enabled then
+			maid.remove('antideath_character_respawn')
+			return
+		end
+
+		z.local_character = character
+		task.wait(0.5)
+
+		if vstorage.enabled then
+			notify('anti-death reactivated after respawn')
+			setup_antideath()
+		end
+	end)
+end)
+
+cmd_library.add({'unantideath', 'unantikill', 'stopantideath'}, 'disables anti-death', function()
+	local vstorage = cmd_library.get_variable_storage('antideath')
+
+	if not vstorage.enabled then
+		return notify('anti-death not enabled')
+	end
+
+	vstorage.enabled = false
+	notify('anti-death disabled')
+	maid.remove('antideath_health_monitor')
+	maid.remove('antideath_heartbeat')
+	maid.remove('antideath_character_respawn')
+end)
 
 -- ui thing
 
