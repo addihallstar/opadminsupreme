@@ -1659,26 +1659,6 @@ end)
 cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number] - flings someone using parts, far more undetectable and works in collisions off.', function(_, name, vel)
 	local velocity = tonumber(vel) or 2500
 
-	local function find_owned_part()
-		local closest_part = nil
-		local closest_distance = math.huge
-		local char_pos = z.local_character:GetPivot().Position
-
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA('BasePart') and obj.Anchored == false and not obj:IsDescendantOf(z.local_character) and network_check(obj) == true then
-				if not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') then
-					local distance = (obj.Position - char_pos).Magnitude
-					if distance < closest_distance then
-						closest_distance = distance
-						closest_part = obj
-					end
-				end
-			end
-		end
-
-		return closest_part
-	end
-
 	local function part_fling(target)
 		if not target then return end
 
@@ -1687,12 +1667,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 			return
 		end
 
-		local part = find_owned_part()
-		local already_owned = part ~= nil
-
-		if not part then
-			part = get_closest_part()
-		end
+		local part = get_closest_part()
 
 		if part == nil then 
 			notify('there is nothing to partfling with') 
@@ -1709,26 +1684,21 @@ cmd_library.add({'partfling', 'pf', 'partf'}, '[player: string, velocity: number
 		local old_pos = part.Position
 		local old_anchored = part.Anchored
 		local old_can_collide = part.CanCollide
+		local start_tick = tick()
+		
+		repeat
+			z.local_character:PivotTo(part.CFrame)
+			z.run_service.RenderStepped:Wait()
+		until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
 
-		if not already_owned then
-			local start_tick = tick()
-			notify('no owned parts found, attempting to gain ownership')
-			repeat
-				z.local_character:PivotTo(part.CFrame)
-				z.run_service.RenderStepped:Wait()
-			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
-
-			if network_check(part) == true then
-				notify(`successfully gained part ownership and used partfling on {target.Name}`)
-			else
-				if z.sim_range_reset == false then
-					notify('attempt to gain ownership timed out, consider using reloadnetwork')
-					z.local_character:PivotTo(old_cf)
-					return
-				end
-			end
+		if network_check(part) == true then
+			notify(`successfully gained part ownership and used partfling on {target.Name} with velocity {velocity}`)
 		else
-			notify(`using owned part for partfling on {target.Name} with velocity {velocity}`)
+			if z.sim_range_reset == false then
+				notify('attempt to gain ownership timed out, consider using reloadnetwork')
+				z.local_character:PivotTo(old_cf)
+				return
+			end
 		end
 
 		z.local_character:PivotTo(old_cf)
@@ -1846,27 +1816,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 		return notify(`player {name and tostring(name) or ''} doesn't exist`)
 	end
 
-	local function find_owned_part(excluded)
-		local closest_part = nil
-		local closest_distance = math.huge
-		local char_pos = z.local_character:GetPivot().Position
-
-		for _, obj in pairs(workspace:GetDescendants()) do
-			if obj:IsA('BasePart') and obj.Anchored == false and not obj.Parent:FindFirstChildOfClass('Humanoid') and not obj.Parent.Parent:FindFirstChildOfClass('Humanoid') and not obj:IsDescendantOf(z.local_character) then
-				if #obj:GetConnectedParts() < 2 and not table.find(excluded, obj) and network_check(obj) == true then
-					local distance = (obj.Position - char_pos).Magnitude
-					if distance < closest_distance then
-						closest_distance = distance
-						closest_part = obj
-					end
-				end
-			end
-		end
-
-		return closest_part
-	end
-
-	local function get_closest_unowned_part(excluded)
+	local function get_closest_part_e(excluded)
 		local best_part = nil
 		local smallest_magnitude = nil
 
@@ -1887,12 +1837,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 	local function part_trap(target, number, excluded)
 		if not target or not target.Character then return end
 
-		local part = find_owned_part(excluded)
-		local already_owned = part ~= nil
-
-		if not part then
-			part = get_closest_unowned_part(excluded)
-		end
+		local part = get_closest_part_e(excluded)
 
 		if part == nil then 
 			if number == 1 then
@@ -1904,21 +1849,19 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, '[player: string] - trap them in 
 		local old_cframe_part = part.CFrame
 		local old_cf = z.local_character:GetPivot()
 
-		if not already_owned then
-			local start_tick = tick()
-			repeat
-				z.local_character:PivotTo(part.CFrame)
-				z.run_service.RenderStepped:Wait()
-			until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
+		local start_tick = tick()
+		repeat
+			z.local_character:PivotTo(part.CFrame)
+			z.run_service.RenderStepped:Wait()
+		until network_check(part) == true or z.sim_range_reset == true or tick() - start_tick >= 5
 
-			if network_check(part) ~= true then
-				if z.sim_range_reset == false then
-					if number == 1 then
-						notify('attempt to gain ownership timed out, consider using reloadnetwork')
-					end
-					z.local_character:PivotTo(old_cf)
-					return
+		if network_check(part) ~= true then
+			if z.sim_range_reset == false then
+				if number == 1 then
+					notify('attempt to gain ownership timed out, consider using reloadnetwork')
 				end
+				z.local_character:PivotTo(old_cf)
+				return
 			end
 		end
 
