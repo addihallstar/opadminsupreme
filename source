@@ -2292,7 +2292,7 @@ cmd_library.add({'countcommands', 'countcmds'}, 'counts the commands very useful
 	notify(#cmd_library._commands .. ' commands')
 end)
 
-cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes', function()
+cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes [WARNING: ITS A THIRD-PARTY TOOL]', function()
 	notify('loading remote spy')
 	local success, err = pcall(function()
 		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Octo-Spy/refs/heads/main/Main.lua'))()
@@ -2302,7 +2302,7 @@ cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes'
 	end
 end)
 
-cmd_library.add({'dex'}, 'dex explorer (dex++)', function()
+cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', function()
 	notify('loading dex')
 	local success, err = pcall(function()
 		loadstring(game:HttpGet('https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++'))()
@@ -3805,7 +3805,7 @@ cmd_library.add({'unannoy'}, 'stops annoying', function()
 	notify('stopped annoying')
 end)
 
-cmd_library.add({'btools','bt'},'vives client-sided btools',function()
+cmd_library.add({'btools','bt'},'Gives client-sided btools',function()
 	local Clone = Instance.new('HopperBin')
 	local Hammer = Instance.new('HopperBin')
 	local Grab = Instance.new('HopperBin')
