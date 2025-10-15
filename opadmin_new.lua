@@ -3598,24 +3598,27 @@ end)
 
 cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	{'fov', 'number'}
-}, function(vstorage, fov_size)
+}, function(vstorage, fov_size,aim_range)
 	if vstorage.enabled then
 		return notify('aimbot', 'aimbot already enabled', 2)
 	end
 
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
+	vstorage.aimrange = aim_range or 300
 	notify('aimbot', `aimbot enabled with fov {vstorage.fov}`, 1)
 
 	maid.add('aimbot', services.run_service.RenderStepped, function()
 		local target = get_closest_player(vstorage.fov)
 
-		if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) then
-			local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-			local cam_cf = stuff.rawrbxget(cam, 'CFrame')
-			local target_head = stuff.rawrbxget(target.Character, 'Head')
-			local target_pos = stuff.rawrbxget(target_head, 'Position')
-			stuff.rawrbxset(cam, 'CFrame', CFrame.new(cam_cf.Position, target_pos))
+		if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild("Head").Position-target.Character:FindFirstChild("Head").Position).Magnitude <= vstorage.aimrange then
+			if not stuff.is_mobile and services.user_input_service:IsKeyDown(Enum.KeyCode.LeftAlt) or stuff.is_mobile == true then
+				local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+				local cam_cf = stuff.rawrbxget(cam, 'CFrame')
+				local target_head = stuff.rawrbxget(target.Character, 'Head')
+				local target_pos = stuff.rawrbxget(target_head, 'Position')
+				stuff.rawrbxset(cam, 'CFrame', CFrame.new(cam_cf.Position, target_pos))
+			end
 		end
 	end)
 end)
@@ -3640,11 +3643,11 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	end
 
 	vstorage.enabled = true
-	vstorage.usedalready = true
 	vstorage.fov = fov_size or 200
 	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
 
 	if vstorage.usedalready ~= true then
+		vstorage.usedalready = true
 		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
 			if vstorage.enabled and self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
 				local target = get_closest_player(vstorage.fov)
