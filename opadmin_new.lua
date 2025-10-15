@@ -33,6 +33,7 @@ local services = {
 	replicated_storage = game:GetService('ReplicatedStorage'),
 	http = game:GetService('HttpService'),
 	gui_service = game:GetService('GuiService'),
+	virt_user = game:GetService('VirtualUser'),
 }
 
 local stuff = {
@@ -2175,13 +2176,15 @@ cmd_library.add({'ping'}, 'shows your ping', {}, function(vstorage)
 	notify('ping', `ping: {math.floor(ping)}ms`, 1)
 end)
 
-cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unantiafk")
-			return
-		end
+cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
+	{'enb', 'boolean'}
+}, function(vstorage, enabletoggling)
+	
+	if enabletoggling and vstorage.enabled then
+		cmd_library.execute("unantiafk")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('antiafk', 'anti-afk already enabled', 2)
 	end
@@ -2189,14 +2192,13 @@ cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {}, function(vstorage
 	vstorage.enabled = true
 	notify('antiafk', 'anti-afk enabled', 1)
 
-	local vu = game:GetService('VirtualUser')
 	pcall(function()
 		maid.remove('anti_afk')
 	end)
 
 	maid.add('anti_afk', stuff.owner.Idled, function()
-		vu:CaptureController()
-		vu:ClickButton2(Vector2.new())
+		services.virt_user:CaptureController()
+		services.virt_user:ClickButton2(Vector2.new())
 	end)
 end)
 
@@ -3956,8 +3958,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 end)
 
 cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
-	game:GetService("VirtualUser"):Button1Down(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
-	game:GetService("VirtualUser"):Button1Up(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
+	services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
 	pcall(function()
 		stuff.owner_char:FindFirstChildOfClass("Tool"):Activate()
 	end)
