@@ -3660,33 +3660,6 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 
 		return vstorage.old_index(self, key)
 	end)
-
-	vstorage.old_namecall = nil
-	vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-		local args = {...}
-		local method = getnamecallmethod()
-
-		if vstorage.enabled and (method == 'Raycast' or method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList') then
-			local target = get_closest_player(vstorage.fov)
-
-			if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) then
-				local head = stuff.rawrbxget(target.Character, 'Head')
-				local head_pos = stuff.rawrbxget(head, 'Position')
-
-				if method == 'Raycast' and self == workspace then
-					if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
-						args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
-					end
-				elseif (method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList') and self == workspace then
-					if args[1] and typeof(args[1]) == 'Ray' then
-						args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
-					end
-				end
-			end
-		end
-
-		return vstorage.old_namecall(self, unpack(args))
-	end)
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
