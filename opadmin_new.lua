@@ -252,7 +252,7 @@ local str_to_type = function(str, t)
 	if not t then
 		return str
 	end
-	
+
 	if t == 'number' then
 		return tonumber(str)
 	elseif t == 'boolean' or t == 'bool' then
@@ -283,7 +283,7 @@ local str_to_type = function(str, t)
 		if str == 'team' then
 			return 'team'
 		end
-		
+
 		local hex = str:match('^#?(%x+)$')
 		if hex then
 			if #hex == 3 then
@@ -313,7 +313,7 @@ local str_to_type = function(str, t)
 				return Color3.fromRGB(parts[1], parts[2], parts[3])
 			end
 		end
-		
+
 		return nil
 	elseif t == 'cframe' then
 		local parts = {}
@@ -334,7 +334,7 @@ local str_to_type = function(str, t)
 		end
 		return result
 	end
-	
+
 	notify('args', `invalid type '{t}' for string '{str}' - replacing with nil`, 2)
 	return nil
 end
@@ -1378,7 +1378,7 @@ cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press 
 
 	if vstorage.enabled then
 		notify('clicktp', 'click teleport enabled', 1)
-		
+
 		maid.add('clicktp', services.user_input_service.InputBegan, function(input, processed)
 			if processed then return end
 
@@ -2453,9 +2453,9 @@ cmd_library.add({'spam'}, 'spams a command', {
 	local args = {...}
 	local cmd_name = args[1]
 	table.remove(args, 1)
-	
+
 	print(...)
-	
+
 	notify('spam', `spamming command '{cmd_name}' {times} times`, 1)
 
 	for i = 1, times do
@@ -3640,26 +3640,28 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	end
 
 	vstorage.enabled = true
+	vstorage.usedalready = true
 	vstorage.fov = fov_size or 200
 	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
 
-	vstorage.old_index = nil
-	vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
-		if vstorage.enabled and self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
-			local target = get_closest_player(vstorage.fov)
+	if vstorage.usedalready ~= true then
+		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
+			if vstorage.enabled and self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
+				local target = get_closest_player(vstorage.fov)
 
-			if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) then
-				if key == 'Hit' then
-					local head = stuff.rawrbxget(target.Character, 'Head')
-					return stuff.rawrbxget(head, 'CFrame')
-				elseif key == 'Target' then
-					return stuff.rawrbxget(target.Character, 'Head')
+				if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) then
+					if key == 'Hit' then
+						local head = stuff.rawrbxget(target.Character, 'Head')
+						return stuff.rawrbxget(head, 'CFrame')
+					elseif key == 'Target' then
+						return stuff.rawrbxget(target.Character, 'Head')
+					end
 				end
 			end
-		end
 
-		return vstorage.old_index(self, key)
-	end)
+			return vstorage.old_index(self, key)
+		end)
+	end
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
