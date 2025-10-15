@@ -590,7 +590,7 @@ local cmd_library;cmd_library = {
 		local search = name:lower()
 
 		for cmd_name in pairs(cmd_library._command_map) do
-			if cmd_name:find(search, 1, true) then
+			if cmd_name:sub(1, #search) == search then
 				table.insert(similar, cmd_name)
 			end
 		end
@@ -3831,8 +3831,9 @@ end)
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	{'fov', 'number'},
 	{'wallbang', 'boolean'},
+	{'aim_range', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, fov_size,aim_range, et)
+}, function(vstorage, fov_size,wallbang,aim_range, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unsilentaim')
 		return
@@ -3845,7 +3846,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	vstorage.aimrange = aim_range or 300
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
-	vstorage.wallbang = false
+	vstorage.wallbang = wallbang or true
 
 	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
 
