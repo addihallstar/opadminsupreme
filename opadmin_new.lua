@@ -3756,9 +3756,14 @@ end)
 cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
 	game:GetService("VirtualUser"):Button1Down(Vector2.new(0.5,0.5),CFrame.new(stuff.owner_char:GetPivot()*CFrame.new(0,0,-10)))
 end)
-cmd_library.add({"presskey"},"presses a key on your keyboard",{},function(vstorage,key)
-	game:GetService("VirtualUser"):TypeKey(key:upper())
+cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{},function(vstorage,key,command,...)
+	maid.add(key:upper(),services.user_input_service.InputBegan,function(g,p)
+		if g.KeyCode.Name:upper() == key:upper() and p == false then
+			
+		end
+	end)
 end)
+cmd_library.add({"unbind","unkeybind","unbindkey"},"unbinds")
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('silentaim')
 
@@ -5241,7 +5246,7 @@ do
 	end, true)
 
 	maid.add('open_cmdbox_key', services.user_input_service.InputBegan, function(input, game_processed)
-		if input.KeyCode == Enum.KeyCode.Quote and not game_processed and not open then
+		if input.KeyCode == stuff.open_keybind and not game_processed and not open then
 			tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_open}, true)
 
 			open = true
@@ -5333,4 +5338,4 @@ stuff.ui_notifications_template = ui_notifications_template
 stuff.ui_notifications_main_container = ui_notifications_main_container
 
 notify('info', 'join the discord .gg/StHSWMjcnk', 4)
-notify('info', "opadmin loaded, press ' to open the cmdbar", 1)
+notify('info', `opadmin loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
