@@ -729,14 +729,15 @@ cmd_library.add({'jumppower', 'jp'}, 'sets your jumppower to [power]', {
 end)
 
 cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to [power] in a loop', {
-	{'power', 'number'}
-}, function(vstorage, power,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unloopjp")
-			return
-		end
+	{'power', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, power, et)
+	
+	if et and vstorage.enabled then
+		cmd_library.execute("unloopjp")
+		return
 	end
+
 	notify('loopjumppower', power and `looping jumppower set to {power}` or `looping jumppower set to default ({stuff.default_jp})`, 1)
 
 	vstorage.enabled = true
@@ -763,14 +764,15 @@ cmd_library.add({'unloopjumppower', 'unloopjp'}, 'disables loopjumppower', {}, f
 end)
 
 cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to [speed] in a loop', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unloopws")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	
+	if et and vstorage.enabled then
+		cmd_library.execute("unloopws")
+		return
 	end
+	
 	notify('loopwalkspeed', speed and `looping walkspeed set to {speed}` or `looping walkspeed set to default ({stuff.default_ws})`, 1)
 
 	vstorage.enabled = true
@@ -795,16 +797,15 @@ cmd_library.add({'unloopwalkspeed', 'unloopws'}, 'disables loopwalkspeed', {}, f
 end)
 
 cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
 	if speed == nil then
 		speed = 1
 	end
 
 	if vstorage.enabled and vstorage.speed == speed then
-		if enabletoggling and enabletoggling:lower() ~= "true" then
-			return notify('fly', 'already flying', 2)
-		elseif enabletoggling and enabletoggling:lower() == "true" then
+		if et then
 			cmd_library.execute("unfly")
 			return
 		else
@@ -863,13 +864,12 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 end)
 
 cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unbypassfly")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unbypassfly")
+		return
 	end
 
 	local fly_vstorage = cmd_library.get_variable_storage('fly')
@@ -953,13 +953,12 @@ cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', 
 	notify('bfly', 'disabled bypass flight', 1)
 end)
 
-cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unairwalk")
-			return
-		end
+cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unairwalk")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('airwalk', 'airwalk already enabled', 2)
 	end
@@ -1081,12 +1080,10 @@ cmd_library.add({'unfollow', 'stopfollow'}, 'stop following', {}, function(vstor
 	end
 end)
 
-cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("uninfjump")
-			return
-		end
+cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("uninfjump")
+		return
 	end
 	if vstorage.enabled then
 		return notify('infjump', 'infinite jump already enabled', 2)
@@ -1128,14 +1125,15 @@ cmd_library.add({'uninfjump', 'uninfinitejump'}, 'disable infinite jump', {}, fu
 end)
 
 cmd_library.add({'swim', 'swimmode'}, 'swim in the air', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unswim")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	
+	if et and vstorage.enabled then
+		cmd_library.execute("unswim")
+		return
 	end
+	
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('swim', 'swim is already enabled', 2)
 	end
@@ -1252,14 +1250,14 @@ cmd_library.add({'unorbit'}, 'stop orbiting', {}, function(vstorage)
 end)
 
 cmd_library.add({'tpwalk', 'teleportwalk'}, 'teleport when walking', {
-	{'multiplier', 'number'}
-}, function(vstorage, multiplier,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("untpwalk")
-			return
-		end
+	{'multiplier', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, multiplier, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("untpwalk")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('tpwalk', 'tpwalk already enabled', 2)
 	end
@@ -1347,14 +1345,14 @@ cmd_library.add({'stopwalkto', 'stoppath'}, 'stops walking', {}, function(vstora
 end)
 
 cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without changing the walkspeed', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("uncframespeed")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("uncframespeed")
+		return
 	end
+	
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('cframespeed', 'cframe speed already enabled', 2)
 	end
@@ -1394,14 +1392,14 @@ cmd_library.add({'uncframespeed', 'uncfspeed', 'uncfws'}, 'stop cframe speed', {
 end)
 
 cmd_library.add({'bypasscframespeed', 'bypasscfspeed', 'bypasscfws', 'bcframespeed', 'bcfspeed', 'bcfws'}, 'speeds you up without changing the walkspeed (bypass)', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unbypasscframespeed")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unbypasscframespeed")
+		return
 	end
+	
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('bypasscframespeed', 'bypass cframe speed already enabled', 2)
 	end
@@ -1443,6 +1441,20 @@ cmd_library.add({'unbypasscframespeed', 'unbypasscfspeed', 'unbypasscfws', 'unbc
 end)
 
 -- c2: utility
+
+cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
+	notify("tptool", "giving tptool",1)
+
+	local tptool = Instance.new("Tool")
+	tptool.Name = 'tp tool'
+	tptool.RequiresHandle = false
+	tptool.Activated:Connect(function()
+		local pos = stuff.owner:GetMouse().Hit.Position
+		pos = pos + Vector3.new(0,1.5,0)
+		stuff.owner_char:PivotTo(CFrame.new(pos))
+	end)
+	tptool.Parent = stuff.owner.Backpack
+end)
 
 cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press lmb to teleport)', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
@@ -1685,6 +1697,10 @@ cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {
 			if cmd_info.args and #cmd_info.args > 0 then
 				local arg_parts = {}
 				for _, arg_data in ipairs(cmd_info.args) do
+					if arg_data[3] == 'hidden' then
+						continue
+					end
+					
 					if arg_data['...'] then
 						table.insert(arg_parts, `...: {arg_data['...']}`)
 					else
@@ -1721,12 +1737,10 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 	end
 end)
 
-cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respawn at the position where you died', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unillusion")
-			return
-		end
+cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respawn at the position where you died', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unillusion")
+		return
 	end
 	if vstorage.enabled then
 		return notify('deathrespawn', 'death respawn already enabled', 2)
@@ -1772,12 +1786,10 @@ cmd_library.add({'unillusion', 'undeathrespawn', 'undrespawn', 'undr'}, 'disable
 	notify('deathrespawn', 'disabled death respawn', 1)
 end)
 
-cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your character', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unfakelag")
-			return
-		end
+cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your character', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unfakelag")
+		return
 	end
 	if vstorage.enabled then 
 		return notify('fakelag', 'fakelag is already enabled', 2) 
@@ -1937,13 +1949,12 @@ cmd_library.add({'reloadnetwork', 'reloadnet', 'rnetwork', 'rnet'}, 'resets your
 	end)
 end)
 
-cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unantifling")
-			return
-		end
+cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unantivoid")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('antivoid', 'antivoid already enabled', 2)
 	end
@@ -2087,13 +2098,12 @@ cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]
 end)
 
 cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', {
-	{'size', 'number'}
-}, function(vstorage, size,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unhitbox")
-			return
-		end
+	{'size', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, size, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unhitbox")
+		return
 	end
 	size = size or 10
 
@@ -2177,11 +2187,11 @@ cmd_library.add({'ping'}, 'shows your ping', {}, function(vstorage)
 end)
 
 cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
-	{'enb', 'boolean'}
-}, function(vstorage, enabletoggling)
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, et)
 	
-	if enabletoggling and vstorage.enabled then
-		cmd_library.execute("unantiafk")
+	if et and vstorage.enabled then
+		cmd_library.execute('unantiafk')
 		return
 	end
 	
@@ -2221,13 +2231,12 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 end)
 
 cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unfreecam")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unfreecam")
+		return
 	end
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('freecam', 'freecam already enabled', 2)
@@ -2514,13 +2523,12 @@ cmd_library.add({'unspamchat'}, 'stops spam chat', {}, function(vstorage)
 end)
 
 cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', {
-	{'range', 'number'}
-}, function(vstorage, range,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unautopickup")
-			return
-		end
+	{'range', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, range, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unautopickup")
+		return
 	end
 	if vstorage.enabled then
 		return notify('autopickup', 'auto pickup already enabled', 2)
@@ -2579,13 +2587,12 @@ cmd_library.add({'spam'}, 'spams a command', {
 end)
 
 cmd_library.add({'reach'}, 'sets tool reach', {
-	{'size', 'number'}
-}, function(vstorage, size,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unreach")
-			return
-		end
+	{'size', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, size, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unreach")
+		return
 	end
 	size = size or 10
 
@@ -2846,14 +2853,14 @@ end)
 
 cmd_library.add({'annoy'}, 'teleport spam around a player', {
 	{'player', 'player'},
-	{'speed', 'number'}
-}, function(vstorage, targets, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unannoy")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, targets, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unannoy")
+		return
 	end
+	
 	if not targets or #targets == 0 then
 		return notify('annoy', 'player not found', 2)
 	end
@@ -2927,13 +2934,12 @@ cmd_library.add({'unannoy'}, 'stops annoying', {}, function(vstorage)
 end)
 
 cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage inflicted 50 times and adds reach', {
-	{'reach', 'number'}
-}, function(vstorage, reach,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("uninstakillreach")
-			return
-		end
+	{'reach', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, reach, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("uninstakillreach")
+		return
 	end
 	reach = reach or 40
 
@@ -3032,13 +3038,12 @@ end)
 
 cmd_library.add({'mirror', 'mimic'}, 'become their mirror and copy their movements', {
 	{'player', 'player'},
-	{'distance', 'number'}
-}, function(vstorage, targets, distance,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unmirror")
-			return
-		end
+	{'distance', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, targets, distance, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unmirror")
+		return
 	end
 	if not targets or #targets == 0 then
 		return notify('mirror', 'player not found', 2)
@@ -3158,12 +3163,10 @@ cmd_library.add({'fling'}, 'uses velocity to fling people', {
 	end
 end)
 
-cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unwalkfling")
-			return
-		end
+cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unwalkfling")
+		return
 	end
 	if vstorage.enabled then
 		return notify('walkfling', 'walkfling is already enabled', 2)
@@ -3222,14 +3225,14 @@ cmd_library.add({'unwalkfling', 'unwalkf'}, 'disables walkfling', {}, function(v
 end)
 
 cmd_library.add({'robang', 'bang'}, 'robang someone', {
-	{'player', 'player'}
-}, function(vstorage, targets,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unrobang")
-			return
-		end
+	{'player', 'player'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, targets, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unrobang")
+		return
 	end
+	
 	if not targets or #targets == 0 then
 		return notify('robang', 'player not found', 2)
 	end
@@ -3280,13 +3283,12 @@ cmd_library.add({'stoprobang', 'unbang', 'endbang'}, 'stop robang', {}, function
 	maid.remove('ro_bang_connection')
 end)
 
-cmd_library.add({'spaz', 'seizure'}, 'makes your character spaz out', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unspaz")
-			return
-		end
+cmd_library.add({'spaz', 'seizure'}, 'makes your character spaz out', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unspaz")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('spaz', 'spaz already enabled', 2)
 	end
@@ -3380,12 +3382,10 @@ end)
 
 -- c4: character
 
-cmd_library.add({'nosit', 'disablesit', 'locksit'}, 'prevents your character from sitting', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("esit")
-			return
-		end
+cmd_library.add({'nosit', 'disablesit', 'locksit'}, 'prevents your character from sitting', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("esit")
+		return
 	end
 	if vstorage.enabled then
 		return notify('nosit', 'nosit already enabled', 2)
@@ -3414,12 +3414,10 @@ cmd_library.add({'esit', 'enablesit', 'unlocksit'}, 'allows your character to si
 	stuff.rawrbxset(humanoid, 'Sit', false)
 end)
 
-cmd_library.add({'noclip'}, 'walk through stuff', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("clip")
-			return
-		end
+cmd_library.add({'noclip'}, 'walk through stuff', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("clip")
+		return
 	end
 	if vstorage.enabled then
 		return notify('noclip', 'noclip already enabled', 2)
@@ -3463,12 +3461,10 @@ cmd_library.add({'clip'}, 'stop walking through stuff', {}, function(vstorage)
 	end
 end)
 
-cmd_library.add({'freeze'}, 'freezes your character in place', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unfreeze")
-			return
-		end
+cmd_library.add({'freeze'}, 'freezes your character in place', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unfreeze")
+		return
 	end
 	if vstorage.enabled then
 		return notify('freeze', 'freeze already enabled', 2)
@@ -3512,14 +3508,14 @@ cmd_library.add({'sit'}, 'buckle up', {}, function(vstorage)
 end)
 
 cmd_library.add({'spin', 'spinbot'}, 'spins your character', {
-	{'speed', 'number'}
-}, function(vstorage, speed,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unspin")
-			return
-		end
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unspin")
+		return
 	end
+	
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('spin', 'spin is already enabled', 2)
 	end
@@ -3660,14 +3656,14 @@ cmd_library.add({'hipheight', 'hheight'}, 'sets hip height', {
 end)
 
 cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', {
-	{'height', 'number'}
-}, function(vstorage, height,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unloophipheight")
-			return
-		end
+	{'height', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, height, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unloophipheight")
+		return
 	end
+	
 	height = height or 5
 
 	if vstorage.enabled then
@@ -3731,13 +3727,12 @@ cmd_library.add({'size', 'scale'}, 'changes character size', {
 	stuff.owner_char:ScaleTo(size)
 end)
 
-cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for others', {}, function(vstorage,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("visible")
-			return
-		end
+cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for others', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("visible")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('invisible', 'you already are invisible', 2)
 	end
@@ -3789,14 +3784,14 @@ end)
 -- c5: exploit
 
 cmd_library.add({'aimbot'}, 'aims at nearest player', {
-	{'fov', 'number'}
-}, function(vstorage, fov_size,aim_range,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unaimbot")
-			return
-		end
+	{'fov', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, fov_size,aim_range, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unaimbot")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('aimbot', 'aimbot already enabled', 2)
 	end
@@ -3835,21 +3830,22 @@ end)
 
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	{'fov', 'number'},
-	{'wallbang', 'boolean'}
-}, function(vstorage, fov_size,aim_range,enabletoggling)
-	if enabletoggling and enabletoggling:lower() == "true" then
-		if vstorage.enabled == true then
-			cmd_library.execute("unsilentaim")
-			return
-		end
+	{'wallbang', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, fov_size,aim_range, et)
+	if et and vstorage.enabled then
+		cmd_library.execute("unsilentaim")
+		return
 	end
+	
 	if vstorage.enabled then
 		return notify('silentaim', 'silent aim already enabled', 2)
 	end
+	
 	vstorage.aimrange = aim_range or 300
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
-	vstorage.wallbang = true
+	vstorage.wallbang = false
 
 	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
 
@@ -3959,12 +3955,9 @@ end)
 
 cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
 	services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
-	pcall(function()
-		stuff.owner_char:FindFirstChildOfClass("Tool"):Activate()
-	end)
 end)
 
-cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{},function(vstorage,key,command,arg1,arg2,arg3)
+cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{{"key","string"},{"command","string"},{"arguments","any"}},function(vstorage,key,command,arg1,arg2,arg3)
 	local matched = false
 	for _, v in cmd_library.find_similar(command:lower()) do
 		if v:lower() == command:lower() then
