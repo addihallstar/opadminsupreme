@@ -795,7 +795,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
 	if speed == nil then
 		speed = 1
 	end
-	
+
 	if vstorage.enabled and vstorage.speed == speed then
 		if enabletoggling and enabletoggling:lower() ~= "true" then
 			return notify('fly', 'already flying', 2)
@@ -866,7 +866,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 			return
 		end
 	end
-	
+
 	local fly_vstorage = cmd_library.get_variable_storage('fly')
 	if fly_vstorage.enabled then
 		return notify('bfly', 'disable normal fly first', 2)
@@ -3830,7 +3830,7 @@ end)
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	{'fov', 'number'},
 	{'wallbang', 'boolean'}
-}, function(vstorage, fov_size, wallbang,enabletoggling)
+}, function(vstorage, fov_size,aim_range,enabletoggling)
 	if enabletoggling and enabletoggling:lower() == "true" then
 		if vstorage.enabled == true then
 			cmd_library.execute("unsilentaim")
@@ -3840,15 +3840,12 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	if vstorage.enabled then
 		return notify('silentaim', 'silent aim already enabled', 2)
 	end
-
+	vstorage.aimrange = aim_range or 300
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
-	vstorage.wallbang = wallbang
-	if vstorage.wallbang == nil then
-		vstorage.wallbang = false
-	end
+	vstorage.wallbang = true
 
-	notify('silentaim', `silent aim enabled with fov {vstorage.fov} | wallbang: {vstorage.wallbang}`, 1)
+	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
 
 	local get_target = function()
 		local mouse = stuff.owner:GetMouse()
@@ -3859,7 +3856,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		local closest_distance = vstorage.fov
 
 		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
+			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild("Head").Position-plr.Character:FindFirstChild("Head").Position).Magnitude <= vstorage.aimrange then
 				if plr.Character and plr.Character:FindFirstChild('Head') then
 					local head = plr.Character.Head
 					local head_pos = stuff.rawrbxget(head, 'Position')
@@ -3875,7 +3872,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 								closest_player = plr
 							else
 								local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-								local ray = workspace:Raycast(cam_pos, (head_pos - cam_pos).Unit * (head_pos - cam_pos).Magnitude)
+								local ray = Ray.new(cam_pos, (head_pos - cam_pos).Unit * (head_pos - cam_pos).Magnitude)
 
 								if ray then
 									local hit_part = ray.Instance
@@ -3897,63 +3894,68 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		return closest_player
 	end
 
-	vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
-		if vstorage.enabled and checkcaller and not checkcaller() then
-			if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
-				local target = get_target()
+	if not vstorage.already_used then
+		vstorage.already_used = true
+		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
+			if vstorage.enabled and checkcaller and not checkcaller() then
+				if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
+					local target = get_target()
 
-				if target and target.Character and target.Character:FindFirstChild('Head') then
-					if key == 'Hit' then
-						local head = stuff.rawrbxget(target.Character, 'Head')
-						return stuff.rawrbxget(head, 'CFrame')
-					elseif key == 'Target' then
-						return stuff.rawrbxget(target.Character, 'Head')
+					if target and target.Character and target.Character:FindFirstChild('Head') then
+						if key == 'Hit' then
+							local head = stuff.rawrbxget(target.Character, 'Head')
+							return stuff.rawrbxget(head, 'CFrame')
+						elseif key == 'Target' then
+							return stuff.rawrbxget(target.Character, 'Head')
+						end
 					end
 				end
 			end
-		end
 
-		return vstorage.old_index(self, key)
-	end)
+			return vstorage.old_index(self, key)
+		end)
+	end 
 
-	vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-		local args = {...}
-		local method = getnamecallmethod()
+	--vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+	--	local args = {...}
+	--	local method = getnamecallmethod()
 
-		if vstorage.enabled and checkcaller and not checkcaller() then
-			local target = get_target()
+	--	if vstorage.enabled and checkcaller and not checkcaller() then
+	--		local target = get_target()
 
-			if target and target.Character and target.Character:FindFirstChild('Head') then
-				local head = stuff.rawrbxget(target.Character, 'Head')
-				local head_pos = stuff.rawrbxget(head, 'Position')
+	--		if target and target.Character and target.Character:FindFirstChild('Head') then
+	--			local head = stuff.rawrbxget(target.Character, 'Head')
+	--			local head_pos = stuff.rawrbxget(head, 'Position')
 
-				if method == 'Raycast' and self == workspace then
-					if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
-						args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
-						return vstorage.old_namecall(self, unpack(args))
-					end
-				elseif (method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList' or method == 'FindPartOnRayWithWhitelist') and self == workspace then
-					if args[1] and typeof(args[1]) == 'Ray' then
-						args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
-						return vstorage.old_namecall(self, unpack(args))
-					end
-				elseif method == 'ScreenPointToRay' and self:IsA('Camera') then
-					local cam_cf = stuff.rawrbxget(self, 'CFrame')
-					return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
-				elseif method == 'ViewportPointToRay' and self:IsA('Camera') then
-					local cam_cf = stuff.rawrbxget(self, 'CFrame')
-					return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
-				end
-			end
-		end
+	--			if method == 'Raycast' and self == workspace then
+	--				if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
+	--					args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
+	--					return vstorage.old_namecall(self, unpack(args))
+	--				end
+	--			elseif (method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList' or method == 'FindPartOnRayWithWhitelist') and self == workspace then
+	--				if args[1] and typeof(args[1]) == 'Ray' then
+	--					args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
+	--					return vstorage.old_namecall(self, unpack(args))
+	--				end
+	--			elseif method == 'ScreenPointToRay' and self:IsA('Camera') then
+	--				local cam_cf = stuff.rawrbxget(self, 'CFrame')
+	--				return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
+	--			elseif method == 'ViewportPointToRay' and self:IsA('Camera') then
+	--				local cam_cf = stuff.rawrbxget(self, 'CFrame')
+	--				return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
+	--			end
+	--		end
+	--	end
 
-		return vstorage.old_namecall(self, ...)
-	end)
+	--	return vstorage.old_namecall(self, ...)
+	--end)
 end)
+
 cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
 	game:GetService("VirtualUser"):Button1Down(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
 	game:GetService("VirtualUser"):Button1Up(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
 end)
+
 cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{},function(vstorage,key,command,arg1,arg2,arg3)
 	local matched = false
 	for _, v in cmd_library.find_similar(command:lower()) do
@@ -3973,12 +3975,14 @@ cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a 
 		notify("bind",`could not bind key '{key:upper()}' to command '{command}' because it doesn't exist `,2)
 	end
 end)
+
 cmd_library.add({"unbind","unkeybind","unbindkey"},"unbinds a key",{},function(vstorage,key)
 	pcall(function()
 		maid.remove(key:upper())
 	end)
 	notify("unbind",'unbinded key \''..key:upper()..'\'',1)
 end)
+
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('silentaim')
 
