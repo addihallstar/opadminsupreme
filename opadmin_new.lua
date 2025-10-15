@@ -3636,23 +3636,75 @@ cmd_library.add({'unaimbot'}, 'disables aimbot', {}, function(vstorage)
 end)
 
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
-	{'fov', 'number'}
-}, function(vstorage, fov_size)
+	{'fov', 'number'},
+	{'wallbang', 'boolean'}
+}, function(vstorage, fov_size, wallbang)
 	if vstorage.enabled then
 		return notify('silentaim', 'silent aim already enabled', 2)
 	end
 
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
-	notify('silentaim', `silent aim enabled with fov {vstorage.fov}`, 1)
+	vstorage.wallbang = wallbang
+	if vstorage.wallbang == nil then
+		vstorage.wallbang = false
+	end
+	
+	notify('silentaim', `silent aim enabled with fov {vstorage.fov} | wallbang: {vstorage.wallbang}`, 1)
 
-	if vstorage.usedalready ~= true then
-		vstorage.usedalready = true
-		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
-			if vstorage.enabled and self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
-				local target = get_closest_player(vstorage.fov)
+	local get_target = function()
+		local mouse = stuff.owner:GetMouse()
+		local mouse_pos = Vector2.new(mouse.X, mouse.Y)
+		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 
-				if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) then
+		local closest_player = nil
+		local closest_distance = vstorage.fov
+
+		for _, plr in pairs(services.players:GetPlayers()) do
+			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
+				if plr.Character and plr.Character:FindFirstChild('Head') then
+					local head = plr.Character.Head
+					local head_pos = stuff.rawrbxget(head, 'Position')
+					local screen_pos, on_screen = cam:WorldToViewportPoint(head_pos)
+
+					if on_screen and screen_pos.Z > 0 then
+						local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
+						local distance = (mouse_pos - screen_2d).Magnitude
+
+						if distance < closest_distance then
+							if vstorage.wallbang then
+								closest_distance = distance
+								closest_player = plr
+							else
+								local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
+								local ray = workspace:Raycast(cam_pos, (head_pos - cam_pos).Unit * (head_pos - cam_pos).Magnitude)
+
+								if ray then
+									local hit_part = ray.Instance
+									if hit_part:IsDescendantOf(plr.Character) then
+										closest_distance = distance
+										closest_player = plr
+									end
+								else
+									closest_distance = distance
+									closest_player = plr
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+
+		return closest_player
+	end
+
+	vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
+		if vstorage.enabled and checkcaller and not checkcaller() then
+			if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
+				local target = get_target()
+
+				if target and target.Character and target.Character:FindFirstChild('Head') then
 					if key == 'Hit' then
 						local head = stuff.rawrbxget(target.Character, 'Head')
 						return stuff.rawrbxget(head, 'CFrame')
@@ -3661,10 +3713,44 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 					end
 				end
 			end
+		end
 
-			return vstorage.old_index(self, key)
-		end)
-	end
+		return vstorage.old_index(self, key)
+	end)
+
+	vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+		local args = {...}
+		local method = getnamecallmethod()
+
+		if vstorage.enabled and checkcaller and not checkcaller() then
+			local target = get_target()
+
+			if target and target.Character and target.Character:FindFirstChild('Head') then
+				local head = stuff.rawrbxget(target.Character, 'Head')
+				local head_pos = stuff.rawrbxget(head, 'Position')
+
+				if method == 'Raycast' and self == workspace then
+					if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
+						args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
+						return vstorage.old_namecall(self, unpack(args))
+					end
+				elseif (method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList' or method == 'FindPartOnRayWithWhitelist') and self == workspace then
+					if args[1] and typeof(args[1]) == 'Ray' then
+						args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
+						return vstorage.old_namecall(self, unpack(args))
+					end
+				elseif method == 'ScreenPointToRay' and self:IsA('Camera') then
+					local cam_cf = stuff.rawrbxget(self, 'CFrame')
+					return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
+				elseif method == 'ViewportPointToRay' and self:IsA('Camera') then
+					local cam_cf = stuff.rawrbxget(self, 'CFrame')
+					return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
+				end
+			end
+		end
+
+		return vstorage.old_namecall(self, ...)
+	end)
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
