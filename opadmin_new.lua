@@ -734,7 +734,7 @@ cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to [power] in 
 }, function(vstorage, power, et)
 	
 	if et and vstorage.enabled then
-		cmd_library.execute("unloopjp")
+		cmd_library.execute('unloopjp')
 		return
 	end
 
@@ -769,7 +769,7 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to [speed] in 
 }, function(vstorage, speed, et)
 	
 	if et and vstorage.enabled then
-		cmd_library.execute("unloopws")
+		cmd_library.execute('unloopws')
 		return
 	end
 	
@@ -806,7 +806,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
 
 	if vstorage.enabled and vstorage.speed == speed then
 		if et then
-			cmd_library.execute("unfly")
+			cmd_library.execute('unfly')
 			return
 		else
 			return notify('fly', 'already flying', 2)
@@ -868,7 +868,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unbypassfly")
+		cmd_library.execute('unbypassfly')
 		return
 	end
 
@@ -955,7 +955,7 @@ end)
 
 cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unairwalk")
+		cmd_library.execute('unairwalk')
 		return
 	end
 	
@@ -1082,7 +1082,7 @@ end)
 
 cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("uninfjump")
+		cmd_library.execute('uninfjump')
 		return
 	end
 	if vstorage.enabled then
@@ -1130,7 +1130,7 @@ cmd_library.add({'swim', 'swimmode'}, 'swim in the air', {
 }, function(vstorage, speed, et)
 	
 	if et and vstorage.enabled then
-		cmd_library.execute("unswim")
+		cmd_library.execute('unswim')
 		return
 	end
 	
@@ -1254,7 +1254,7 @@ cmd_library.add({'tpwalk', 'teleportwalk'}, 'teleport when walking', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, multiplier, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("untpwalk")
+		cmd_library.execute('untpwalk')
 		return
 	end
 	
@@ -1349,7 +1349,7 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("uncframespeed")
+		cmd_library.execute('uncframespeed')
 		return
 	end
 	
@@ -1396,7 +1396,7 @@ cmd_library.add({'bypasscframespeed', 'bypasscfspeed', 'bypasscfws', 'bcframespe
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unbypasscframespeed")
+		cmd_library.execute('unbypasscframespeed')
 		return
 	end
 	
@@ -1443,9 +1443,9 @@ end)
 -- c2: utility
 
 cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
-	notify("tptool", "giving tptool",1)
+	notify('tptool', 'giving tptool',1)
 
-	local tptool = Instance.new("Tool")
+	local tptool = Instance.new('Tool')
 	tptool.Name = 'tp tool'
 	tptool.RequiresHandle = false
 	tptool.Activated:Connect(function()
@@ -1520,21 +1520,21 @@ cmd_library.add({'logmodules', 'getmodules', 'modules'}, 'logs all loaded module
 		local module_name = stuff.rawrbxget(module, 'Name')
 		local module_path = module:GetFullName()
 
-		local entry = `{i}. "{module_name}"\n`
+		local entry = `{i}. '{module_name}'\n`
 		entry ..= `   path: {module_path}\n`
 
 		local source_ids = {}
 		pcall(function()
 			if decompile then
-				local source = decompile(module) or ""
+				local source = decompile(module) or ''
 
-				for id in source:gmatch("rbxassetid://(%d+)") do
+				for id in source:gmatch('rbxassetid://(%d+)') do
 					if not table.find(source_ids, id) then
 						table.insert(source_ids, id)
 					end
 				end
 
-				for id in source:gmatch("require%((%d+)%)") do
+				for id in source:gmatch('require%((%d+)%)') do
 					if not table.find(source_ids, id) then
 						table.insert(source_ids, id)
 					end
@@ -1543,7 +1543,7 @@ cmd_library.add({'logmodules', 'getmodules', 'modules'}, 'logs all loaded module
 		end)
 
 		if #source_ids > 0 then
-			entry ..= `   referenced assets: {table.concat(source_ids, ", ")}\n`
+			entry ..= `   referenced assets: {table.concat(source_ids, ', ')}\n`
 			for _, id in ipairs(source_ids) do
 				if not table.find(asset_ids, id) then
 					table.insert(asset_ids, id)
@@ -1564,7 +1564,7 @@ cmd_library.add({'logmodules', 'getmodules', 'modules'}, 'logs all loaded module
 			end)
 
 			if success and asset_info then
-				local creator_name = "unknown"
+				local creator_name = 'unknown'
 				if asset_info.Creator then
 					if asset_info.Creator.Name then
 						creator_name = asset_info.Creator.Name
@@ -1572,17 +1572,17 @@ cmd_library.add({'logmodules', 'getmodules', 'modules'}, 'logs all loaded module
 						pcall(function()
 							local creator_info = marketplace:GetProductInfo(asset_info.Creator.CreatorTargetId, Enum.InfoType.Asset)
 							if creator_info and creator_info.Creator then
-								creator_name = creator_info.Creator.Name or "unknown"
+								creator_name = creator_info.Creator.Name or 'unknown'
 							end
 						end)
 					end
 				end
 
 				local asset_entry = `{idx}. asset {id}\n`
-				asset_entry ..= `   name: "{asset_info.Name}"\n`
+				asset_entry ..= `   name: '{asset_info.Name}'\n`
 				asset_entry ..= `   creator: {creator_name}\n`
-				asset_entry ..= `   type: {asset_info.AssetTypeId or "unknown"}\n`
-				asset_entry ..= `   description: {asset_info.Description and asset_info.Description:sub(1, 100) or "none"}...\n\n`
+				asset_entry ..= `   type: {asset_info.AssetTypeId or 'unknown'}\n`
+				asset_entry ..= `   description: {asset_info.Description and asset_info.Description:sub(1, 100) or 'none'}...\n\n`
 
 				output ..= asset_entry
 				print(asset_entry)
@@ -1739,7 +1739,7 @@ end)
 
 cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respawn at the position where you died', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unillusion")
+		cmd_library.execute('unillusion')
 		return
 	end
 	if vstorage.enabled then
@@ -1788,7 +1788,7 @@ end)
 
 cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your character', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unfakelag")
+		cmd_library.execute('unfakelag')
 		return
 	end
 	if vstorage.enabled then 
@@ -1951,7 +1951,7 @@ end)
 
 cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unantivoid")
+		cmd_library.execute('unantivoid')
 		return
 	end
 	
@@ -2102,7 +2102,7 @@ cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, size, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unhitbox")
+		cmd_library.execute('unhitbox')
 		return
 	end
 	size = size or 10
@@ -2235,7 +2235,7 @@ cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unfreecam")
+		cmd_library.execute('unfreecam')
 		return
 	end
 	if vstorage.enabled and vstorage.speed == speed then
@@ -2527,7 +2527,7 @@ cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, range, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unautopickup")
+		cmd_library.execute('unautopickup')
 		return
 	end
 	if vstorage.enabled then
@@ -2591,7 +2591,7 @@ cmd_library.add({'reach'}, 'sets tool reach', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, size, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unreach")
+		cmd_library.execute('unreach')
 		return
 	end
 	size = size or 10
@@ -2857,7 +2857,7 @@ cmd_library.add({'annoy'}, 'teleport spam around a player', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, targets, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unannoy")
+		cmd_library.execute('unannoy')
 		return
 	end
 	
@@ -2938,7 +2938,7 @@ cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, reach, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("uninstakillreach")
+		cmd_library.execute('uninstakillreach')
 		return
 	end
 	reach = reach or 40
@@ -3042,7 +3042,7 @@ cmd_library.add({'mirror', 'mimic'}, 'become their mirror and copy their movemen
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, targets, distance, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unmirror")
+		cmd_library.execute('unmirror')
 		return
 	end
 	if not targets or #targets == 0 then
@@ -3165,7 +3165,7 @@ end)
 
 cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unwalkfling")
+		cmd_library.execute('unwalkfling')
 		return
 	end
 	if vstorage.enabled then
@@ -3229,7 +3229,7 @@ cmd_library.add({'robang', 'bang'}, 'robang someone', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, targets, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unrobang")
+		cmd_library.execute('unrobang')
 		return
 	end
 	
@@ -3285,7 +3285,7 @@ end)
 
 cmd_library.add({'spaz', 'seizure'}, 'makes your character spaz out', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unspaz")
+		cmd_library.execute('unspaz')
 		return
 	end
 	
@@ -3384,7 +3384,7 @@ end)
 
 cmd_library.add({'nosit', 'disablesit', 'locksit'}, 'prevents your character from sitting', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("esit")
+		cmd_library.execute('esit')
 		return
 	end
 	if vstorage.enabled then
@@ -3416,7 +3416,7 @@ end)
 
 cmd_library.add({'noclip'}, 'walk through stuff', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("clip")
+		cmd_library.execute('clip')
 		return
 	end
 	if vstorage.enabled then
@@ -3463,7 +3463,7 @@ end)
 
 cmd_library.add({'freeze'}, 'freezes your character in place', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unfreeze")
+		cmd_library.execute('unfreeze')
 		return
 	end
 	if vstorage.enabled then
@@ -3512,7 +3512,7 @@ cmd_library.add({'spin', 'spinbot'}, 'spins your character', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unspin")
+		cmd_library.execute('unspin')
 		return
 	end
 	
@@ -3660,7 +3660,7 @@ cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, height, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unloophipheight")
+		cmd_library.execute('unloophipheight')
 		return
 	end
 	
@@ -3729,7 +3729,7 @@ end)
 
 cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for others', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("visible")
+		cmd_library.execute('visible')
 		return
 	end
 	
@@ -3788,7 +3788,7 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, fov_size,aim_range, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unaimbot")
+		cmd_library.execute('unaimbot')
 		return
 	end
 	
@@ -3804,7 +3804,7 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	maid.add('aimbot', services.run_service.RenderStepped, function()
 		local target = get_closest_player(vstorage.fov)
 
-		if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild("Head").Position-target.Character:FindFirstChild("Head").Position).Magnitude <= vstorage.aimrange then
+		if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild('Head').Position-target.Character:FindFirstChild('Head').Position).Magnitude <= vstorage.aimrange then
 			if not stuff.is_mobile and services.user_input_service:IsKeyDown(Enum.KeyCode.LeftAlt) or stuff.is_mobile == true then
 				local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 				local cam_cf = stuff.rawrbxget(cam, 'CFrame')
@@ -3834,7 +3834,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, fov_size,aim_range, et)
 	if et and vstorage.enabled then
-		cmd_library.execute("unsilentaim")
+		cmd_library.execute('unsilentaim')
 		return
 	end
 	
@@ -3858,7 +3858,7 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		local closest_distance = vstorage.fov
 
 		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild("Head").Position-plr.Character:FindFirstChild("Head").Position).Magnitude <= vstorage.aimrange then
+			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild('Head').Position-plr.Character:FindFirstChild('Head').Position).Magnitude <= vstorage.aimrange then
 				if plr.Character and plr.Character:FindFirstChild('Head') then
 					local head = plr.Character.Head
 					local head_pos = stuff.rawrbxget(head, 'Position')
@@ -3953,35 +3953,91 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	--end)
 end)
 
-cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
+cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
 	services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
 end)
 
-cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{{"key","string"},{"command","string"},{"arguments","any"}},function(vstorage,key,command,arg1,arg2,arg3)
+cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
+	{'key', 'string'},
+	{'command', 'string'},
+	{'...', 'string'}
+}, function(vstorage, key, command, ...)
+	if not key or not command then
+		return notify('bind', 'missing key or command', 2)
+	end
+
+	local keycode = Enum.KeyCode[key:upper()]
+	if not keycode then
+		return notify('bind', `invalid key '{key}'`, 2)
+	end
+
+	local similar = cmd_library.find_similar(command:lower())
 	local matched = false
-	for _, v in cmd_library.find_similar(command:lower()) do
-		if v:lower() == command:lower() then
+	for _, cmd_name in ipairs(similar) do
+		if cmd_name:lower() == command:lower() then
 			matched = true
+			break
 		end
 	end
-	if matched then
-		notify("bind",`successfully binded '{key:upper()}' to command '{command}'`,1)
-		maid.add(key:upper(),services.user_input_service.InputBegan,function(g,p)
-			if g.KeyCode.Name:upper() == key:upper() and p == false then
-				cmd_library.execute(command:lower(),arg1,arg2,arg3)
-			else
-			end
-		end)
-	else
-		notify("bind",`could not bind key '{key:upper()}' to command '{command}' because it doesn't exist `,2)
+
+	if not matched then
+		if #similar > 0 then
+			return notify('bind', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('bind', `command '{command}' not found`, 2)
+		end
 	end
+
+	local args = {...}
+	vstorage.binds = vstorage.binds or {}
+
+	local bind_id = `keybind_{key:upper()}_{command:lower()}`
+
+	if vstorage.binds[bind_id] then
+		maid.remove(bind_id)
+	end
+
+	vstorage.binds[bind_id] = {
+		key = key:upper(),
+		command = command:lower(),
+		args = args
+	}
+
+	maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
+		if input.KeyCode == keycode and not processed then
+			cmd_library.execute(command:lower(), unpack(args))
+		end
+	end)
+
+	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
 end)
 
-cmd_library.add({"unbind","unkeybind","unbindkey"},"unbinds a key",{},function(vstorage,key)
-	pcall(function()
-		maid.remove(key:upper())
-	end)
-	notify("unbind",'unbinded key \''..key:upper()..'\'',1)
+cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
+	{'key', 'string'}
+}, function(vstorage, key)
+	if not key then
+		return notify('unbind', 'no key specified', 2)
+	end
+
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	if not bind_vs or not bind_vs.binds then
+		return notify('unbind', 'no binds exist', 2)
+	end
+
+	local removed = false
+	for bind_id, bind_data in pairs(bind_vs.binds) do
+		if bind_data.key == key:upper() then
+			maid.remove(bind_id)
+			bind_vs.binds[bind_id] = nil
+			removed = true
+		end
+	end
+
+	if removed then
+		notify('unbind', `unbound key {key:upper()}`, 1)
+	else
+		notify('unbind', `no binds found for key {key:upper()}`, 2)
+	end
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
@@ -5472,12 +5528,14 @@ do
 			open = true
 			ui_cmdbox_inputbox:CaptureFocus()
 
-			if ui_cmdbox_inputbox.Text ~= '' then
-				repeat
-					ui_cmdbox_inputbox.Text = ''
-					hwait()
-				until ui_cmdbox_inputbox.Text == ''
-			end
+			task.delay(.05, function()
+				if ui_cmdbox_inputbox.Text ~= '' then
+					repeat
+						ui_cmdbox_inputbox.Text = ''
+						hwait()
+					until ui_cmdbox_inputbox.Text == ''
+				end
+			end)
 		end
 	end, true)
 
