@@ -45,6 +45,7 @@ local stuff = {
 	owner = services.players.LocalPlayer,
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://131430979206692')[1]):Clone(),
+	open_keybind = _G.opadmin_open_keybind or Enum.KeyCode.Quote,
 
 	rawrbxget = nil,
 	rawrbxset = nil,
@@ -3752,7 +3753,12 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		return vstorage.old_namecall(self, ...)
 	end)
 end)
-
+cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
+	game:GetService("VirtualUser"):Button1Down(Vector2.new(0.5,0.5),CFrame.new(stuff.owner_char:GetPivot()*CFrame.new(0,0,-10)))
+end)
+cmd_library.add({"presskey"},"presses a key on your keyboard",{},function(vstorage,key)
+	game:GetService("VirtualUser"):TypeKey(key:upper())
+end)
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('silentaim')
 
