@@ -554,6 +554,10 @@ local cmd_library;cmd_library = {
 
 		return cmd_data
 	end,
+	
+	find = function(name)
+		return cmd_library._command_map[name:lower()]
+	end,
 
 	remove = function(name)
 		local cmd_data = cmd_library._command_map[name:lower()]
@@ -3954,6 +3958,9 @@ end)
 cmd_library.add({"clickmouse","click"},"clicks your mouse",{},function(vstorage)
 	game:GetService("VirtualUser"):Button1Down(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
 	game:GetService("VirtualUser"):Button1Up(Vector2.new(0.5,0.5),workspace.CurrentCamera.CFrame)
+	pcall(function()
+		stuff.owner_char:FindFirstChildOfClass("Tool"):Activate()
+	end)
 end)
 
 cmd_library.add({"bind","keybind","bindkey"},"binds a command on the press of a button",{},function(vstorage,key,command,arg1,arg2,arg3)
