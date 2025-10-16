@@ -1460,7 +1460,7 @@ end)
 
 -- c2: utility
 
-cmd_library.add({'netless'}, 'enables netless for your character (prevents parts from falling)', {
+cmd_library.add({'netless', 'net'}, 'enables netless for your character (prevents parts from falling)', {
 	{'hat_velocity', 'vec3'},
 	{'body_velocity', 'vec3'},
 }, function(vstorage, hat_vel, body_vel)
@@ -5918,6 +5918,11 @@ cmd_library.add({'clientgodmode', 'cgodmode'}, 'sets your health to NaN', {{'ena
 		notify('clientgodmode', 'your character doesnt have a humanoid', 2)
 	end
 	
+	maid.add('godmode_hum', humanoid.Died, function()
+		local new_char = stuff.owner.CharacterAdded:Wait()
+		humanoid = new_char:WaitForChild('Humanoid')
+	end)
+	
 	vstorage.enabled = true
 	
 	stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
@@ -5938,6 +5943,7 @@ cmd_library.add({'unclientgodmode', 'uncgodmode'}, 'disables client godmode', {}
 	if vstorage.enabled then
 		vstorage.enabled = false
 		maid.remove('godmode')
+		maid.remove('godmode_hum')
 	else
 		notify('clientgodmode', 'godmode already disabled', 1)
 	end
