@@ -4,7 +4,7 @@ end
 
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
-getgenv = getgenv or (warn('not usable | getgenv') or getfenv)
+getgenv = getgenv or function() return shared end
 fireproximityprompt = fireproximityprompt or function() end
 firetouchinterest = firetouchinterest or function() end
 setclipboard = setclipboard or function() end
@@ -15,6 +15,7 @@ decompile = decompile or function() return '' end
 getnamecallmethod = getnamecallmethod or function() return '' end
 checkcaller = checkcaller or function() return false end
 syn = syn or {}
+sethiddenproperty = sethiddenproperty or function() end
 
 if getgenv().opadmin_loaded then
 	return warn('opadmin is already loaded')
@@ -36,6 +37,7 @@ local services = {
 	http = game:GetService('HttpService'),
 	gui_service = game:GetService('GuiService'),
 	virt_user = game:GetService('VirtualUser'),
+	marketplace_service = game:GetService('MarketplaceService'),
 }
 
 local stuff = {
@@ -1455,6 +1457,16 @@ end)
 
 -- c2: utility
 
+cmd_library.add({'netless', 'net'}, 'makes scripts more stable', {}, function()
+	for _, v in stuff.owner_char:GetDescendants() do
+		if v:IsA('BasePart') and v.Name ~= 'HumanoidRootPart' then
+			maid.add(v.Name..'_netless', services.run_service.Heartbeat, function()
+				stuff.rawrbxset(v, 'Velocity', Vector3.new(-30, 0, 0))
+			end)
+		end
+	end
+end)
+
 cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
 	notify('tptool', 'giving tptool',1)
 
@@ -1631,11 +1643,12 @@ cmd_library.add({'rejoin', 'rj'}, 'rejoins the server', {}, function()
 end)
 
 cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorage)
-	local existing_log = services.core_gui:FindFirstChild('opadmin_chatlogs')
+	local existing_log = vstorage.existing_log
 
 	if existing_log then
 		services.text_chat_service.OnIncomingMessage = stuff.empty_function
 		pcall(stuff.destroy, existing_log)
+		vstorage.existing_log = nil
 		vstorage.enabled = false
 		notify('chatlogs', 'chatlogs disabled', 1)
 		return
@@ -1643,7 +1656,8 @@ cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorag
 
 	vstorage.enabled = true
 	local chatlog = stuff.ui.opadmin_chatlogs:Clone()
-	chatlog.Parent = services.core_gui
+	vstorage.existing_log = chatlog
+	pcall(protect_gui, chatlog)
 	local ui_chatlog_template = chatlog.main_container.chatlogs.log
 	ui_chatlog_template.Parent = nil
 
@@ -1669,7 +1683,7 @@ cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorag
 end)
 
 cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chatlogs', {}, function(vstorage)
-	local existing_log = services.core_gui:FindFirstChild('opadmin_chatlogs')
+	local existing_log = cmd_library.get_variable_storage('chatlogs').existing_log
 
 	if existing_log then
 		for _, log in existing_log.main_container.chatlogs:GetChildren() do
@@ -2089,6 +2103,16 @@ cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event 
 
 	for _, v in ipairs(workspace:GetDescendants()) do
 		pcall(function() stuff.rawrbxset(v, 'CanTouch', false) end)
+	end
+end)
+
+cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+	notify('translatechat', 'loading chat translator', 1)
+	local success, err = pcall(function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/x114/RobloxScripts/main/UpdatedChatTranslator'))()
+	end)
+	if not success then
+		notify('translatechat', 'failed to load chat translator: ' .. tostring(err), 2)
 	end
 end)
 
@@ -2582,6 +2606,86 @@ cmd_library.add({'unautopickup', 'unapickup'}, 'disables auto pickup', {}, funct
 	maid.remove('auto_pickup')
 end)
 
+cmd_library.add({'loop'}, 'loops a command at specified interval', {
+	{'interval', 'number'},
+	{'command', 'string'},
+	{['...'] = 'string'}
+}, function(vstorage, interval, cmd_name, ...)
+	if not cmd_name then
+		return notify('loop', 'no command specified', 2)
+	end
+
+	interval = interval or 0.5
+	local args = {...}
+
+	local similar = cmd_library.find_similar(cmd_name:lower())
+	local matched = false
+	for _, name in pairs(similar) do
+		if name:lower() == cmd_name:lower() then
+			matched = true
+			break
+		end
+	end
+
+	if not matched then
+		if #similar > 0 then
+			return notify('loop', `command '{cmd_name}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('loop', `command '{cmd_name}' not found`, 2)
+		end
+	end
+
+	vstorage.loops = vstorage.loops or {}
+	local loop_id = `loop_{cmd_name:lower()}`
+
+	if vstorage.loops[loop_id] then
+		maid.remove(loop_id)
+		vstorage.loops[loop_id] = nil
+	end
+
+	vstorage.loops[loop_id] = {
+		command = cmd_name:lower(),
+		args = args,
+		interval = interval
+	}
+
+	notify('loop', `looping '{cmd_name}' every {interval}s`, 1)
+
+	task.spawn(function()
+		while vstorage.loops[loop_id] do
+			cmd_library.execute(cmd_name:lower(), unpack(args))
+			task.wait(interval)
+		end
+	end)
+end)
+
+cmd_library.add({'unloop'}, 'stops looping a command', {
+	{'command', 'string'}
+}, function(vstorage, cmd_name)
+	local loop_vs = cmd_library.get_variable_storage('loop')
+
+	if not loop_vs or not loop_vs.loops then
+		return notify('unloop', 'no active loops', 2)
+	end
+
+	if cmd_name then
+		local loop_id = `loop_{cmd_name:lower()}`
+		if loop_vs.loops[loop_id] then
+			loop_vs.loops[loop_id] = nil
+			notify('unloop', `stopped looping '{cmd_name}'`, 1)
+		else
+			notify('unloop', `no loop found for '{cmd_name}'`, 2)
+		end
+	else
+		local count = 0
+		for _ in pairs(loop_vs.loops) do
+			count = count + 1
+		end
+		loop_vs.loops = {}
+		notify('unloop', `stopped {count} loops`, 1)
+	end
+end)
+
 cmd_library.add({'spam'}, 'spams a command', {
 	{'times', 'number'},
 	{['...'] = 'string'}
@@ -2835,6 +2939,69 @@ cmd_library.add({'btools', 'bt'}, 'gives client-sided btools', {}, function(vsto
 end)
 
 -- c3: fun/trolling
+
+cmd_library.add({'netlag'}, 'glitches netless/reanimation users', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('netlag', 'no player specified', 2)
+	end
+
+	vstorage.connections = vstorage.connections or {}
+
+	for _, target in ipairs(targets) do
+		if target.Character then
+			local connection_id = `netlag_{target.Name}`
+
+			if vstorage.connections[connection_id] then
+				maid.remove(connection_id)
+			end
+
+			maid.add(connection_id, services.run_service.Heartbeat, function()
+				if target.Character then
+					for _, v in pairs(target.Character:GetDescendants()) do
+						if v:IsA('BasePart') then
+							pcall(sethiddenproperty, v, 'NetworkIsSleeping', false)
+						end
+					end
+				else
+					maid.remove(connection_id)
+					vstorage.connections[connection_id] = nil
+				end
+			end)
+
+			vstorage.connections[connection_id] = true
+			notify('netlag', `netlagging {target.Name}`, 1)
+		end
+	end
+end)
+
+cmd_library.add({'unnetlag'}, 'stops netlagging', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	local netlag_vs = cmd_library.get_variable_storage('netlag')
+
+	if not netlag_vs or not netlag_vs.connections then
+		return notify('netlag', 'no active netlags', 2)
+	end
+
+	if targets and #targets > 0 then
+		for _, target in ipairs(targets) do
+			local connection_id = `netlag_{target.Name}`
+			if netlag_vs.connections[connection_id] then
+				maid.remove(connection_id)
+				netlag_vs.connections[connection_id] = nil
+				notify('netlag', `stopped netlagging {target.Name}`, 1)
+			end
+		end
+	else
+		for connection_id in pairs(netlag_vs.connections) do
+			maid.remove(connection_id)
+		end
+		netlag_vs.connections = {}
+		notify('netlag', 'stopped all netlags', 1)
+	end
+end)
 
 cmd_library.add({'spook', 'jumpscare'}, 'teleport in front of someone briefly', {
 	{'player', 'player'},
@@ -3797,6 +3964,65 @@ cmd_library.add({'visible', 'uninvis', 'uninvisible'}, 'makes your character vis
 end)
 
 -- c5: exploit
+
+cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		notify('freegamepass', 'free gamepass enabled', 1)
+
+		vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+			local args = {...}
+			local method = getnamecallmethod()
+
+			if vstorage.enabled and checkcaller and not checkcaller() then
+				if self == game:GetService('MarketplaceService') then
+					if method == 'UserOwnsGamePassAsync' then
+						return true
+					elseif method == 'PlayerOwnsAsset' then
+						return true
+					elseif method == 'GetProductInfo' then
+						local result = vstorage.old_namecall(self, ...)
+						if result then
+							result.IsOwned = true
+						end
+						return result
+					end
+				end
+
+				if method == 'IsInGroup' and self:IsA('Player') then
+					return true
+				end
+			end
+
+			return vstorage.old_namecall(self, ...)
+		end)
+
+		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
+			if vstorage.enabled and checkcaller and not checkcaller() then
+				if self:IsA('Player') and (key == 'MembershipType' or key == 'Membership') then
+					return Enum.MembershipType.Premium
+				end
+			end
+
+			return vstorage.old_index(self, key)
+		end)
+	else
+		notify('freegamepass', 'free gamepass disabled', 1)
+		vstorage.enabled = false
+	end
+end)
+
+cmd_library.add({'unfreegamepass', 'unfreegp'}, 'disables free gamepass', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('freegamepass')
+
+	if not vstorage or not vstorage.enabled then
+		return notify('freegamepass', 'free gamepass not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	notify('freegamepass', 'free gamepass disabled', 1)
+end)
 
 cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	{'fov', 'number'},
@@ -5092,7 +5318,7 @@ cmd_library.add({'tracers', 'toggletracers'}, 'toggles tracers', {
 			stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
 			stuff.rawrbxset(gui, 'ResetOnSpawn', false)
 			stuff.rawrbxset(gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
-			stuff.rawrbxset(gui, 'Parent', services.core_gui)
+			pcall(protect_gui, gui)
 			vstorage.gui = gui
 		end
 
@@ -5371,10 +5597,11 @@ cmd_library.add({'showfov'}, 'shows fov circle', {
 	vstorage.enabled = true
 	notify('showfov', `fov circle enabled with radius {fov}`, 1)
 
-	local fov_circle = Instance.new('ScreenGui', services.core_gui)
+	local fov_circle = Instance.new('ScreenGui')
 	stuff.rawrbxset(fov_circle, 'Name', 'fov_circle')
 	stuff.rawrbxset(fov_circle, 'IgnoreGuiInset', true)
 	stuff.rawrbxset(fov_circle, 'ResetOnSpawn', false)
+	pcall(protect_gui, fov_circle)
 	vstorage.circle = fov_circle
 
 	local circle = Instance.new('ImageLabel')
@@ -5581,7 +5808,7 @@ do
 		ui_cmdbox_button.Text = 'open'
 	end, true)
 
-	ui_cmdbox.Parent = services.core_gui
+	pcall(protect_gui, ui_cmdbox)
 end
 
 do
@@ -5630,13 +5857,13 @@ do
 	end, true)
 
 	ui_cmdlist.Enabled = false
-	ui_cmdlist.Parent = services.core_gui
+	pcall(protect_gui, ui_cmdlist)
 	stuff.ui_cmdlist = ui_cmdlist
 	stuff.ui_cmdlist_template = ui_cmdlist_template
 	stuff.ui_cmdlist_commandlist = ui_cmdlist_commandlist
 end
 
-ui_notifications.Parent = services.core_gui
+pcall(protect_gui, ui_notifications)
 stuff.ui_notifications_template = ui_notifications_template
 stuff.ui_notifications_main_container = ui_notifications_main_container
 
