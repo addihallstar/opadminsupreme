@@ -1457,14 +1457,32 @@ end)
 
 -- c2: utility
 
-cmd_library.add({'netless', 'net'}, 'makes scripts more stable', {}, function()
+cmd_library.add({'netless', 'net'}, 'makes scripts more stable', {}, function(vstorage)
+	if vstorage.enabled then
+		return notify('netless', 'netless already enabled', 2)
+	end
+	
+	vstorage.enabled = true
 	for _, v in stuff.owner_char:GetDescendants() do
 		if v:IsA('BasePart') and v.Name ~= 'HumanoidRootPart' then
-			maid.add(v.Name..'_netless', services.run_service.Heartbeat, function()
+			local name = v.Name
+			maid.add(name..'_netless', services.run_service.Heartbeat, function()
+				if not vstorage.enabled then 
+					return maid.remove(name..'_netless')
+				end
+				
 				stuff.rawrbxset(v, 'Velocity', Vector3.new(-30, 0, 0))
 			end)
 		end
 	end
+end)
+
+cmd_library.add({'unnetless', 'unnet'}, 'disables netless', {}, function()
+	local vstorage = cmd_library.get_variable_storage('netless')
+	if not vstorage.enabled then
+		return notify('netless', 'netless already disabled', 2)
+	end
+	vstorage.enabled = false
 end)
 
 cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
