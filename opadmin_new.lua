@@ -4,7 +4,6 @@ end
 
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
-getgenv = getgenv or function() return shared end
 fireproximityprompt = fireproximityprompt or function() end
 firetouchinterest = firetouchinterest or function() end
 setclipboard = setclipboard or function() end
@@ -18,10 +17,13 @@ syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
 set_hidden_property = sethiddenproperty or function() end
 set_hidden_prop = sethiddenproperty or function() end
+hookfunction = hookfunction or function() end
+getrawmetatable = getrawmetatable or function() return {} end
+mouse1click = mouse1click or nil
 
-if getgenv().opadmin_loaded then
+if _G.opadmin_loaded then
 	return warn('opadmin is already loaded')
-end;getgenv().opadmin_loaded = true
+end;_G.opadmin_loaded = true
 
 
 local services = {
@@ -879,6 +881,151 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 	else
 		notify('fly', 'flight is already disabled', 2)
 	end
+end)
+
+cmd_library.add({'vfly', 'vehiclefly'}, 'enables vehicle fly', {
+	{'speed', 'number'}
+}, function(vstorage, speed)
+	if vstorage.enabled then
+		return notify('vfly', 'vehicle fly already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.speed = speed or 1
+	vstorage.is_flying = false
+
+	notify('vfly', `vehicle fly enabled with speed {vstorage.speed}`, 1)
+
+	local character = stuff.owner.Character
+	if not character or not character:FindFirstChild('HumanoidRootPart') then
+		return notify('vfly', 'character not found', 2)
+	end
+
+	local humanoid = character:FindFirstChildOfClass('Humanoid')
+	if not humanoid then
+		return notify('vfly', 'humanoid not found', 2)
+	end
+
+	local seat_part = stuff.rawrbxget(humanoid, 'SeatPart')
+	local root = seat_part or character.HumanoidRootPart
+
+	local movement = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
+	local last_movement = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
+	local current_speed = 0
+
+	vstorage.is_flying = true
+
+	local body_gyro = Instance.new('BodyGyro')
+	local body_velocity = Instance.new('BodyVelocity')
+
+	stuff.rawrbxset(body_gyro, 'P', 9e4)
+	stuff.rawrbxset(body_gyro, 'Parent', root)
+	stuff.rawrbxset(body_velocity, 'Parent', root)
+	stuff.rawrbxset(body_gyro, 'maxTorque', Vector3.new(9e9, 9e9, 9e9))
+	stuff.rawrbxset(body_gyro, 'cframe', stuff.rawrbxget(root, 'CFrame'))
+	stuff.rawrbxset(body_velocity, 'velocity', Vector3.new(0, 0, 0))
+	stuff.rawrbxset(body_velocity, 'maxForce', Vector3.new(9e9, 9e9, 9e9))
+
+	vstorage.body_gyro = body_gyro
+	vstorage.body_velocity = body_velocity
+
+	task.spawn(function()
+		while vstorage.is_flying do
+			task.wait()
+
+			local current_seat = stuff.rawrbxget(humanoid, 'SeatPart')
+			if current_seat and current_seat ~= seat_part then
+				seat_part = current_seat
+				root = seat_part
+				stuff.rawrbxset(body_gyro, 'Parent', root)
+				stuff.rawrbxset(body_velocity, 'Parent', root)
+			end
+
+			if movement.L + movement.R ~= 0 or movement.F + movement.B ~= 0 or movement.Q + movement.E ~= 0 then
+				current_speed = 50
+			elseif not (movement.L + movement.R ~= 0 or movement.F + movement.B ~= 0 or movement.Q + movement.E ~= 0) and current_speed ~= 0 then
+				current_speed = 0
+			end
+
+			local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+			local camera_cframe = stuff.rawrbxget(camera, 'CFrame')
+
+			if (movement.L + movement.R) ~= 0 or (movement.F + movement.B) ~= 0 or (movement.Q + movement.E) ~= 0 then
+				stuff.rawrbxset(body_velocity, 'velocity', ((camera_cframe.lookVector * (movement.F + movement.B)) + ((camera_cframe * CFrame.new(movement.L + movement.R, (movement.F + movement.B + movement.Q + movement.E) * 0.2, 0).Position) - camera_cframe.p)) * current_speed)
+				last_movement = {F = movement.F, B = movement.B, L = movement.L, R = movement.R}
+			elseif (movement.L + movement.R) == 0 and (movement.F + movement.B) == 0 and (movement.Q + movement.E) == 0 and current_speed ~= 0 then
+				stuff.rawrbxset(body_velocity, 'velocity', ((camera_cframe.lookVector * (last_movement.F + last_movement.B)) + ((camera_cframe * CFrame.new(last_movement.L + last_movement.R, (last_movement.F + last_movement.B + movement.Q + movement.E) * 0.2, 0).Position) - camera_cframe.p)) * current_speed)
+			else
+				stuff.rawrbxset(body_velocity, 'velocity', Vector3.new(0, 0, 0))
+			end
+
+			stuff.rawrbxset(body_gyro, 'cframe', camera_cframe)
+		end
+
+		if body_gyro and body_gyro.Parent then
+			body_gyro:Destroy()
+		end
+		if body_velocity and body_velocity.Parent then
+			body_velocity:Destroy()
+		end
+	end)
+
+	maid.add('vfly_keydown', services.user_input_service.InputBegan, function(input, processed)
+		if processed then return end
+
+		if input.KeyCode == Enum.KeyCode.W then
+			movement.F = vstorage.speed
+		elseif input.KeyCode == Enum.KeyCode.S then
+			movement.B = -vstorage.speed
+		elseif input.KeyCode == Enum.KeyCode.A then
+			movement.L = -vstorage.speed
+		elseif input.KeyCode == Enum.KeyCode.D then
+			movement.R = vstorage.speed
+		elseif input.KeyCode == Enum.KeyCode.E then
+			movement.Q = vstorage.speed * 2
+		elseif input.KeyCode == Enum.KeyCode.Q then
+			movement.E = -vstorage.speed * 2
+		end
+	end)
+
+	maid.add('vfly_keyup', services.user_input_service.InputEnded, function(input, processed)
+		if input.KeyCode == Enum.KeyCode.W then
+			movement.F = 0
+		elseif input.KeyCode == Enum.KeyCode.S then
+			movement.B = 0
+		elseif input.KeyCode == Enum.KeyCode.A then
+			movement.L = 0
+		elseif input.KeyCode == Enum.KeyCode.D then
+			movement.R = 0
+		elseif input.KeyCode == Enum.KeyCode.E then
+			movement.Q = 0
+		elseif input.KeyCode == Enum.KeyCode.Q then
+			movement.E = 0
+		end
+	end)
+end)
+
+cmd_library.add({'unvfly', 'unvehiclefly'}, 'disables vehicle fly', {}, function(vstorage)
+	local vfly_vs = cmd_library.get_variable_storage('vfly')
+
+	if not vfly_vs or not vfly_vs.enabled then
+		return notify('vfly', 'vehicle fly not enabled', 2)
+	end
+
+	vfly_vs.enabled = false
+	vfly_vs.is_flying = false
+
+	if vfly_vs.body_gyro then
+		vfly_vs.body_gyro:Destroy()
+	end
+	if vfly_vs.body_velocity then
+		vfly_vs.body_velocity:Destroy()
+	end
+
+	maid.remove('vfly_keydown')
+	maid.remove('vfly_keyup')
+
+	notify('vfly', 'vehicle fly disabled', 1)
 end)
 
 cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
@@ -4130,7 +4277,7 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 				if self == game:GetService('MarketplaceService') then
 					if method:lower() == 'userownsgamepassasync' then
 						return true
-					elseif method:lower() == 'playerownsssset' then
+					elseif method:lower() == 'playerownsasset' then
 						return true
 					elseif method:lower() == 'getproductinfo' then
 						local result = vstorage.old_namecall(self, ...)
@@ -4141,7 +4288,7 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 					end
 				end
 
-				if method:lower() == 'isnngroup' and self:IsA('Player') then
+				if method:lower() == 'isingroup' and self:IsA('Player') then
 					return true
 				end
 			end
@@ -4158,6 +4305,32 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 
 			return vstorage.old_index(self, key)
 		end)
+
+		if hookfunction and debug and debug.info then
+			local old_debug_info = debug.info
+			local original_namecall = getrawmetatable(game).__namecall
+			local original_index = getrawmetatable(game).__index
+
+			vstorage.debug_hook_gp = hookfunction(debug.info, function(level, options)
+				local result = old_debug_info(level, options)
+				if options == "f" then
+					if result == vstorage.old_namecall then
+						return original_namecall
+					elseif result == vstorage.old_index then
+						return original_index
+					end
+					if level == 2 or level == 3 then
+						local caller = old_debug_info(2, "f")
+						if caller == vstorage.old_namecall then
+							return original_namecall
+						elseif caller == vstorage.old_index then
+							return original_index
+						end
+					end
+				end
+				return result
+			end)
+		end
 	else
 		notify('freegamepass', 'free gamepass disabled', 1)
 		vstorage.enabled = false
@@ -4304,7 +4477,6 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 			if vstorage.enabled and checkcaller and not checkcaller() then
 				if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
 					local target = get_target()
-
 					if target and target.Character and target.Character:FindFirstChild('Head') then
 						if key == 'Hit' then
 							local head = stuff.rawrbxget(target.Character, 'Head')
@@ -4315,9 +4487,26 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 					end
 				end
 			end
-
 			return vstorage.old_index(self, key)
 		end)
+
+		if hookfunction and debug and debug.info then
+			local original_index = getrawmetatable(game).__index
+			local old_debug_info = debug.info
+
+			vstorage.debug_hook = hookfunction(debug.info, function(level, options)
+				local result = old_debug_info(level, options)
+				if level == 2 and options == "f" and result == vstorage.old_index then
+					return original_index
+				elseif level == 3 and options == "f" then
+					local caller = old_debug_info(2, "f")
+					if caller == vstorage.old_index then
+						return original_index
+					end
+				end
+				return result
+			end)
+		end
 	end 
 
 	--vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
@@ -4356,7 +4545,11 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 end)
 
 cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
-	services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
+	if mouse1click then
+		mouse1click()
+	else
+		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
+	end
 end)
 
 cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
@@ -5890,6 +6083,32 @@ cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your 
 
 		return vstorage.old_namecall(self, ...)
 	end)
+
+	if hookfunction and debug and debug.info then
+		local old_debug_info = debug.info
+		local original_newindex = getrawmetatable(game).__newindex
+		local original_namecall = getrawmetatable(game).__namecall
+
+		vstorage.debug_hook_stopdamage = hookfunction(debug.info, function(level, options)
+			local result = old_debug_info(level, options)
+			if options == "f" then
+				if result == vstorage.old_newindex then
+					return original_newindex
+				elseif result == vstorage.old_namecall then
+					return original_namecall
+				end
+				if level == 2 or level == 3 then
+					local caller = old_debug_info(2, "f")
+					if caller == vstorage.old_newindex then
+						return original_newindex
+					elseif caller == vstorage.old_namecall then
+						return original_namecall
+					end
+				end
+			end
+			return result
+		end)
+	end
 end)
 
 cmd_library.add({'unstopdamage', 'unstopd'}, 'disables damage prevention', {}, function(vstorage)
