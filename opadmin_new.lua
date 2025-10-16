@@ -4128,11 +4128,11 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 
 			if vstorage.enabled and checkcaller and not checkcaller() then
 				if self == game:GetService('MarketplaceService') then
-					if method == 'UserOwnsGamePassAsync' then
+					if method:lower() == 'userownsgamepassasync' then
 						return true
-					elseif method == 'PlayerOwnsAsset' then
+					elseif method:lower() == 'playerownsssset' then
 						return true
-					elseif method == 'GetProductInfo' then
+					elseif method:lower() == 'getproductinfo' then
 						local result = vstorage.old_namecall(self, ...)
 						if result then
 							result.IsOwned = true
@@ -4141,7 +4141,7 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 					end
 				end
 
-				if method == 'IsInGroup' and self:IsA('Player') then
+				if method:lower() == 'isnngroup' and self:IsA('Player') then
 					return true
 				end
 			end
@@ -4331,20 +4331,20 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	--			local head = stuff.rawrbxget(target.Character, 'Head')
 	--			local head_pos = stuff.rawrbxget(head, 'Position')
 
-	--			if method == 'Raycast' and self == workspace then
+	--			if method:lower() == 'raycast' and self == workspace then
 	--				if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
 	--					args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
 	--					return vstorage.old_namecall(self, unpack(args))
 	--				end
-	--			elseif (method == 'FindPartOnRay' or method == 'FindPartOnRayWithIgnoreList' or method == 'FindPartOnRayWithWhitelist') and self == workspace then
+	--			elseif (method == 'findpartonray' or method == 'findpartonraywithignorelist' or method == 'findpartonraywithwhitelist') and self == workspace then
 	--				if args[1] and typeof(args[1]) == 'Ray' then
 	--					args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
 	--					return vstorage.old_namecall(self, unpack(args))
 	--				end
-	--			elseif method == 'ScreenPointToRay' and self:IsA('Camera') then
+	--			elseif method:lower() == 'screenpointtoray' and self:IsA('Camera') then
 	--				local cam_cf = stuff.rawrbxget(self, 'CFrame')
 	--				return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
-	--			elseif method == 'ViewportPointToRay' and self:IsA('Camera') then
+	--			elseif method:lower() == 'viewportpointtoray' and self:IsA('Camera') then
 	--				local cam_cf = stuff.rawrbxget(self, 'CFrame')
 	--				return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
 	--			end
@@ -5878,9 +5878,9 @@ cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your 
 
 		if vstorage.enabled and checkcaller and not checkcaller() then
 			if self == humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
-				if method == 'TakeDamage' then
+				if method:lower() == 'takedamage' then
 					return
-				elseif method == 'ChangeState' then
+				elseif method:lower() == 'changestate' then
 					if args[1] == Enum.HumanoidStateType.Dead then
 						return
 					end
