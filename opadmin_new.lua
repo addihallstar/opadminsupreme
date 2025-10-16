@@ -2,13 +2,9 @@ if rawequal(game:IsLoaded(), false) then
 	game.Loaded:Wait()
 end
 
-if _G.opadmin_loaded then
-	return warn('opadmin is already loaded')
-end;_G.opadmin_loaded = true
-
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
---getgenv = getgenv or (warn('not usable | getgenv') or getfenv)
+getgenv = getgenv or (warn('not usable | getgenv') or getfenv)
 fireproximityprompt = fireproximityprompt or function() end
 firetouchinterest = firetouchinterest or function() end
 setclipboard = setclipboard or function() end
@@ -18,6 +14,12 @@ getloadedmodules = getloadedmodules or function() return {} end
 decompile = decompile or function() return '' end
 getnamecallmethod = getnamecallmethod or function() return '' end
 checkcaller = checkcaller or function() return false end
+syn = syn or {}
+
+if getgenv().opadmin_loaded then
+	return warn('opadmin is already loaded')
+end;getgenv().opadmin_loaded = true
+
 
 local services = {
 	core_gui = game:GetService('CoreGui'),
@@ -117,6 +119,17 @@ end
 
 local hwait = function(sig)
 	return services.run_service[sig and tostring(sig) or 'Heartbeat']:Wait()
+end
+
+local protect_gui = function(gui)
+	if syn and syn.protect_gui then
+		syn.protect_gui(gui)
+		stuff.rawrbxset(gui, 'Parent', services.core_gui)
+	elseif services.core_gui:FindFirstChild('RobloxGui') then
+		stuff.rawrbxset(gui, 'Parent', services.core_gui.RobloxGui)
+	else
+		stuff.rawrbxset(gui, 'Parent', services.core_gui)
+	end
 end
 
 local hypernull;hypernull = function(fn, ...)
@@ -555,7 +568,7 @@ local cmd_library;cmd_library = {
 
 		return cmd_data
 	end,
-	
+
 	find = function(name)
 		return cmd_library._command_map[name:lower()]
 	end,
@@ -732,7 +745,7 @@ cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to [power] in 
 	{'power', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, power, et)
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('unloopjp')
 		return
@@ -767,12 +780,12 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to [speed] in 
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('unloopws')
 		return
 	end
-	
+
 	notify('loopwalkspeed', speed and `looping walkspeed set to {speed}` or `looping walkspeed set to default ({stuff.default_ws})`, 1)
 
 	vstorage.enabled = true
@@ -958,7 +971,7 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {{'enable_togg
 		cmd_library.execute('unairwalk')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('airwalk', 'airwalk already enabled', 2)
 	end
@@ -1128,12 +1141,12 @@ cmd_library.add({'swim', 'swimmode'}, 'swim in the air', {
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('unswim')
 		return
 	end
-	
+
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('swim', 'swim is already enabled', 2)
 	end
@@ -1257,7 +1270,7 @@ cmd_library.add({'tpwalk', 'teleportwalk'}, 'teleport when walking', {
 		cmd_library.execute('untpwalk')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('tpwalk', 'tpwalk already enabled', 2)
 	end
@@ -1352,7 +1365,7 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 		cmd_library.execute('uncframespeed')
 		return
 	end
-	
+
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('cframespeed', 'cframe speed already enabled', 2)
 	end
@@ -1399,7 +1412,7 @@ cmd_library.add({'bypasscframespeed', 'bypasscfspeed', 'bypasscfws', 'bcframespe
 		cmd_library.execute('unbypasscframespeed')
 		return
 	end
-	
+
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('bypasscframespeed', 'bypass cframe speed already enabled', 2)
 	end
@@ -1700,14 +1713,16 @@ cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {
 					if arg_data[3] == 'hidden' then
 						continue
 					end
-					
+
 					if arg_data['...'] then
 						table.insert(arg_parts, `...: {arg_data['...']}`)
 					else
 						table.insert(arg_parts, `{arg_data[1]}: {arg_data[2]}`)
 					end
 				end
-				args_str = ` [{table.concat(arg_parts, ', ')}]`
+				if #arg_parts > 0 then
+					args_str = ` [{table.concat(arg_parts, ', ')}]`
+				end
 			end
 
 			newframe.Text = `{names_str}{args_str} - {cmd_info.description}`
@@ -1954,7 +1969,7 @@ cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'ena
 		cmd_library.execute('unantivoid')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('antivoid', 'antivoid already enabled', 2)
 	end
@@ -2189,12 +2204,12 @@ end)
 cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, et)
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('unantiafk')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('antiafk', 'anti-afk already enabled', 2)
 	end
@@ -2860,7 +2875,7 @@ cmd_library.add({'annoy'}, 'teleport spam around a player', {
 		cmd_library.execute('unannoy')
 		return
 	end
-	
+
 	if not targets or #targets == 0 then
 		return notify('annoy', 'player not found', 2)
 	end
@@ -3232,7 +3247,7 @@ cmd_library.add({'robang', 'bang'}, 'robang someone', {
 		cmd_library.execute('unrobang')
 		return
 	end
-	
+
 	if not targets or #targets == 0 then
 		return notify('robang', 'player not found', 2)
 	end
@@ -3288,7 +3303,7 @@ cmd_library.add({'spaz', 'seizure'}, 'makes your character spaz out', {{'enable_
 		cmd_library.execute('unspaz')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('spaz', 'spaz already enabled', 2)
 	end
@@ -3515,7 +3530,7 @@ cmd_library.add({'spin', 'spinbot'}, 'spins your character', {
 		cmd_library.execute('unspin')
 		return
 	end
-	
+
 	if vstorage.enabled and vstorage.speed == speed then
 		return notify('spin', 'spin is already enabled', 2)
 	end
@@ -3663,7 +3678,7 @@ cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', {
 		cmd_library.execute('unloophipheight')
 		return
 	end
-	
+
 	height = height or 5
 
 	if vstorage.enabled then
@@ -3732,7 +3747,7 @@ cmd_library.add({'invisible', 'invis'}, 'makes your character invisible for othe
 		cmd_library.execute('visible')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('invisible', 'you already are invisible', 2)
 	end
@@ -3785,27 +3800,35 @@ end)
 
 cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	{'fov', 'number'},
+	{"aimrange","number"},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, fov_size,aim_range, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unaimbot')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('aimbot', 'aimbot already enabled', 2)
 	end
-
+	local aimbotenabled = false
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
 	vstorage.aimrange = aim_range or 300
-	notify('aimbot', `aimbot enabled with fov {vstorage.fov}`, 1)
-
+	notify('aimbot', `aimbot enabled with fov {vstorage.fov}`..((not stuff.is_mobile and ', press G to enable') or ''), 1)
+	if not stuff.is_mobile then
+		maid.add("aimbot_g_enable",services.user_input_service.InputBegan,function(r,g)
+			if r.KeyCode.Name:upper() == "G" and g == false then
+				aimbotenabled = not aimbotenabled
+				notify("aimbot",((aimbotenabled and "enabled") or "disabled"),1)
+			end
+		end)
+	end
 	maid.add('aimbot', services.run_service.RenderStepped, function()
 		local target = get_closest_player(vstorage.fov)
 
 		if target and target.Character and target.Character:FindFirstChild('Head') and (not target.Team or target.Team ~= stuff.owner.Team) and (stuff.owner_char:FindFirstChild('Head').Position-target.Character:FindFirstChild('Head').Position).Magnitude <= vstorage.aimrange then
-			if not stuff.is_mobile and services.user_input_service:IsKeyDown(Enum.KeyCode.LeftAlt) or stuff.is_mobile == true then
+			if not stuff.is_mobile and aimbotenabled or stuff.is_mobile == true then
 				local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 				local cam_cf = stuff.rawrbxget(cam, 'CFrame')
 				local target_head = stuff.rawrbxget(target.Character, 'Head')
@@ -3826,6 +3849,7 @@ cmd_library.add({'unaimbot'}, 'disables aimbot', {}, function(vstorage)
 	vstorage.enabled = false
 	notify('aimbot', 'aimbot disabled', 1)
 	maid.remove('aimbot')
+	maid.remove('aimbot_g_enable')
 end)
 
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
@@ -3838,11 +3862,11 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		cmd_library.execute('unsilentaim')
 		return
 	end
-	
+
 	if vstorage.enabled then
 		return notify('silentaim', 'silent aim already enabled', 2)
 	end
-	
+
 	vstorage.aimrange = aim_range or 300
 	vstorage.enabled = true
 	vstorage.fov = fov_size or 200
