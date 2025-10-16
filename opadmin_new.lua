@@ -16,6 +16,8 @@ getnamecallmethod = getnamecallmethod or function() return '' end
 checkcaller = checkcaller or function() return false end
 syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
+set_hidden_property = sethiddenproperty or function() end
+set_hidden_prop = sethiddenproperty or function() end
 
 if getgenv().opadmin_loaded then
 	return warn('opadmin is already loaded')
@@ -38,6 +40,7 @@ local services = {
 	gui_service = game:GetService('GuiService'),
 	virt_user = game:GetService('VirtualUser'),
 	marketplace_service = game:GetService('MarketplaceService'),
+	network_client = game:GetService('NetworkClient'),
 }
 
 local stuff = {
@@ -1457,32 +1460,70 @@ end)
 
 -- c2: utility
 
-cmd_library.add({'netless', 'net'}, 'makes scripts more stable', {}, function(vstorage)
+cmd_library.add({'netless'}, 'enables netless for your character (prevents parts from falling)', {
+	{'hat_velocity', 'vec3'},
+	{'body_velocity', 'vec3'},
+}, function(vstorage, hat_vel, body_vel)
 	if vstorage.enabled then
 		return notify('netless', 'netless already enabled', 2)
 	end
 	
+	hat_vel = hat_vel or Vector3.new(-17.7, 0, -17.7)
+	body_vel = body_vel or Vector3.new(-17.7, 0, -17.7)
+
 	vstorage.enabled = true
-	for _, v in stuff.owner_char:GetDescendants() do
-		if v:IsA('BasePart') and v.Name ~= 'HumanoidRootPart' then
-			local name = v.Name
-			maid.add(name..'_netless', services.run_service.Heartbeat, function()
-				if not vstorage.enabled then 
-					return maid.remove(name..'_netless')
-				end
-				
-				stuff.rawrbxset(v, 'Velocity', Vector3.new(-30, 0, 0))
+	notify('netless', `netless enabled with hat velocity {tostring(hat_vel)} and body velocity {tostring(body_vel)}`, 1)
+
+	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
+
+	if sethidden then
+		maid.add('netless_simradius', services.run_service.Stepped, function()
+			pcall(function()
+				sethidden(stuff.owner, 'SimulationRadius', math.huge)
+				sethidden(stuff.owner, 'MaximumSimulationRadius', math.huge)
+				stuff.rawrbxset(stuff.owner, 'MaximumSimulationRadius', math.huge)
 			end)
-		end
+		end)
 	end
+
+	maid.add('netless_velocity', services.run_service.Heartbeat, function()
+		local char = stuff.owner_char
+		if not char then return end
+
+		for _, part in pairs(char:GetChildren()) do
+			if part:IsA('BasePart') and part.Name ~= 'HumanoidRootPart' then
+				stuff.rawrbxset(part, 'AssemblyLinearVelocity', body_vel)
+			elseif part:IsA('Accessory') and part:FindFirstChild('Handle') then
+				stuff.rawrbxset(part.Handle, 'AssemblyLinearVelocity', hat_vel)
+			end
+		end
+	end)
+
+	maid.add('netless_nocollide', services.run_service.Stepped, function()
+		local char = stuff.owner_char
+		if not char then return end
+
+		for _, part in pairs(char:GetDescendants()) do
+			if part:IsA('BasePart') then
+				stuff.rawrbxset(part, 'CanCollide', false)
+			end
+		end
+	end)
 end)
 
-cmd_library.add({'unnetless', 'unnet'}, 'disables netless', {}, function()
-	local vstorage = cmd_library.get_variable_storage('netless')
-	if not vstorage.enabled then
-		return notify('netless', 'netless already disabled', 2)
+cmd_library.add({'unnetless'}, 'disables netless', {}, function(vstorage)
+	local netless_vs = cmd_library.get_variable_storage('netless')
+
+	if not netless_vs or not netless_vs.enabled then
+		return notify('netless', 'netless not enabled', 2)
 	end
-	vstorage.enabled = false
+
+	netless_vs.enabled = false
+	notify('netless', 'netless disabled', 1)
+
+	maid.remove('netless_simradius')
+	maid.remove('netless_velocity')
+	maid.remove('netless_nocollide')
 end)
 
 cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
@@ -2279,6 +2320,13 @@ cmd_library.add({'unantiafk', 'unnoafk'}, 'disables anti-afk', {}, function(vsto
 	vstorage.enabled = false
 	notify('antiafk', 'anti-afk disabled', 1)
 	maid.remove('anti_afk')
+end)
+
+cmd_library.add({'datalimit'}, 'sets outgoing kb/s limit', {
+	{'limit', 'number'}
+}, function(vstorage, limit)
+	services.network_client:SetOutgoingKBPSLimit(limit)
+	notify('datalimit', `data limit set to {limit}kb/s`, 1)
 end)
 
 cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, function(vstorage)
