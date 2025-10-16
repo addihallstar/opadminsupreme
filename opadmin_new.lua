@@ -3345,6 +3345,91 @@ cmd_library.add({'fling'}, 'uses velocity to fling people', {
 	end
 end)
 
+cmd_library.add({'carpetfling'}, 'flings player using carpet animation and hip height', {
+	{'player', 'player'},
+	{'power', 'number'}
+}, function(vstorage, targets, power)
+	if not targets or #targets == 0 then
+		return notify('fling2', 'no player specified', 2)
+	end
+
+	power = power or 1000
+
+	for _, target in ipairs(targets) do
+		if target == stuff.owner then
+			notify('fling2', 'cannot fling yourself', 2)
+			continue
+		end
+
+		if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
+			notify('fling2', `{target.Name} has no character`, 2)
+			continue
+		end
+
+		local char = stuff.owner.Character
+		if not char or not char:FindFirstChild('HumanoidRootPart') or not char:FindFirstChild('Humanoid') then
+			return notify('fling2', 'your character is missing parts', 2)
+		end
+
+		local hrp = char.HumanoidRootPart
+		local humanoid = char.Humanoid
+		local old_cf = stuff.rawrbxget(hrp, 'CFrame')
+		local old_hip_height = stuff.rawrbxget(humanoid, 'HipHeight')
+
+		local target_torso = target.Character:FindFirstChild('Torso') or 
+			target.Character:FindFirstChild('LowerTorso') or 
+			target.Character:FindFirstChild('HumanoidRootPart')
+
+		if not target_torso then
+			notify('fling2', `{target.Name} has no torso`, 2)
+			continue
+		end
+
+		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+		stuff.rawrbxset(workspace.CurrentCamera, 'CameraSubject', target.Character.Humanoid)
+
+		local carpet_anim = Instance.new('Animation')
+		stuff.rawrbxset(carpet_anim, 'AnimationId', 'rbxassetid://282574440')
+		local carpet_track = humanoid:LoadAnimation(carpet_anim)
+		carpet_track:Play(0.1, 1, 1)
+
+		notify('fling2', `flinging {target.Name} with power {power}`, 1)
+
+		maid.add('fling2_loop', services.run_service.Heartbeat, function()
+			pcall(function()
+				local target_vel = stuff.rawrbxget(target_torso, 'AssemblyLinearVelocity')
+				local target_pos = stuff.rawrbxget(target_torso, 'Position')
+
+				if target_vel.Magnitude <= 28 then
+					local predicted_pos = target_pos + target_vel / 2
+					stuff.rawrbxset(hrp, 'CFrame', CFrame.new(predicted_pos))
+				else
+					stuff.rawrbxset(hrp, 'CFrame', stuff.rawrbxget(target_torso, 'CFrame'))
+				end
+			end)
+		end)
+
+		task.wait()
+		stuff.rawrbxset(humanoid, 'HipHeight', power)
+
+		task.wait(0.5)
+
+		maid.remove('fling2_loop')
+		stuff.rawrbxset(workspace.CurrentCamera, 'CameraSubject', char.Humanoid)
+		carpet_track:Stop()
+		carpet_anim:Destroy()
+
+		task.wait(1)
+		stuff.rawrbxset(humanoid, 'Health', 0)
+
+		task.wait(services.players.RespawnTime + 0.6)
+
+		if stuff.owner.Character and stuff.owner.Character:FindFirstChild('HumanoidRootPart') then
+			stuff.rawrbxset(stuff.owner.Character.HumanoidRootPart, 'CFrame', old_cf)
+		end
+	end
+end)
+
 cmd_library.add({'walkfling', 'walkf'}, 'enables walkfling, credits to X', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unwalkfling')
@@ -5578,9 +5663,15 @@ end)
 
 cmd_library.add({'showfov'}, 'shows fov circle', {
 	{'fov', 'number'},
-	{'color', 'color3'}
-}, function(vstorage, fov, color)
+	{'color', 'color3'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, fov, color, et)
 	fov = fov or 200
+	
+	if et and vstorage.enabled then
+		cmd_library.execute('hidefov')
+		return
+	end
 
 	if vstorage.enabled and vstorage.fov == fov then
 		return notify('showfov', 'fov circle already enabled', 2)
@@ -5633,8 +5724,14 @@ cmd_library.add({'hidefov'}, 'hides fov circle', {}, function(vstorage)
 end)
 
 cmd_library.add({'trail'}, 'adds trail to character', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, color, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('untrail')
+		return
+	end
+	
 	notify('trail', 'trail added', 1)
 
 	local parsed = color or Color3.fromRGB(255, 255, 255)
@@ -5666,6 +5763,119 @@ cmd_library.add({'untrail'}, 'removes trail from character', {}, function(vstora
 end)
 
 -- c7: player
+
+cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your humanoid on client', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unstopdamage')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('stopdamage', 'stopdamage already enabled', 2)
+	end
+
+	local humanoid = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+	if not humanoid then
+		return notify('stopdamage', 'your character doesnt have a humanoid', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.health = stuff.rawrbxget(humanoid, 'Health')
+	vstorage.max_health = stuff.rawrbxget(humanoid, 'MaxHealth')
+
+	notify('stopdamage', 'damage prevention enabled', 1)
+
+	vstorage.old_newindex = hookmetamethod(game, '__newindex', function(self, key, value)
+		if vstorage.enabled and checkcaller and not checkcaller() then
+			if self == humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
+				if key == 'Health' then
+					if value > vstorage.health then
+						vstorage.health = value
+						return vstorage.old_newindex(self, key, value)
+					else
+						return
+					end
+				elseif key == 'MaxHealth' then
+					vstorage.max_health = value
+					vstorage.health = value
+					return vstorage.old_newindex(self, key, value)
+				end
+			end
+		end
+
+		return vstorage.old_newindex(self, key, value)
+	end)
+
+	vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+		local args = {...}
+		local method = getnamecallmethod()
+
+		if vstorage.enabled and checkcaller and not checkcaller() then
+			if self == humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
+				if method == 'TakeDamage' then
+					return
+				elseif method == 'ChangeState' then
+					if args[1] == Enum.HumanoidStateType.Dead then
+						return
+					end
+				end
+			end
+		end
+
+		return vstorage.old_namecall(self, ...)
+	end)
+end)
+
+cmd_library.add({'unstopdamage', 'unstopd'}, 'disables damage prevention', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('stopdamage')
+
+	if not vstorage or not vstorage.enabled then
+		return notify('stopdamage', 'damage prevention not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	notify('stopdamage', 'damage prevention disabled', 1)
+end)
+
+cmd_library.add({'clientgodmode', 'cgodmode'}, 'sets your health to NaN', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unclientgodmode')
+		return
+	end
+	
+	if vstorage.enabled then
+		return notify('clientgodmode', 'godmode already enabled', 1)
+	end
+	
+	local humanoid = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+	if not humanoid then
+		notify('clientgodmode', 'your character doesnt have a humanoid', 2)
+	end
+	
+	vstorage.enabled = true
+	
+	stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
+	stuff.rawrbxset(humanoid, 'Health', 0/0)
+	maid.add('godmode', humanoid:GetPropertyChangedSignal('Health'), function()
+		if stuff.rawrbxget(humanoid, 'Health') ~= 0/0 or stuff.rawrbxget(humanoid, 'MaxHealth') ~= 0/0 then
+			stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
+			stuff.rawrbxset(humanoid, 'Health', 0/0)
+		end
+	end)
+	
+	notify('clientgodmode', 'godmode enabled', 1)
+end)
+
+cmd_library.add({'unclientgodmode', 'uncgodmode'}, 'disables client godmode', {}, function(_)
+	local vstorage = cmd_library.get_variable_storage('godmode')
+	
+	if vstorage.enabled then
+		vstorage.enabled = false
+		maid.remove('godmode')
+	else
+		notify('clientgodmode', 'godmode already disabled', 1)
+	end
+end)
 
 cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	{'player', 'player'}
