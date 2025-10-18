@@ -5,7 +5,7 @@ end
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
 fireproximityprompt = fireproximityprompt or function() end
-firetouchinterest = firetouchinterest or function() end
+firetouchinterest = firetouchinterest or nil
 setclipboard = setclipboard or function() end
 saveinstance = saveinstance or function() end
 hookmetamethod = hookmetamethod or function() end
@@ -20,6 +20,9 @@ set_hidden_prop = sethiddenproperty or function() end
 hookfunction = hookfunction or function() end
 getrawmetatable = getrawmetatable or function() return {} end
 mouse1click = mouse1click or nil
+writefile = writefile or function() end
+isfile = isfile or function() return false end
+readfile = readfile or function() return '' end
 
 if _G.opadmin_loaded then
 	return warn('opadmin is already loaded')
@@ -55,7 +58,7 @@ local stuff = {
 	owner = services.players.LocalPlayer,
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://131430979206692')[1]):Clone(),
-	open_keybind = _G.opadmin_open_keybind or Enum.KeyCode.Quote,
+	open_keybind = nil,
 
 	rawrbxget = nil,
 	rawrbxset = nil,
@@ -72,7 +75,7 @@ local stuff = {
 	ui_cmdlist = nil,
 	ui_cmdlist_template = nil,
 	ui_cmdlist_commandlist = nil,
-
+	update_keybinds = nil
 }
 if not stuff.ui then
 	return warn('opadmin ui failed to load')
@@ -407,6 +410,10 @@ local maid;maid = {
 	add = function(name, task_or_signal, fn, important)
 		if maid._tasks[name] then
 			maid.remove(name)
+		elseif maid._protected[name] and important then
+			maid.remove_protected(name)
+		elseif maid._protected[name] then
+			warn(`[maid] tried to overwrite protected task {name} with new task`)
 		end
 
 		local task
@@ -718,6 +725,104 @@ local cmd_library;cmd_library = {
 	end
 }
 
+local settings_manager = {
+	file_name = 'opadmin_settings.json',
+	default_settings = {
+		open_keybind = _G.opadmin_open_keybind and _G.opadmin_open_keybind.Name or 'Quote',
+		aliases = {},
+		binds = {},
+	},
+	current_settings = {}
+}
+
+settings_manager.load = function()
+	if readfile and isfile then
+		if isfile(settings_manager.file_name) then
+			local success, result = pcall(function()
+				return services.http:JSONDecode(readfile(settings_manager.file_name))
+			end)
+
+			if success and result then
+				settings_manager.current_settings = result
+
+				for key, default_value in pairs(settings_manager.default_settings) do
+					if settings_manager.current_settings[key] == nil then
+						settings_manager.current_settings[key] = default_value
+					end
+				end
+
+				return true
+			end
+		end
+	end
+
+	settings_manager.current_settings = table.clone(settings_manager.default_settings)
+	return false
+end
+
+settings_manager.save = function()
+	if writefile then
+		local success = pcall(function()
+			writefile(settings_manager.file_name, services.http:JSONEncode(settings_manager.current_settings))
+		end)
+		return success
+	end
+	return false
+end
+
+settings_manager.get = function(key)
+	return settings_manager.current_settings[key]
+end
+
+settings_manager.set = function(key, value)
+	settings_manager.current_settings[key] = value
+	return settings_manager.save()
+end
+
+settings_manager.reset = function(key)
+	if key then
+		settings_manager.current_settings[key] = settings_manager.default_settings[key]
+	else
+		settings_manager.current_settings = table.clone(settings_manager.default_settings)
+	end
+	return settings_manager.save()
+end
+
+settings_manager.apply = function()
+	local settings = settings_manager.current_settings
+
+	if settings.open_keybind then
+		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.Quote
+	end
+
+	if settings.aliases then
+		for alias, command in pairs(settings.aliases) do
+			local cmd_data = cmd_library._command_map[command:lower()]
+			if cmd_data then
+				table.insert(cmd_data.names, alias)
+				cmd_library._command_map[alias:lower()] = cmd_data
+			end
+		end
+	end
+
+	if settings.binds then
+		for bind_id, bind_data in pairs(settings.binds) do
+			local keycode = Enum.KeyCode[bind_data.key]
+			if keycode and cmd_library._command_map[bind_data.command:lower()] then
+				maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
+					if input.KeyCode == keycode and not processed then
+						cmd_library.execute(bind_data.command, unpack(bind_data.args or {}))
+					end
+				end)
+			end
+		end
+	end
+end
+
+settings_manager.load()
+settings_manager.apply()
+
+
 -- c1: movement
 cmd_library.add({'speed', 'walkspeed', 'ws'}, 'sets your walkspeed to [speed]', {
 	{'speed', 'number'},
@@ -884,8 +989,14 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 end)
 
 cmd_library.add({'vfly', 'vehiclefly'}, 'enables vehicle fly', {
-	{'speed', 'number'}
-}, function(vstorage, speed)
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if vstorage.enabled and et then
+		cmd_library.execute('unvfly')
+		return
+	end
+	
 	if vstorage.enabled then
 		return notify('vfly', 'vehicle fly already enabled', 2)
 	end
@@ -1606,6 +1717,159 @@ cmd_library.add({'unbypasscframespeed', 'unbypasscfspeed', 'unbypasscfws', 'unbc
 end)
 
 -- c2: utility
+
+cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
+	{'amount', 'number'}
+}, function(vstorage, amount)
+	local function GetHandleTools(player)
+		player = player or stuff.owner
+		local tools = {}
+		for _, item in ipairs(player.Character and player.Character:GetChildren() or {}) do
+			if item:IsA("BackpackItem") and item:FindFirstChild("Handle") then
+				table.insert(tools, item)
+			end
+		end
+		for _, item in ipairs(player.Backpack:GetChildren()) do
+			if item:IsA("BackpackItem") and item:FindFirstChild("Handle") then
+				table.insert(tools, item)
+			end
+		end
+		return tools
+	end
+
+	local loop_count = amount or 1
+	local original_position = stuff.owner.Character.HumanoidRootPart.Position
+	local collected_tools = {}
+	local temp_position = Vector3.new(math.random(-2e5, 2e5), 2e5, math.random(-2e5, 2e5))
+
+	for iteration = 1, loop_count do
+		local humanoid = stuff.owner.Character:WaitForChild("Humanoid")
+		wait(.1, humanoid.Parent:MoveTo(temp_position))
+		humanoid.RootPart.Anchored = stuff.owner:ClearCharacterAppearance(wait(.1)) or true
+
+		local current_tools = GetHandleTools(stuff.owner)
+		while #current_tools > 0 do
+			for _, tool in ipairs(current_tools) do
+				task.spawn(function()
+					for _ = 1, 25 do
+						tool.Parent = stuff.owner.Character
+						tool.Handle.Anchored = true
+					end
+					for _ = 1, 5 do
+						tool.Parent = workspace
+					end
+					table.insert(collected_tools, tool.Handle)
+				end)
+			end
+			current_tools = GetHandleTools(stuff.owner)
+		end
+
+		wait(.1)
+		stuff.owner.Character = stuff.owner.Character:Destroy()
+		stuff.owner.CharacterAdded:Wait():WaitForChild("Humanoid").Parent:MoveTo(loop_count == iteration and original_position or temp_position, wait(.1))
+
+		if iteration == loop_count or iteration % 5 == 0 then
+			local humanoid_root_part = stuff.owner.Character.HumanoidRootPart
+			if type(firetouchinterest) == "function" then
+				for _, handle in ipairs(collected_tools) do
+					handle.Anchored = not firetouchinterest(handle, humanoid_root_part, 1, firetouchinterest(handle, humanoid_root_part, 0)) and false or false
+				end
+			else
+				for _, handle in ipairs(collected_tools) do
+					task.spawn(function()
+						local original_can_collide = handle.CanCollide
+						handle.CanCollide = false
+						handle.Anchored = false
+						for _ = 1, 10 do
+							handle.CFrame = humanoid_root_part.CFrame
+							wait()
+						end
+						handle.CanCollide = original_can_collide
+					end)
+				end
+			end
+			wait(.1)
+			collected_tools = {}
+		end
+		temp_position = temp_position + Vector3.new(10, math.random(-5, 5), 0)
+	end
+end)
+
+cmd_library.add({'settings'}, 'manage settings', {
+	{'action', 'string'},
+	{'key', 'string'},
+	{'value', 'string'}
+}, function(vstorage, action, key, value)
+	action = action and action:lower()
+
+	if action == 'save' then
+		if settings_manager.save() then
+			notify('settings', 'settings saved successfully', 1)
+		else
+			notify('settings', 'failed to save settings', 2)
+		end
+	elseif action == 'load' then
+		if settings_manager.load() then
+			settings_manager.apply()
+			notify('settings', 'settings loaded successfully', 1)
+		else
+			notify('settings', 'failed to load settings', 2)
+		end
+	elseif action == 'reset' then
+		settings_manager.reset(key)
+		settings_manager.apply()
+		notify('settings', key and `reset setting '{key}'` or 'reset all settings', 1)
+	elseif action == 'get' then
+		if key then
+			local val = settings_manager.get(key)
+			notify('settings', `{key}: {tostring(val)}`, 4)
+		else
+			notify('settings', 'no key specified', 2)
+		end
+	elseif action == 'set' then
+		if key and value then
+			local parsed_value = value
+			if value:lower() == 'true' then
+				parsed_value = true
+			elseif value:lower() == 'false' then
+				parsed_value = false
+			elseif tonumber(value) then
+				parsed_value = tonumber(value)
+			end
+
+			settings_manager.set(key, parsed_value)
+			notify('settings', `set {key} to {tostring(parsed_value)}`, 1)
+		else
+			notify('settings', 'key and value required', 2)
+		end
+	elseif action == 'list' then
+		for k, v in pairs(settings_manager.current_settings) do
+			notify('settings', `{k}: {tostring(v)}`, 4)
+			task.wait(0.1)
+		end
+	else
+		notify('settings', 'usage: settings <save/load/reset/get/set/list> [key] [value]', 3)
+	end
+end)
+
+cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybind', {
+	{'key', 'string'}
+}, function(vstorage, key)
+	if not key then
+		return notify('openbind', 'no key specified', 2)
+	end
+
+	local keycode = Enum.KeyCode[key:gsub("^%l", string.upper)]
+	if not keycode then
+		return notify('openbind', `invalid keycode '{key}'`, 2)
+	end
+	
+	settings_manager.set('open_keybind', keycode.Name)
+	stuff.open_keybind = keycode
+	notify('openbind', `command bar keybind changed to {keycode.Name}`, 1)
+
+	stuff.update_keybind()
+end)
 
 cmd_library.add({'netless', 'net'}, 'enables netless for your character (prevents parts from falling)', {
 	{'hat_velocity', 'vec3'},
@@ -2778,6 +3042,10 @@ cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', {
 	{'range', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, range, et)
+	if not firetouchinterest then
+		return notify('autopickup', 'firetouchinterest not found', 2)
+	end
+	
 	if et and vstorage.enabled then
 		cmd_library.execute('unautopickup')
 		return
@@ -3332,6 +3600,10 @@ cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage
 	{'reach', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, reach, et)
+	if not firetouchinterest then
+		return notify('instakillreach', 'firetouchinterest not found', 2)
+	end
+	
 	if et and vstorage.enabled then
 		cmd_library.execute('uninstakillreach')
 		return
@@ -3556,6 +3828,89 @@ cmd_library.add({'fling'}, 'uses velocity to fling people', {
 			end
 		end)
 	end
+end)
+
+cmd_library.add({'punchfling', 'pfling'}, 'gives you a punch fling tool', {}, function(vstorage) -- github.com/TheEGodOfficial/E-Super-Punch
+	local tool = Instance.new('Tool')
+	tool.Name = 'punch'
+	tool.RequiresHandle = false
+	tool.Parent = stuff.owner.Backpack
+
+	vstorage.hidden_fling = false
+	vstorage.movel = 0.1
+
+	if not vstorage.fling_loop then
+		vstorage.fling_loop = true
+		task.spawn(function()
+			local hrp, c, vel
+			while vstorage.fling_loop do
+				services.run_service.Heartbeat:Wait()
+				if vstorage.hidden_fling then
+					c = stuff.owner.Character
+					hrp = c and (c:FindFirstChild('HumanoidRootPart') or c:FindFirstChild('Torso') or c:FindFirstChild('UpperTorso'))
+
+					while vstorage.hidden_fling and not (c and c.Parent and hrp and hrp.Parent) do
+						services.run_service.Heartbeat:Wait()
+						c = stuff.owner.Character
+						hrp = c and (c:FindFirstChild('HumanoidRootPart') or c:FindFirstChild('Torso') or c:FindFirstChild('UpperTorso'))
+					end
+
+					if vstorage.hidden_fling and hrp then
+						vel = stuff.rawrbxget(hrp, 'AssemblyLinearVelocity')
+						stuff.rawrbxset(hrp, 'AssemblyLinearVelocity', vel * 10000 + Vector3.new(0, 10000, 0))
+						services.run_service.RenderStepped:Wait()
+
+						if c and c.Parent and hrp and hrp.Parent then
+							stuff.rawrbxset(hrp, 'AssemblyLinearVelocity', vel)
+						end
+
+						services.run_service.Stepped:Wait()
+
+						if c and c.Parent and hrp and hrp.Parent then
+							stuff.rawrbxset(hrp, 'AssemblyLinearVelocity', vel + Vector3.new(0, vstorage.movel, 0))
+							vstorage.movel = vstorage.movel * -1
+						end
+					end
+				end
+			end
+		end)
+	end
+
+	tool.Activated:Connect(function()
+		local character = stuff.owner.Character
+		if not character then return end
+
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+		if not humanoid then return end
+
+		local anim = Instance.new('Animation')
+
+		if humanoid.RigType == Enum.HumanoidRigType.R6 then
+			anim.AnimationId = 'rbxassetid://204062532'
+		else
+			anim.AnimationId = 'rbxassetid://567480369'
+		end
+
+		local track = humanoid:LoadAnimation(anim)
+		track:Play(0.1)
+
+		task.spawn(function()
+			vstorage.hidden_fling = true
+			task.wait(2)
+			vstorage.hidden_fling = false
+		end)
+
+		anim:Destroy()
+	end)
+
+	tool.AncestryChanged:Connect(function()
+		if not tool.Parent then
+			vstorage.fling_loop = false
+			vstorage.hidden_fling = false
+		end
+	end)
+
+	notify('punchfling', 'punch fling tool given', 1)
 end)
 
 cmd_library.add({'carpetfling'}, 'flings player using carpet animation and hip height', {
@@ -4263,6 +4618,148 @@ end)
 
 -- c5: exploit
 
+cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts', {
+	{'radius', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, radius, et)
+	if vstorage.enabled and et then
+		cmd_library.execute('unblackhole')
+		return
+	end
+
+	if vstorage.enabled then
+		notify('blackhole', 'blackhole is already enabled', 2)
+	end
+	
+	vstorage.radius = radius or 10
+	vstorage.angle = 1
+
+	notify('blackhole', `black hole enabled with radius {vstorage.radius}`, 1)
+
+	local character = stuff.owner.Character
+	if not character or not character:FindFirstChild('HumanoidRootPart') then
+		return notify('blackhole', 'character not found', 2)
+	end
+
+	local hrp = character.HumanoidRootPart
+
+	local folder = Instance.new('Folder')
+	stuff.rawrbxset(folder, 'Parent', workspace)
+
+	local part = Instance.new('Part')
+	stuff.rawrbxset(part, 'Parent', folder)
+	stuff.rawrbxset(part, 'Anchored', true)
+	stuff.rawrbxset(part, 'CanCollide', false)
+	stuff.rawrbxset(part, 'Transparency', 1)
+
+	local attachment1 = Instance.new('Attachment')
+	stuff.rawrbxset(attachment1, 'Parent', part)
+
+	vstorage.folder = folder
+	vstorage.part = part
+	vstorage.attachment1 = attachment1
+
+	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
+
+	if sethidden then
+		maid.add('blackhole_network', services.run_service.Heartbeat, function()
+			pcall(function()
+				sethidden(stuff.owner, 'SimulationRadius', math.huge)
+				stuff.rawrbxset(stuff.owner, 'ReplicationFocus', workspace)
+			end)
+		end)
+	end
+
+	local function force_part(v)
+		if v:IsA('Part') and not v.Anchored and not v.Parent:FindFirstChild('Humanoid') and not v.Parent:FindFirstChild('Head') and v.Name ~= 'Handle' then
+			for _, x in pairs(v:GetChildren()) do
+				if x:IsA('BodyAngularVelocity') or x:IsA('BodyForce') or x:IsA('BodyGyro') or x:IsA('BodyPosition') or x:IsA('BodyThrust') or x:IsA('BodyVelocity') or x:IsA('RocketPropulsion') then
+					x:Destroy()
+				end
+			end
+
+			if v:FindFirstChild('Attachment') then
+				v:FindFirstChild('Attachment'):Destroy()
+			end
+			if v:FindFirstChild('AlignPosition') then
+				v:FindFirstChild('AlignPosition'):Destroy()
+			end
+			if v:FindFirstChild('Torque') then
+				v:FindFirstChild('Torque'):Destroy()
+			end
+
+			stuff.rawrbxset(v, 'CanCollide', false)
+			stuff.rawrbxset(v, 'CustomPhysicalProperties', PhysicalProperties.new(0, 0, 0, 0, 0))
+			stuff.rawrbxset(v, 'Velocity', Vector3.new(14.46262424, 14.46262424, 14.46262424))
+
+			local torque = Instance.new('Torque')
+			stuff.rawrbxset(torque, 'Parent', v)
+			stuff.rawrbxset(torque, 'Torque', Vector3.new(1000000, 1000000, 1000000))
+
+			local align_position = Instance.new('AlignPosition')
+			stuff.rawrbxset(align_position, 'Parent', v)
+
+			local attachment2 = Instance.new('Attachment')
+			stuff.rawrbxset(attachment2, 'Parent', v)
+
+			stuff.rawrbxset(torque, 'Attachment0', attachment2)
+			stuff.rawrbxset(align_position, 'MaxForce', math.huge)
+			stuff.rawrbxset(align_position, 'MaxVelocity', math.huge)
+			stuff.rawrbxset(align_position, 'Responsiveness', 500)
+			stuff.rawrbxset(align_position, 'Attachment0', attachment2)
+			stuff.rawrbxset(align_position, 'Attachment1', attachment1)
+		end
+	end
+
+	for _, v in pairs(workspace:GetDescendants()) do
+		force_part(v)
+	end
+
+	maid.add('blackhole_descendant', workspace.DescendantAdded, function(v)
+		if vstorage.enabled then
+			force_part(v)
+		end
+	end)
+
+	maid.add('blackhole_update', services.run_service.RenderStepped, function()
+		if character and hrp and hrp.Parent then
+			vstorage.angle = vstorage.angle + math.rad(2)
+
+			local offset_x = math.cos(vstorage.angle) * vstorage.radius
+			local offset_z = math.sin(vstorage.angle) * vstorage.radius
+
+			local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
+			stuff.rawrbxset(attachment1, 'WorldCFrame', hrp_cf * CFrame.new(offset_x, 0, offset_z))
+		end
+	end)
+end)
+
+cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vstorage)
+	local blackhole_vs = cmd_library.get_variable_storage('blackhole')
+
+	if not blackhole_vs or not blackhole_vs.enabled then
+		return notify('blackhole', 'black hole not enabled', 2)
+	end
+
+	blackhole_vs.enabled = false
+
+	if blackhole_vs.attachment1 then
+		stuff.rawrbxset(blackhole_vs.attachment1, 'WorldCFrame', CFrame.new(0, -1000, 0))
+	end
+
+	if blackhole_vs.folder then
+		blackhole_vs.folder:Destroy()
+	end
+
+	maid.remove('blackhole_network')
+	maid.remove('blackhole_descendant')
+	maid.remove('blackhole_update')
+
+	notify('blackhole', 'black hole disabled', 1)
+end)
+
+
+
 cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
 
@@ -4306,30 +4803,51 @@ cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own
 			return vstorage.old_index(self, key)
 		end)
 
-		if hookfunction and debug and debug.info then
-			local old_debug_info = debug.info
-			local original_namecall = getrawmetatable(game).__namecall
-			local original_index = getrawmetatable(game).__index
-
-			vstorage.debug_hook_gp = hookfunction(debug.info, function(level, options)
-				local result = old_debug_info(level, options)
-				if options == "f" then
-					if result == vstorage.old_namecall then
-						return original_namecall
-					elseif result == vstorage.old_index then
-						return original_index
-					end
-					if level == 2 or level == 3 then
-						local caller = old_debug_info(2, "f")
-						if caller == vstorage.old_namecall then
-							return original_namecall
-						elseif caller == vstorage.old_index then
-							return original_index
+		if hookfunction then
+			if getfenv then
+				local old_getfenv = getfenv
+				vstorage.getfenv_hook = hookfunction(getfenv, function(level)
+					if checkcaller and not checkcaller() then
+						local env = old_getfenv(level)
+						if type(env) == 'table' then
+							local clean_env = {}
+							for k, v in pairs(env) do
+								if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
+									clean_env[k] = v
+								end
+							end
+							return clean_env
 						end
 					end
-				end
-				return result
-			end)
+					return old_getfenv(level)
+				end)
+			end
+
+			if debug and debug.info then
+				local old_debug_info = debug.info
+				local original_namecall = getrawmetatable(game).__namecall
+				local original_index = getrawmetatable(game).__index
+
+				vstorage.debug_hook_gp = hookfunction(debug.info, function(level, options)
+					local result = old_debug_info(level, options)
+					if options == "f" then
+						if result == vstorage.old_namecall then
+							return original_namecall
+						elseif result == vstorage.old_index then
+							return original_index
+						end
+						if level == 2 or level == 3 then
+							local caller = old_debug_info(2, "f")
+							if caller == vstorage.old_namecall then
+								return original_namecall
+							elseif caller == vstorage.old_index then
+								return original_index
+							end
+						end
+					end
+					return result
+				end)
+			end
 		end
 	else
 		notify('freegamepass', 'free gamepass disabled', 1)
@@ -4490,22 +5008,43 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 			return vstorage.old_index(self, key)
 		end)
 
-		if hookfunction and debug and debug.info then
-			local original_index = getrawmetatable(game).__index
-			local old_debug_info = debug.info
-
-			vstorage.debug_hook = hookfunction(debug.info, function(level, options)
-				local result = old_debug_info(level, options)
-				if level == 2 and options == "f" and result == vstorage.old_index then
-					return original_index
-				elseif level == 3 and options == "f" then
-					local caller = old_debug_info(2, "f")
-					if caller == vstorage.old_index then
-						return original_index
+		if hookfunction then
+			if getfenv then
+				local old_getfenv = getfenv
+				vstorage.getfenv_hook = hookfunction(getfenv, function(level)
+					if checkcaller and not checkcaller() then
+						local env = old_getfenv(level)
+						if type(env) == 'table' then
+							local clean_env = {}
+							for k, v in pairs(env) do
+								if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
+									clean_env[k] = v
+								end
+							end
+							return clean_env
+						end
 					end
-				end
-				return result
-			end)
+					return old_getfenv(level)
+				end)
+			end
+
+			if debug and debug.info then
+				local original_index = getrawmetatable(game).__index
+				local old_debug_info = debug.info
+
+				vstorage.debug_hook = hookfunction(debug.info, function(level, options)
+					local result = old_debug_info(level, options)
+					if level == 2 and options == "f" and result == vstorage.old_index then
+						return original_index
+					elseif level == 3 and options == "f" then
+						local caller = old_debug_info(2, "f")
+						if caller == vstorage.old_index then
+							return original_index
+						end
+					end
+					return result
+				end)
+			end
 		end
 	end 
 
@@ -4550,6 +5089,66 @@ cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstor
 	else
 		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
 	end
+end)
+
+cmd_library.add({'alias', 'addalias'}, 'creates an alias for a command', {
+	{'alias', 'string'},
+	{'command', 'string'}
+}, function(vstorage, alias, command)
+	if not alias or not command then
+		return notify('alias', 'missing alias or command', 2)
+	end
+
+	local cmd_data = cmd_library._command_map[command:lower()]
+	if not cmd_data then
+		local similar = cmd_library.find_similar(command:lower())
+		if #similar > 0 then
+			return notify('alias', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('alias', `command '{command}' not found`, 2)
+		end
+	end
+
+	if cmd_library._command_map[alias:lower()] then
+		return notify('alias', `alias '{alias}' already exists`, 2)
+	end
+
+	table.insert(cmd_data.names, alias:lower())
+	cmd_library._command_map[alias:lower()] = cmd_data
+
+	local aliases = settings_manager.get('aliases') or {}
+	aliases[alias:lower()] = command:lower()
+	settings_manager.set('aliases', aliases)
+
+	notify('alias', `created alias '{alias}' for command '{command}'`, 1)
+end)
+
+cmd_library.add({'unalias', 'removealias'}, 'removes an alias', {
+	{'alias', 'string'}
+}, function(vstorage, alias)
+	if not alias then
+		return notify('unalias', 'no alias specified', 2)
+	end
+
+	local cmd_data = cmd_library._command_map[alias:lower()]
+	if not cmd_data then
+		return notify('unalias', `alias '{alias}' not found`, 2)
+	end
+
+	for i, name in ipairs(cmd_data.names) do
+		if name == alias:lower() then
+			table.remove(cmd_data.names, i)
+			break
+		end
+	end
+
+	cmd_library._command_map[alias:lower()] = nil
+
+	local aliases = settings_manager.get('aliases') or {}
+	aliases[alias:lower()] = nil
+	settings_manager.set('aliases', aliases)
+
+	notify('unalias', `removed alias '{alias}'`, 1)
 end)
 
 cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
@@ -4604,6 +5203,14 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 		end
 	end)
 
+	local binds = settings_manager.get('binds') or {}
+	binds[bind_id] = {
+		key = key:upper(),
+		command = command:lower(),
+		args = args
+	}
+	settings_manager.set('binds', binds)
+
 	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
 end)
 
@@ -4620,18 +5227,57 @@ cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	end
 
 	local removed = false
+	local binds = settings_manager.get('binds') or {}
+
 	for bind_id, bind_data in pairs(bind_vs.binds) do
 		if bind_data.key == key:upper() then
 			maid.remove(bind_id)
 			bind_vs.binds[bind_id] = nil
+			binds[bind_id] = nil
 			removed = true
 		end
 	end
 
 	if removed then
+		settings_manager.set('binds', binds)
 		notify('unbind', `unbound key {key:upper()}`, 1)
 	else
 		notify('unbind', `no binds found for key {key:upper()}`, 2)
+	end
+end)
+
+cmd_library.add({'aliases'}, 'lists all aliases', {}, function(vstorage)
+	local aliases = settings_manager.get('aliases') or {}
+	local count = 0
+
+	for alias, command in pairs(aliases) do
+		notify('aliases', `{alias} -> {command}`, 4)
+		count = count + 1
+		task.wait(0.1)
+	end
+
+	if count == 0 then
+		notify('aliases', 'no aliases found', 3)
+	else
+		notify('aliases', `total: {count} aliases`, 1)
+	end
+end)
+
+cmd_library.add({'binds'}, 'lists all keybinds', {}, function(vstorage)
+	local binds = settings_manager.get('binds') or {}
+	local count = 0
+
+	for bind_id, bind_data in pairs(binds) do
+		local args_str = #bind_data.args > 0 and ` [{table.concat(bind_data.args, ', ')}]` or ''
+		notify('binds', `{bind_data.key} -> {bind_data.command}{args_str}`, 4)
+		count = count + 1
+		task.wait(0.1)
+	end
+
+	if count == 0 then
+		notify('binds', 'no keybinds found', 3)
+	else
+		notify('binds', `total: {count} keybinds`, 1)
 	end
 end)
 
@@ -6084,30 +6730,51 @@ cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your 
 		return vstorage.old_namecall(self, ...)
 	end)
 
-	if hookfunction and debug and debug.info then
-		local old_debug_info = debug.info
-		local original_newindex = getrawmetatable(game).__newindex
-		local original_namecall = getrawmetatable(game).__namecall
-
-		vstorage.debug_hook_stopdamage = hookfunction(debug.info, function(level, options)
-			local result = old_debug_info(level, options)
-			if options == "f" then
-				if result == vstorage.old_newindex then
-					return original_newindex
-				elseif result == vstorage.old_namecall then
-					return original_namecall
-				end
-				if level == 2 or level == 3 then
-					local caller = old_debug_info(2, "f")
-					if caller == vstorage.old_newindex then
-						return original_newindex
-					elseif caller == vstorage.old_namecall then
-						return original_namecall
+	if hookfunction then
+		if getfenv then
+			local old_getfenv = getfenv
+			vstorage.getfenv_hook = hookfunction(getfenv, function(level)
+				if checkcaller and not checkcaller() then
+					local env = old_getfenv(level)
+					if type(env) == 'table' then
+						local clean_env = {}
+						for k, v in pairs(env) do
+							if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
+								clean_env[k] = v
+							end
+						end
+						return clean_env
 					end
 				end
-			end
-			return result
-		end)
+				return old_getfenv(level)
+			end)
+		end
+
+		if debug and debug.info then
+			local old_debug_info = debug.info
+			local original_newindex = getrawmetatable(game).__newindex
+			local original_namecall = getrawmetatable(game).__namecall
+
+			vstorage.debug_hook_stopdamage = hookfunction(debug.info, function(level, options)
+				local result = old_debug_info(level, options)
+				if options == "f" then
+					if result == vstorage.old_newindex then
+						return original_newindex
+					elseif result == vstorage.old_namecall then
+						return original_namecall
+					end
+					if level == 2 or level == 3 then
+						local caller = old_debug_info(2, "f")
+						if caller == vstorage.old_newindex then
+							return original_newindex
+						elseif caller == vstorage.old_namecall then
+							return original_namecall
+						end
+					end
+				end
+				return result
+			end)
+		end
 	end
 end)
 
@@ -6171,6 +6838,10 @@ end)
 cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	{'player', 'player'}
 }, function(vstorage, targets)
+	if not firetouchinterest then
+		return notify('seatbring', 'firetouchinterest not found', 2)
+	end
+	
 	if not targets or #targets == 0 then
 		return notify('seatbring', 'player not found', 2)
 	end
@@ -6274,23 +6945,26 @@ do
 		end
 	end, true)
 
-	maid.add('open_cmdbox_key', services.user_input_service.InputBegan, function(input, game_processed)
-		if input.KeyCode == stuff.open_keybind and not game_processed and not open then
-			tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_open}, true)
+	stuff.update_keybind = function()
+		maid.add('open_cmdbox_key', services.user_input_service.InputBegan, function(input, game_processed)
+			if input.KeyCode == stuff.open_keybind and not game_processed and not open then
+				tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_open}, true)
 
-			open = true
-			ui_cmdbox_inputbox:CaptureFocus()
+				open = true
+				ui_cmdbox_inputbox:CaptureFocus()
 
-			task.delay(.05, function()
-				if ui_cmdbox_inputbox.Text ~= '' then
-					repeat
-						ui_cmdbox_inputbox.Text = ''
-						hwait()
-					until ui_cmdbox_inputbox.Text == ''
-				end
-			end)
-		end
-	end, true)
+				task.delay(.05, function()
+					if ui_cmdbox_inputbox.Text ~= '' then
+						repeat
+							ui_cmdbox_inputbox.Text = ''
+							hwait()
+						until ui_cmdbox_inputbox.Text == ''
+					end
+				end)
+			end
+		end, true)
+	end
+	stuff.update_keybind()
 
 	maid.add('cmdbox_focuslost', ui_cmdbox_inputbox.FocusLost, function(enter)
 		tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_closed}, false)
