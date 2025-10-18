@@ -1028,7 +1028,7 @@ cmd_library.add({'vfly', 'vehiclefly'}, 'enables vehicle fly', {
 
 	local body_gyro = Instance.new('BodyGyro')
 	local body_velocity = Instance.new('BodyVelocity')
-
+	
 	stuff.rawrbxset(body_gyro, 'P', 9e4)
 	stuff.rawrbxset(body_gyro, 'Parent', root)
 	stuff.rawrbxset(body_velocity, 'Parent', root)
@@ -1717,6 +1717,204 @@ cmd_library.add({'unbypasscframespeed', 'unbypasscfspeed', 'unbypasscfws', 'unbc
 end)
 
 -- c2: utility
+
+cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
+	if mouse1click then
+		mouse1click()
+	else
+		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
+	end
+end)
+
+cmd_library.add({'alias', 'addalias'}, 'creates an alias for a command', {
+	{'alias', 'string'},
+	{'command', 'string'}
+}, function(vstorage, alias, command)
+	if not alias or not command then
+		return notify('alias', 'missing alias or command', 2)
+	end
+
+	local cmd_data = cmd_library._command_map[command:lower()]
+	if not cmd_data then
+		local similar = cmd_library.find_similar(command:lower())
+		if #similar > 0 then
+			return notify('alias', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('alias', `command '{command}' not found`, 2)
+		end
+	end
+
+	if cmd_library._command_map[alias:lower()] then
+		return notify('alias', `alias '{alias}' already exists`, 2)
+	end
+
+	table.insert(cmd_data.names, alias:lower())
+	cmd_library._command_map[alias:lower()] = cmd_data
+
+	local aliases = settings_manager.get('aliases') or {}
+	aliases[alias:lower()] = command:lower()
+	settings_manager.set('aliases', aliases)
+
+	notify('alias', `created alias '{alias}' for command '{command}'`, 1)
+end)
+
+cmd_library.add({'unalias', 'removealias'}, 'removes an alias', {
+	{'alias', 'string'}
+}, function(vstorage, alias)
+	if not alias then
+		return notify('unalias', 'no alias specified', 2)
+	end
+
+	local cmd_data = cmd_library._command_map[alias:lower()]
+	if not cmd_data then
+		return notify('unalias', `alias '{alias}' not found`, 2)
+	end
+
+	for i, name in ipairs(cmd_data.names) do
+		if name == alias:lower() then
+			table.remove(cmd_data.names, i)
+			break
+		end
+	end
+
+	cmd_library._command_map[alias:lower()] = nil
+
+	local aliases = settings_manager.get('aliases') or {}
+	aliases[alias:lower()] = nil
+	settings_manager.set('aliases', aliases)
+
+	notify('unalias', `removed alias '{alias}'`, 1)
+end)
+
+cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
+	{'key', 'string'},
+	{'command', 'string'},
+	{'...', 'string'}
+}, function(vstorage, key, command, ...)
+	if not key or not command then
+		return notify('bind', 'missing key or command', 2)
+	end
+
+	local keycode = Enum.KeyCode[key:upper()]
+	if not keycode then
+		return notify('bind', `invalid key '{key}'`, 2)
+	end
+
+	local similar = cmd_library.find_similar(command:lower())
+	local matched = false
+	for _, cmd_name in ipairs(similar) do
+		if cmd_name:lower() == command:lower() then
+			matched = true
+			break
+		end
+	end
+
+	if not matched then
+		if #similar > 0 then
+			return notify('bind', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('bind', `command '{command}' not found`, 2)
+		end
+	end
+
+	local args = {...}
+	vstorage.binds = vstorage.binds or {}
+
+	local bind_id = `keybind_{key:upper()}_{command:lower()}`
+
+	if vstorage.binds[bind_id] then
+		maid.remove(bind_id)
+	end
+
+	vstorage.binds[bind_id] = {
+		key = key:upper(),
+		command = command:lower(),
+		args = args
+	}
+
+	maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
+		if input.KeyCode == keycode and not processed then
+			cmd_library.execute(command:lower(), unpack(args))
+		end
+	end)
+
+	local binds = settings_manager.get('binds') or {}
+	binds[bind_id] = {
+		key = key:upper(),
+		command = command:lower(),
+		args = args
+	}
+	settings_manager.set('binds', binds)
+
+	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
+end)
+
+cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
+	{'key', 'string'}
+}, function(vstorage, key)
+	if not key then
+		return notify('unbind', 'no key specified', 2)
+	end
+
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	if not bind_vs or not bind_vs.binds then
+		return notify('unbind', 'no binds exist', 2)
+	end
+
+	local removed = false
+	local binds = settings_manager.get('binds') or {}
+
+	for bind_id, bind_data in pairs(bind_vs.binds) do
+		if bind_data.key == key:upper() then
+			maid.remove(bind_id)
+			bind_vs.binds[bind_id] = nil
+			binds[bind_id] = nil
+			removed = true
+		end
+	end
+
+	if removed then
+		settings_manager.set('binds', binds)
+		notify('unbind', `unbound key {key:upper()}`, 1)
+	else
+		notify('unbind', `no binds found for key {key:upper()}`, 2)
+	end
+end)
+
+cmd_library.add({'aliases'}, 'lists all aliases', {}, function(vstorage)
+	local aliases = settings_manager.get('aliases') or {}
+	local count = 0
+
+	for alias, command in pairs(aliases) do
+		notify('aliases', `{alias} -> {command}`, 4)
+		count = count + 1
+		task.wait(0.1)
+	end
+
+	if count == 0 then
+		notify('aliases', 'no aliases found', 3)
+	else
+		notify('aliases', `total: {count} aliases`, 1)
+	end
+end)
+
+cmd_library.add({'binds'}, 'lists all keybinds', {}, function(vstorage)
+	local binds = settings_manager.get('binds') or {}
+	local count = 0
+
+	for bind_id, bind_data in pairs(binds) do
+		local args_str = #bind_data.args > 0 and ` [{table.concat(bind_data.args, ', ')}]` or ''
+		notify('binds', `{bind_data.key} -> {bind_data.command}{args_str}`, 4)
+		count = count + 1
+		task.wait(0.1)
+	end
+
+	if count == 0 then
+		notify('binds', 'no keybinds found', 3)
+	else
+		notify('binds', `total: {count} keybinds`, 1)
+	end
+end)
 
 cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 	{'amount', 'number'}
@@ -4758,8 +4956,6 @@ cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vst
 	notify('blackhole', 'black hole disabled', 1)
 end)
 
-
-
 cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
 
@@ -5081,204 +5277,6 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 
 	--	return vstorage.old_namecall(self, ...)
 	--end)
-end)
-
-cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
-	if mouse1click then
-		mouse1click()
-	else
-		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
-	end
-end)
-
-cmd_library.add({'alias', 'addalias'}, 'creates an alias for a command', {
-	{'alias', 'string'},
-	{'command', 'string'}
-}, function(vstorage, alias, command)
-	if not alias or not command then
-		return notify('alias', 'missing alias or command', 2)
-	end
-
-	local cmd_data = cmd_library._command_map[command:lower()]
-	if not cmd_data then
-		local similar = cmd_library.find_similar(command:lower())
-		if #similar > 0 then
-			return notify('alias', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
-		else
-			return notify('alias', `command '{command}' not found`, 2)
-		end
-	end
-
-	if cmd_library._command_map[alias:lower()] then
-		return notify('alias', `alias '{alias}' already exists`, 2)
-	end
-
-	table.insert(cmd_data.names, alias:lower())
-	cmd_library._command_map[alias:lower()] = cmd_data
-
-	local aliases = settings_manager.get('aliases') or {}
-	aliases[alias:lower()] = command:lower()
-	settings_manager.set('aliases', aliases)
-
-	notify('alias', `created alias '{alias}' for command '{command}'`, 1)
-end)
-
-cmd_library.add({'unalias', 'removealias'}, 'removes an alias', {
-	{'alias', 'string'}
-}, function(vstorage, alias)
-	if not alias then
-		return notify('unalias', 'no alias specified', 2)
-	end
-
-	local cmd_data = cmd_library._command_map[alias:lower()]
-	if not cmd_data then
-		return notify('unalias', `alias '{alias}' not found`, 2)
-	end
-
-	for i, name in ipairs(cmd_data.names) do
-		if name == alias:lower() then
-			table.remove(cmd_data.names, i)
-			break
-		end
-	end
-
-	cmd_library._command_map[alias:lower()] = nil
-
-	local aliases = settings_manager.get('aliases') or {}
-	aliases[alias:lower()] = nil
-	settings_manager.set('aliases', aliases)
-
-	notify('unalias', `removed alias '{alias}'`, 1)
-end)
-
-cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
-	{'key', 'string'},
-	{'command', 'string'},
-	{'...', 'string'}
-}, function(vstorage, key, command, ...)
-	if not key or not command then
-		return notify('bind', 'missing key or command', 2)
-	end
-
-	local keycode = Enum.KeyCode[key:upper()]
-	if not keycode then
-		return notify('bind', `invalid key '{key}'`, 2)
-	end
-
-	local similar = cmd_library.find_similar(command:lower())
-	local matched = false
-	for _, cmd_name in ipairs(similar) do
-		if cmd_name:lower() == command:lower() then
-			matched = true
-			break
-		end
-	end
-
-	if not matched then
-		if #similar > 0 then
-			return notify('bind', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
-		else
-			return notify('bind', `command '{command}' not found`, 2)
-		end
-	end
-
-	local args = {...}
-	vstorage.binds = vstorage.binds or {}
-
-	local bind_id = `keybind_{key:upper()}_{command:lower()}`
-
-	if vstorage.binds[bind_id] then
-		maid.remove(bind_id)
-	end
-
-	vstorage.binds[bind_id] = {
-		key = key:upper(),
-		command = command:lower(),
-		args = args
-	}
-
-	maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
-		if input.KeyCode == keycode and not processed then
-			cmd_library.execute(command:lower(), unpack(args))
-		end
-	end)
-
-	local binds = settings_manager.get('binds') or {}
-	binds[bind_id] = {
-		key = key:upper(),
-		command = command:lower(),
-		args = args
-	}
-	settings_manager.set('binds', binds)
-
-	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
-end)
-
-cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
-	{'key', 'string'}
-}, function(vstorage, key)
-	if not key then
-		return notify('unbind', 'no key specified', 2)
-	end
-
-	local bind_vs = cmd_library.get_variable_storage('bind')
-	if not bind_vs or not bind_vs.binds then
-		return notify('unbind', 'no binds exist', 2)
-	end
-
-	local removed = false
-	local binds = settings_manager.get('binds') or {}
-
-	for bind_id, bind_data in pairs(bind_vs.binds) do
-		if bind_data.key == key:upper() then
-			maid.remove(bind_id)
-			bind_vs.binds[bind_id] = nil
-			binds[bind_id] = nil
-			removed = true
-		end
-	end
-
-	if removed then
-		settings_manager.set('binds', binds)
-		notify('unbind', `unbound key {key:upper()}`, 1)
-	else
-		notify('unbind', `no binds found for key {key:upper()}`, 2)
-	end
-end)
-
-cmd_library.add({'aliases'}, 'lists all aliases', {}, function(vstorage)
-	local aliases = settings_manager.get('aliases') or {}
-	local count = 0
-
-	for alias, command in pairs(aliases) do
-		notify('aliases', `{alias} -> {command}`, 4)
-		count = count + 1
-		task.wait(0.1)
-	end
-
-	if count == 0 then
-		notify('aliases', 'no aliases found', 3)
-	else
-		notify('aliases', `total: {count} aliases`, 1)
-	end
-end)
-
-cmd_library.add({'binds'}, 'lists all keybinds', {}, function(vstorage)
-	local binds = settings_manager.get('binds') or {}
-	local count = 0
-
-	for bind_id, bind_data in pairs(binds) do
-		local args_str = #bind_data.args > 0 and ` [{table.concat(bind_data.args, ', ')}]` or ''
-		notify('binds', `{bind_data.key} -> {bind_data.command}{args_str}`, 4)
-		count = count + 1
-		task.wait(0.1)
-	end
-
-	if count == 0 then
-		notify('binds', 'no keybinds found', 3)
-	else
-		notify('binds', `total: {count} keybinds`, 1)
-	end
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
