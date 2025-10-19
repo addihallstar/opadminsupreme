@@ -988,155 +988,149 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 	end
 end)
 
-cmd_library.add({'vfly', 'vehiclefly'}, 'enables vehicle fly', {
+cmd_library.add({'vehiclecontrol', 'vcontrol', 'vctrl', 'carcontrol'}, 'gives you more control over vehicles', {
+	{'mode', 'string'},
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
-	if vstorage.enabled and et then
-		cmd_library.execute('unvfly')
+}, function(vstorage, mode, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unvehiclecontrol')
 		return
 	end
-	
+
 	if vstorage.enabled then
-		return notify('vfly', 'vehicle fly already enabled', 2)
+		return notify('vehiclecontrol', 'vehicle control already enabled', 2)
+	end
+
+	local valid_modes = {'speed', 'flight'}
+	mode = mode and mode:lower() or 'speed'
+
+	if not table.find(valid_modes, mode) then
+		return notify('vehiclecontrol', `invalid mode '{mode}'. valid modes: {table.concat(valid_modes, ', ')}`, 2)
 	end
 
 	vstorage.enabled = true
-	vstorage.speed = speed or 1
-	vstorage.is_flying = false
+	vstorage.mode = mode
+	vstorage.accel_mult = math.clamp((speed or 25) / 1000, 0.001, 0.09)
+	vstorage.brake_mult = 0.15
+	vstorage.flight_speed = speed or 3
+	vstorage.max_velocity = 500
 
-	notify('vfly', `vehicle fly enabled with speed {vstorage.speed}`, 1)
+	notify('vehiclecontrol', `vehicle control enabled | mode: {vstorage.mode} | speed: {vstorage.mode == 'velocity' and vstorage.accel_mult * 1000 or vstorage.flight_speed}`, 1)
 
 	local character = stuff.owner.Character
-	if not character or not character:FindFirstChild('HumanoidRootPart') then
-		return notify('vfly', 'character not found', 2)
+	if not character then
+		return notify('vehiclecontrol', 'character not found', 2)
 	end
 
 	local humanoid = character:FindFirstChildOfClass('Humanoid')
 	if not humanoid then
-		return notify('vfly', 'humanoid not found', 2)
+		return notify('vehiclecontrol', 'humanoid not found', 2)
 	end
 
-	local seat_part = stuff.rawrbxget(humanoid, 'SeatPart')
-	local root = seat_part or character.HumanoidRootPart
+	local function get_vehicle_from_seat(seat)
+		return seat:FindFirstAncestorWhichIsA('Model')
+	end
 
-	local movement = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
-	local last_movement = {F = 0, B = 0, L = 0, R = 0, Q = 0, E = 0}
-	local current_speed = 0
+	if vstorage.mode == 'speed' then
+		maid.add('vehiclecontrol_accel', services.run_service.Heartbeat, function()
+			local seat_part = stuff.rawrbxget(humanoid, 'SeatPart')
+			if not seat_part or not seat_part:IsA('VehicleSeat') then return end
 
-	vstorage.is_flying = true
+			local move_vector = get_move_vector(1)
+			local current_velocity = stuff.rawrbxget(seat_part, 'AssemblyLinearVelocity')
+			local current_speed = current_velocity.Magnitude
 
-	local body_gyro = Instance.new('BodyGyro')
-	local body_velocity = Instance.new('BodyVelocity')
-	
-	stuff.rawrbxset(body_gyro, 'P', 9e4)
-	stuff.rawrbxset(body_gyro, 'Parent', root)
-	stuff.rawrbxset(body_velocity, 'Parent', root)
-	stuff.rawrbxset(body_gyro, 'maxTorque', Vector3.new(9e9, 9e9, 9e9))
-	stuff.rawrbxset(body_gyro, 'cframe', stuff.rawrbxget(root, 'CFrame'))
-	stuff.rawrbxset(body_velocity, 'velocity', Vector3.new(0, 0, 0))
-	stuff.rawrbxset(body_velocity, 'maxForce', Vector3.new(9e9, 9e9, 9e9))
+			if move_vector.Z < 0 then
+				if current_speed < vstorage.max_velocity then
+					stuff.rawrbxset(seat_part, 'AssemblyLinearVelocity', current_velocity * Vector3.new(1 + vstorage.accel_mult, 1, 1 + vstorage.accel_mult))
+				end
+			elseif move_vector.Z > 0 then
+				stuff.rawrbxset(seat_part, 'AssemblyLinearVelocity', current_velocity * Vector3.new(1 - vstorage.brake_mult, 1, 1 - vstorage.brake_mult))
+			end
+		end)
 
-	vstorage.body_gyro = body_gyro
-	vstorage.body_velocity = body_velocity
+		maid.add('vehiclecontrol_stop', services.user_input_service.InputBegan, function(input, processed)
+			if processed then return end
+			if input.KeyCode == Enum.KeyCode.X then
+				local seat_part = stuff.rawrbxget(humanoid, 'SeatPart')
+				if seat_part and seat_part:IsA('VehicleSeat') then
+					stuff.rawrbxset(seat_part, 'AssemblyLinearVelocity', Vector3.zero)
+					stuff.rawrbxset(seat_part, 'AssemblyAngularVelocity', Vector3.zero)
+					notify('vehiclecontrol', 'vehicle stopped', 3)
+				end
+			end
+		end)
 
-	task.spawn(function()
-		while vstorage.is_flying do
-			task.wait()
+	elseif vstorage.mode == 'flight' then
+		maid.add('vehiclecontrol_flight', services.run_service.Stepped, function()
+			local seat_part = stuff.rawrbxget(humanoid, 'SeatPart')
+			if not seat_part or not seat_part:IsA('VehicleSeat') then return end
 
-			local current_seat = stuff.rawrbxget(humanoid, 'SeatPart')
-			if current_seat and current_seat ~= seat_part then
-				seat_part = current_seat
-				root = seat_part
-				stuff.rawrbxset(body_gyro, 'Parent', root)
-				stuff.rawrbxset(body_velocity, 'Parent', root)
+			local vehicle = get_vehicle_from_seat(seat_part)
+			if not vehicle then return end
+
+			stuff.rawrbxset(character, 'Parent', vehicle)
+
+			if not vehicle.PrimaryPart then
+				if seat_part.Parent == vehicle then
+					vehicle.PrimaryPart = seat_part
+				else
+					vehicle.PrimaryPart = vehicle:FindFirstChildWhichIsA('BasePart')
+				end
 			end
 
-			if movement.L + movement.R ~= 0 or movement.F + movement.B ~= 0 or movement.Q + movement.E ~= 0 then
-				current_speed = 50
-			elseif not (movement.L + movement.R ~= 0 or movement.F + movement.B ~= 0 or movement.Q + movement.E ~= 0) and current_speed ~= 0 then
-				current_speed = 0
-			end
-
+			local primary_cf = vehicle:GetPrimaryPartCFrame()
 			local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-			local camera_cframe = stuff.rawrbxget(camera, 'CFrame')
+			local camera_cf = stuff.rawrbxget(camera, 'CFrame')
+			local move_vector = get_move_vector(vstorage.flight_speed)
 
-			if (movement.L + movement.R) ~= 0 or (movement.F + movement.B) ~= 0 or (movement.Q + movement.E) ~= 0 then
-				stuff.rawrbxset(body_velocity, 'velocity', ((camera_cframe.lookVector * (movement.F + movement.B)) + ((camera_cframe * CFrame.new(movement.L + movement.R, (movement.F + movement.B + movement.Q + movement.E) * 0.2, 0).Position) - camera_cframe.p)) * current_speed)
-				last_movement = {F = movement.F, B = movement.B, L = movement.L, R = movement.R}
-			elseif (movement.L + movement.R) == 0 and (movement.F + movement.B) == 0 and (movement.Q + movement.E) == 0 and current_speed ~= 0 then
-				stuff.rawrbxset(body_velocity, 'velocity', ((camera_cframe.lookVector * (last_movement.F + last_movement.B)) + ((camera_cframe * CFrame.new(last_movement.L + last_movement.R, (last_movement.F + last_movement.B + movement.Q + movement.E) * 0.2, 0).Position) - camera_cframe.p)) * current_speed)
-			else
-				stuff.rawrbxset(body_velocity, 'velocity', Vector3.new(0, 0, 0))
-			end
+			local new_cf = CFrame.new(primary_cf.Position, primary_cf.Position + camera_cf.LookVector) * 
+				CFrame.new(move_vector.X, (services.user_input_service:IsKeyDown(Enum.KeyCode.E) and vstorage.flight_speed / 2) or 
+					(services.user_input_service:IsKeyDown(Enum.KeyCode.Q) and -vstorage.flight_speed / 2) or 0, move_vector.Z)
 
-			stuff.rawrbxset(body_gyro, 'cframe', camera_cframe)
-		end
+			vehicle:SetPrimaryPartCFrame(new_cf)
+			stuff.rawrbxset(seat_part, 'AssemblyLinearVelocity', Vector3.zero)
+			stuff.rawrbxset(seat_part, 'AssemblyAngularVelocity', Vector3.zero)
+		end)
+	end
 
-		if body_gyro and body_gyro.Parent then
-			body_gyro:Destroy()
-		end
-		if body_velocity and body_velocity.Parent then
-			body_velocity:Destroy()
-		end
+	local reset_triggered = false
+
+	maid.add('vehiclecontrol_died', humanoid.Died, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('unvehiclecontrol')
 	end)
 
-	maid.add('vfly_keydown', services.user_input_service.InputBegan, function(input, processed)
-		if processed then return end
-
-		if input.KeyCode == Enum.KeyCode.W then
-			movement.F = vstorage.speed
-		elseif input.KeyCode == Enum.KeyCode.S then
-			movement.B = -vstorage.speed
-		elseif input.KeyCode == Enum.KeyCode.A then
-			movement.L = -vstorage.speed
-		elseif input.KeyCode == Enum.KeyCode.D then
-			movement.R = vstorage.speed
-		elseif input.KeyCode == Enum.KeyCode.E then
-			movement.Q = vstorage.speed * 2
-		elseif input.KeyCode == Enum.KeyCode.Q then
-			movement.E = -vstorage.speed * 2
-		end
-	end)
-
-	maid.add('vfly_keyup', services.user_input_service.InputEnded, function(input, processed)
-		if input.KeyCode == Enum.KeyCode.W then
-			movement.F = 0
-		elseif input.KeyCode == Enum.KeyCode.S then
-			movement.B = 0
-		elseif input.KeyCode == Enum.KeyCode.A then
-			movement.L = 0
-		elseif input.KeyCode == Enum.KeyCode.D then
-			movement.R = 0
-		elseif input.KeyCode == Enum.KeyCode.E then
-			movement.Q = 0
-		elseif input.KeyCode == Enum.KeyCode.Q then
-			movement.E = 0
-		end
+	maid.add('vehiclecontrol_char_added', stuff.owner.CharacterAdded, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('unvehiclecontrol')
 	end)
 end)
 
-cmd_library.add({'unvfly', 'unvehiclefly'}, 'disables vehicle fly', {}, function(vstorage)
-	local vfly_vs = cmd_library.get_variable_storage('vfly')
+cmd_library.add({'unvehiclecontrol', 'unvcontrol', 'unvctrl'}, 'disables vehicle control', {}, function(vstorage)
+	local vehiclecontrol_vs = cmd_library.get_variable_storage('vehiclecontrol')
 
-	if not vfly_vs or not vfly_vs.enabled then
-		return notify('vfly', 'vehicle fly not enabled', 2)
+	if not vehiclecontrol_vs or not vehiclecontrol_vs.enabled then
+		return notify('vehiclecontrol', 'vehicle control not enabled', 2)
 	end
 
-	vfly_vs.enabled = false
-	vfly_vs.is_flying = false
+	vehiclecontrol_vs.enabled = false
 
-	if vfly_vs.body_gyro then
-		vfly_vs.body_gyro:Destroy()
+	maid.remove('vehiclecontrol_accel')
+	maid.remove('vehiclecontrol_stop')
+	maid.remove('vehiclecontrol_flight')
+	maid.remove('vehiclecontrol_died')
+	maid.remove('vehiclecontrol_char_added')
+
+	local character = stuff.owner.Character
+	if character then
+		stuff.rawrbxset(character, 'Parent', workspace)
 	end
-	if vfly_vs.body_velocity then
-		vfly_vs.body_velocity:Destroy()
-	end
 
-	maid.remove('vfly_keydown')
-	maid.remove('vfly_keyup')
-
-	notify('vfly', 'vehicle fly disabled', 1)
+	notify('vehiclecontrol', 'vehicle control disabled', 1)
 end)
 
 cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
@@ -1717,6 +1711,83 @@ cmd_library.add({'unbypasscframespeed', 'unbypasscfspeed', 'unbypasscfws', 'unbc
 end)
 
 -- c2: utility
+
+cmd_library.add({'freemouse'}, 'unlocks your mouse cursor', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		notify('freemouse', 'free mouse enabled', 1)
+
+		maid.add('freemouse', services.run_service.RenderStepped, function()
+			services.user_input_service.MouseBehavior = Enum.MouseBehavior.Default
+		end)
+	else
+		notify('freemouse', 'free mouse disabled', 1)
+		maid.remove('freemouse')
+	end
+end)
+
+cmd_library.add({'fpscap', 'maxfps', 'unlockfps'}, 'sets fps cap', {
+	{'fps', 'number'}
+}, function(vstorage, fps)
+	fps = fps or 999
+
+	if setfpscap then
+		setfpscap(fps)
+		notify('fpscap', `fps cap set to {fps}`, 1)
+	elseif setfps then
+		setfps(fps)
+		notify('fpscap', `fps cap set to {fps}`, 1)
+	else
+		notify('fpscap', 'executor does not support fps cap', 2)
+	end
+end)
+
+cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically interacts with nearby items', {
+	{'range', 'number'},
+	{'filter', 'string'}
+}, function(vstorage, range, filter)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		vstorage.range = range or 50
+		vstorage.filter = filter
+		notify('interact', `interact enabled | range: {vstorage.range}`, 1)
+
+		maid.add('interact', services.run_service.Heartbeat, function()
+			local character = stuff.owner.Character
+			if not character or not character:FindFirstChild('HumanoidRootPart') then return end
+
+			local hrp = character.HumanoidRootPart
+			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+
+			for _, item in pairs(workspace:GetDescendants()) do
+				if item:IsA('BasePart') and (item:FindFirstChildOfClass('TouchTransmitter') or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem')) then
+					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) then
+						local item_pos = stuff.rawrbxget(item, 'Position')
+						if (hrp_pos - item_pos).Magnitude <= vstorage.range then
+							if firetouchinterest then
+								firetouchinterest(hrp, item, 0)
+								firetouchinterest(hrp, item, 1)
+							else
+								stuff.rawrbxset(hrp, 'CFrame', CFrame.new(item_pos))
+								task.wait(.05)
+								stuff.rawrbxset(hrp, 'CFrame', CFrame.new(hrp_pos))
+							end
+						end
+					end
+				end
+			end
+		end)
+	else
+		notify('interact', 'interact disabled', 1)
+		maid.remove('interact')
+	end
+end)
+
+cmd_library.add({'leave', 'l'}, 'leaves the server', {}, function()
+	game:Shutdown()
+end)
 
 cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
 	if mouse1click then
@@ -2715,28 +2786,41 @@ cmd_library.add({'gravity', 'grav'}, 'sets workspace gravity value', {
 	stuff.rawrbxset(workspace, 'Gravity', gravity)
 end)
 
-cmd_library.add({'serverhop', 'shop'}, 'hops to a different server', {}, function(vstorage)
-	notify('serverhop', 'attempting to server hop', 1)
+cmd_library.add({'serverhop', 'rejoin', 'hop'}, 'teleports you to another server', {}, function(vstorage)
+	notify('serverhop', 'searching for new server...', 3)
 
-	local success, result = pcall(function()
-		local url = `https://games.roblox.com/v1/games/{game.PlaceId}/servers/Public?sortOrder=Asc&limit=100`
-		local response = game:HttpGet(url)
-		return services.http:JSONDecode(response)
-	end)
+	local servers = {}
+	local cursor = ''
 
-	if success and result and result.data then
-		for _, server in pairs(result.data) do
-			if server.id ~= game.JobId and server.playing < server.maxPlayers then
-				services.teleport_service:TeleportToPlaceInstance(game.PlaceId, server.id, stuff.owner)
-				return
+	repeat
+		local url = `https://games.roblox.com/v1/games/{game.PlaceId}/servers/Public?sortOrder=Asc&limit=100&cursor={cursor}`
+		local success, result = pcall(function()
+			return services.http:JSONDecode(game:HttpGet(url))
+		end)
+
+		if success and result.data then
+			for _, server in pairs(result.data) do
+				if server.id ~= game.JobId and server.playing < server.maxPlayers then
+					table.insert(servers, server.id)
+				end
 			end
+			cursor = result.nextPageCursor or ''
+		else
+			break
 		end
-	end
+	until cursor == '' or #servers >= 10
 
-	notify('serverhop', 'could not find a different server', 2)
+	if #servers > 0 then
+		local random_server = servers[math.random(1, #servers)]
+		notify('serverhop', 'teleporting to new server...', 1)
+		services.teleport_service:TeleportToPlaceInstance(game.PlaceId, random_server, stuff.owner)
+	else
+		notify('serverhop', 'no servers found, rejoining current server', 2)
+		services.teleport_service:Teleport(game.PlaceId, stuff.owner)
+	end
 end)
 
-cmd_library.add({'thirdp', '3rdp', 'thirdperson'}, 'forces your camera to be third person', {}, function(vstorage)
+cmd_library.add({'thirdperson', '3rdp', 'third'}, 'forces your camera to be third person', {}, function(vstorage)
 	notify('thirdperson', 'now third-person', 1)
 
 	stuff.rawrbxset(stuff.owner, 'CameraMaxZoomDistance', 128)
@@ -2747,35 +2831,79 @@ cmd_library.add({'countcommands', 'countcmds'}, 'counts the commands very useful
 	notify('countcommands', `{#cmd_library._commands} commands`, 1)
 end)
 
-cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event of all parts using it', {}, function(vstorage)
+cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event of all parts', {
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('undisablete')
+		return
+	end
+
 	if vstorage.enabled then
 		return notify('disablete', 'touch event already disabled', 2)
 	end
 
 	vstorage.enabled = true
-	notify('disablete', 'successfully eradicated touched event', 1)
+	vstorage.original_states = {}
+	notify('disablete', 'touch events disabled', 1)
 
-	pcall(function()
-		maid.remove('disable_touch_event')
-	end)
+	for _, part in ipairs(workspace:GetDescendants()) do
+		if part:IsA('BasePart') then
+			pcall(function()
+				vstorage.original_states[part] = stuff.rawrbxget(part, 'CanTouch')
+				stuff.rawrbxset(part, 'CanTouch', false)
+			end)
+		end
+	end
 
-	maid.add('disable_touch_event', services.run_service.Heartbeat, function()
-		local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-		local health = stuff.rawrbxget(humanoid, 'Health')
-
-		if health < 1 then
-			maid.remove('disable_touch_event')
-			vstorage.enabled = false
-			for _, v in ipairs(workspace:GetDescendants()) do
-				pcall(function() stuff.rawrbxset(v, 'CanTouch', true) end)
-			end
-			return
+	maid.add('disable_touch_event', workspace.DescendantAdded, function(descendant)
+		if vstorage.enabled and descendant:IsA('BasePart') then
+			task.wait()
+			pcall(function()
+				vstorage.original_states[descendant] = stuff.rawrbxget(descendant, 'CanTouch')
+				stuff.rawrbxset(descendant, 'CanTouch', false)
+			end)
 		end
 	end)
 
-	for _, v in ipairs(workspace:GetDescendants()) do
-		pcall(function() stuff.rawrbxset(v, 'CanTouch', false) end)
+	local reset_triggered = false
+
+	maid.add('disable_touch_event_died', stuff.owner_char.Humanoid.Died, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('undisablete')
+	end)
+
+	maid.add('disable_touch_event_char_added', stuff.owner.CharacterAdded, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('undisablete')
+	end)
+end)
+
+cmd_library.add({'enabletouchevent', 'enablete'}, 're-enables touch events', {}, function(vstorage)
+	local disablete_vs = cmd_library.get_variable_storage('disabletouchevent')
+
+	if not disablete_vs or not disablete_vs.enabled then
+		return notify('disablete', 'touch events not disabled', 2)
 	end
+
+	disablete_vs.enabled = false
+	notify('disablete', 'touch events re-enabled', 1)
+
+	maid.remove('disable_touch_event')
+	maid.remove('disable_touch_event_died')
+	maid.remove('disable_touch_event_char_added')
+
+	for part, original_state in pairs(disablete_vs.original_states or {}) do
+		if part and part.Parent then
+			pcall(function()
+				stuff.rawrbxset(part, 'CanTouch', original_state)
+			end)
+		end
+	end
+
+	disablete_vs.original_states = {}
 end)
 
 cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
@@ -2948,54 +3076,47 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 	notify('stopreplag', 'incoming replication lag set to -1', 1)
 end)
 
-cmd_library.add({'freecam', 'fcam'}, 'detach camera from character', {
-	{'speed', 'number'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unfreecam')
-		return
-	end
-	if vstorage.enabled and vstorage.speed == speed then
-		return notify('freecam', 'freecam already enabled', 2)
-	end
+cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
+	{'speed', 'number'}
+}, function(vstorage, speed)
+	vstorage.enabled = not vstorage.enabled
 
-	vstorage.enabled = true
-	vstorage.speed = speed or 1
-	notify('freecam', 'freecam enabled', 1)
+	if vstorage.enabled then
+		vstorage.speed = speed or 1
+		notify('freecam', `freecam enabled | speed: {vstorage.speed}`, 1)
 
-	local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-	vstorage.old_subject = stuff.rawrbxget(cam, 'CameraSubject')
-	vstorage.old_parent = stuff.rawrbxget(stuff.owner_char, 'Parent')
+		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+		vstorage.camera_cframe = stuff.rawrbxget(camera, 'CFrame')
 
-	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	vstorage.old_speed = stuff.rawrbxget(humanoid, 'WalkSpeed')
+		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Scriptable)
 
-	local flight_part = Instance.new('Part', workspace)
-	vstorage.part = flight_part
+		maid.add('freecam', services.run_service.RenderStepped, function()
+			local move_vector = get_move_vector(vstorage.speed)
 
-	stuff.rawrbxset(humanoid, 'WalkSpeed', 0)
-	stuff.rawrbxset(flight_part, 'CFrame', stuff.owner_char:GetPivot())
-	stuff.rawrbxset(flight_part, 'Anchored', true)
-	stuff.rawrbxset(flight_part, 'Transparency', 1)
-	stuff.rawrbxset(flight_part, 'CanCollide', false)
-	stuff.rawrbxset(cam, 'CameraSubject', flight_part)
-	stuff.rawrbxset(stuff.owner_char, 'Parent', nil)
+			local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+			local camera_cframe = vstorage.camera_cframe or stuff.rawrbxget(camera, 'CFrame')
 
-	maid.add('freecam', services.run_service.Heartbeat, function()
-		pcall(function()
-			local old_pos = stuff.rawrbxget(flight_part, 'Position')
-			local cam_cframe = stuff.rawrbxget(cam, 'CFrame')
-			stuff.rawrbxset(flight_part, 'CFrame', CFrame.lookAt(old_pos, cam_cframe * CFrame.new(0, 0, -250).Position))
+			local new_cframe = camera_cframe * CFrame.new(
+				move_vector.X,
+				(services.user_input_service:IsKeyDown(Enum.KeyCode.E) and vstorage.speed) or 
+					(services.user_input_service:IsKeyDown(Enum.KeyCode.Q) and -vstorage.speed) or 0,
+				move_vector.Z
+			)
 
-			local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-			stuff.rawrbxset(hrp, 'AssemblyLinearVelocity', Vector3.zero)
+			local mouse_delta = services.user_input_service:GetMouseDelta()
+			new_cframe = new_cframe * CFrame.Angles(-math.rad(mouse_delta.Y * 0.5), -math.rad(mouse_delta.X * 0.5), 0)
 
-			local offset = get_move_vector(vstorage.speed)
-			local current_cf = stuff.rawrbxget(flight_part, 'CFrame')
-			stuff.rawrbxset(flight_part, 'CFrame', current_cf * CFrame.new(offset))
+			vstorage.camera_cframe = new_cframe
+			stuff.rawrbxset(camera, 'CFrame', new_cframe)
 		end)
-	end)
+	else
+		notify('freecam', 'freecam disabled', 1)
+		maid.remove('freecam')
+
+		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Custom)
+		vstorage.camera_cframe = nil
+	end
 end)
 
 cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', {}, function(vstorage)
@@ -3623,6 +3744,56 @@ end)
 
 -- c3: fun/trolling
 
+cmd_library.add({'copychat'}, 'copies all chat messages', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		notify('copychat', 'chat spy enabled', 1)
+
+		for _, plr in pairs(services.players:GetPlayers()) do
+			if plr ~= stuff.owner then
+				maid.add(`copychat_{plr.Name}`, plr.Chatted, function(message)
+					notify('chatspy', `{plr.Name}: {message}`, 4)
+				end)
+			end
+		end
+
+		maid.add('copychat_playeradded', services.players.PlayerAdded, function(plr)
+			if vstorage.enabled then
+				maid.add(`copychat_{plr.Name}`, plr.Chatted, function(message)
+					notify('chatspy', `{plr.Name}: {message}`, 4)
+				end)
+			end
+		end)
+	else
+		notify('copychat', 'chat spy disabled', 1)
+
+		for _, plr in pairs(services.players:GetPlayers()) do
+			maid.remove(`copychat_{plr.Name}`)
+		end
+
+		maid.remove('copychat_playeradded')
+	end
+end)
+
+cmd_library.add({'uncopychat'}, 'disables copychat', {}, function(vstorage)
+	local copychat_vs = cmd_library.get_variable_storage('copychat')
+
+	if not copychat_vs or not copychat_vs.enabled then
+		return notify('copychat', 'chat spy not enabled', 2)
+	end
+
+	copychat_vs.enabled = false
+
+	for _, plr in pairs(services.players:GetPlayers()) do
+		maid.remove(`copychat_{plr.Name}`)
+	end
+
+	maid.remove('copychat_playeradded')
+
+	notify('copychat', 'chat spy disabled', 1)
+end)
+
 cmd_library.add({'netlag'}, 'glitches netless/reanimation users', {
 	{'player', 'player'}
 }, function(vstorage, targets)
@@ -4032,7 +4203,7 @@ cmd_library.add({'fling'}, 'uses velocity to fling people', {
 	end
 end)
 
-cmd_library.add({'punchfling', 'pfling'}, 'gives you a punch fling tool', {}, function(vstorage) -- github.com/TheEGodOfficial/E-Super-Punch
+cmd_library.add({'punchfling', 'pfling'}, 'gives you a punch fling tool', {}, function(vstorage) -- github.com/TheEGodOfficial/E-Super-Punch hi e god
 	local tool = Instance.new('Tool')
 	tool.Name = 'punch'
 	tool.RequiresHandle = false
@@ -4115,30 +4286,35 @@ cmd_library.add({'punchfling', 'pfling'}, 'gives you a punch fling tool', {}, fu
 	notify('punchfling', 'punch fling tool given', 1)
 end)
 
-cmd_library.add({'carpetfling'}, 'flings player using carpet animation and hip height', {
+cmd_library.add({'carpetfling', 'cfling'}, 'flings player using carpet animation and hip height', {
 	{'player', 'player'},
 	{'power', 'number'}
 }, function(vstorage, targets, power)
 	if not targets or #targets == 0 then
-		return notify('fling2', 'no player specified', 2)
+		return notify('carpetfling', 'no player specified', 2)
+	end
+	
+	local is_r15 = stuff.owner_char.Humanoid.RigType == Enum.HumanoidRigType.R15
+	if not is_r15 then
+		return notify('carpetfling', 'only works with r15', 2)
 	end
 
 	power = power or 1000
 
 	for _, target in ipairs(targets) do
 		if target == stuff.owner then
-			notify('fling2', 'cannot fling yourself', 2)
+			notify('carpetfling', 'cannot fling yourself', 2)
 			continue
 		end
 
 		if not target.Character or not target.Character:FindFirstChild('HumanoidRootPart') then
-			notify('fling2', `{target.Name} has no character`, 2)
+			notify('carpetfling', `{target.Name} has no character`, 2)
 			continue
 		end
 
 		local char = stuff.owner.Character
 		if not char or not char:FindFirstChild('HumanoidRootPart') or not char:FindFirstChild('Humanoid') then
-			return notify('fling2', 'your character is missing parts', 2)
+			return notify('carpetfling', 'your character is missing parts', 2)
 		end
 
 		local hrp = char.HumanoidRootPart
@@ -4151,7 +4327,7 @@ cmd_library.add({'carpetfling'}, 'flings player using carpet animation and hip h
 			target.Character:FindFirstChild('HumanoidRootPart')
 
 		if not target_torso then
-			notify('fling2', `{target.Name} has no torso`, 2)
+			notify('carpetfling', `{target.Name} has no torso`, 2)
 			continue
 		end
 
@@ -4163,7 +4339,7 @@ cmd_library.add({'carpetfling'}, 'flings player using carpet animation and hip h
 		local carpet_track = humanoid:LoadAnimation(carpet_anim)
 		carpet_track:Play(0.1, 1, 1)
 
-		notify('fling2', `flinging {target.Name} with power {power}`, 1)
+		notify('carpetfling', `flinging {target.Name} with power {power}`, 1)
 
 		maid.add('fling2_loop', services.run_service.Heartbeat, function()
 			pcall(function()
@@ -4506,51 +4682,215 @@ cmd_library.add({'esit', 'enablesit', 'unlocksit'}, 'allows your character to si
 	stuff.rawrbxset(humanoid, 'Sit', false)
 end)
 
-cmd_library.add({'noclip'}, 'walk through stuff', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
+	{'mode', 'string'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, mode, et)
 	if et and vstorage.enabled then
-		cmd_library.execute('clip')
+		cmd_library.execute('unnoclip')
 		return
 	end
+
 	if vstorage.enabled then
 		return notify('noclip', 'noclip already enabled', 2)
 	end
 
-	vstorage.enabled = true
-	notify('noclip', 'noclip enabled', 1)
+	local valid_modes = {'normal', 'velocity', 'smart', 'cframe'}
+	mode = mode and mode:lower() or 'smart'
 
-	maid.add('noclip_connection', services.run_service.Stepped, function()
-		if stuff.owner_char then
-			for _, part in pairs(stuff.owner_char:GetDescendants()) do
+	if not table.find(valid_modes, mode) then
+		return notify('noclip', `invalid mode '{mode}'. valid modes: {table.concat(valid_modes, ', ')}`, 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.mode = mode
+	notify('noclip', `noclip enabled | mode: {vstorage.mode}`, 1)
+
+	local character = stuff.owner.Character
+	if not character then
+		return notify('noclip', 'character not found', 2)
+	end
+
+	local humanoid = character:FindFirstChildOfClass('Humanoid')
+	if humanoid then
+		vstorage.original_state = humanoid:GetStateEnabled(Enum.HumanoidStateType.Climbing)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
+	end
+
+	if vstorage.mode == 'normal' then
+		maid.add('noclip', services.run_service.Stepped, function()
+			for _, part in pairs(character:GetDescendants()) do
 				if part:IsA('BasePart') then
 					stuff.rawrbxset(part, 'CanCollide', false)
 				end
 			end
+		end)
+
+	elseif vstorage.mode == 'velocity' then
+		maid.add('noclip', services.run_service.Heartbeat, function()
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA('BasePart') then
+					stuff.rawrbxset(part, 'CanCollide', false)
+
+					local velocity = stuff.rawrbxget(part, 'AssemblyLinearVelocity')
+					if velocity.Magnitude > 0.1 then
+						stuff.rawrbxset(part, 'AssemblyLinearVelocity', velocity * 1.01)
+					end
+				end
+			end
+		end)
+
+	elseif vstorage.mode == 'smart' then
+		vstorage.collision_states = {}
+
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA('BasePart') then
+				vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
+			end
 		end
+
+		maid.add('noclip_stepped', services.run_service.Stepped, function()
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA('BasePart') then
+					stuff.rawrbxset(part, 'CanCollide', false)
+				end
+			end
+		end)
+
+		maid.add('noclip_heartbeat', services.run_service.Heartbeat, function()
+			if humanoid then
+				if stuff.rawrbxget(humanoid, 'Sit') then
+					stuff.rawrbxset(humanoid, 'Sit', false)
+				end
+			end
+		end)
+
+		maid.add('noclip_descendant', character.DescendantAdded, function(descendant)
+			if descendant:IsA('BasePart') then
+				vstorage.collision_states[descendant] = stuff.rawrbxget(descendant, 'CanCollide')
+			end
+		end)
+
+	elseif vstorage.mode == 'cframe' then
+		vstorage.collision_states = {}
+		vstorage.saved_cframe = nil
+		vstorage.is_moving = false
+
+		for _, part in pairs(character:GetDescendants()) do
+			if part:IsA('BasePart') then
+				vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
+			end
+		end
+
+		local hrp = character:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return notify('noclip', 'HumanoidRootPart not found', 2)
+		end
+
+		maid.add('noclip_cframe_stepped', services.run_service.Stepped, function()
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA('BasePart') then
+					stuff.rawrbxset(part, 'CanCollide', false)
+				end
+			end
+
+			if humanoid and hrp then
+				local move_direction = stuff.rawrbxget(humanoid, 'MoveDirection')
+				local move_magnitude = move_direction.Magnitude
+				local velocity = stuff.rawrbxget(hrp, 'AssemblyLinearVelocity')
+				local is_jumping = math.abs(velocity.Y) > 1
+
+				if move_magnitude > 0.1 or is_jumping then
+					vstorage.is_moving = true
+					vstorage.saved_cframe = stuff.rawrbxget(hrp, 'CFrame')
+				else
+					if vstorage.is_moving then
+						vstorage.is_moving = false
+						vstorage.saved_cframe = stuff.rawrbxget(hrp, 'CFrame')
+					end
+
+					if vstorage.saved_cframe then
+						stuff.rawrbxset(hrp, 'CFrame', vstorage.saved_cframe)
+						stuff.rawrbxset(hrp, 'AssemblyLinearVelocity', Vector3.new(velocity.X, velocity.Y, velocity.Z) * 0.1)
+						stuff.rawrbxset(hrp, 'AssemblyAngularVelocity', Vector3.zero)
+					end
+				end
+
+				if stuff.rawrbxget(humanoid, 'Sit') then
+					stuff.rawrbxset(humanoid, 'Sit', false)
+				end
+			end
+		end)
+
+		maid.add('noclip_cframe_descendant', character.DescendantAdded, function(descendant)
+			if descendant:IsA('BasePart') then
+				vstorage.collision_states[descendant] = stuff.rawrbxget(descendant, 'CanCollide')
+			end
+		end)
+	end
+
+	local reset_triggered = false
+
+	maid.add('noclip_died', character.Humanoid.Died, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('unnoclip')
+	end)
+
+	maid.add('noclip_char_added', stuff.owner.CharacterAdded, function()
+		if reset_triggered then return end
+		reset_triggered = true
+		cmd_library.execute('unnoclip')
 	end)
 end)
 
-cmd_library.add({'clip'}, 'stop walking through stuff', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('noclip')
+cmd_library.add({'unnoclip', 'unc', 'clip'}, 'disables noclip', {}, function(vstorage)
+	local noclip_vs = cmd_library.get_variable_storage('noclip')
 
-	if not vstorage.enabled then
-		return notify('noclip', 'noclip is not enabled', 2)
+	if not noclip_vs or not noclip_vs.enabled then
+		return notify('noclip', 'noclip not enabled', 2)
 	end
 
-	vstorage.enabled = false
-	maid.remove('noclip_connection')
-	notify('noclip', 'disabled noclip', 1)
+	noclip_vs.enabled = false
 
-	for _, v in pairs(stuff.owner_char:GetChildren()) do
-		if v:IsA('BasePart') then
-			stuff.rawrbxset(v, 'CanCollide', true)
+	maid.remove('noclip')
+	maid.remove('noclip_stepped')
+	maid.remove('noclip_heartbeat')
+	maid.remove('noclip_descendant')
+	maid.remove('noclip_cframe_stepped')
+	maid.remove('noclip_cframe_descendant')
+	maid.remove('noclip_died')
+	maid.remove('noclip_char_added')
+
+	local character = stuff.owner.Character
+	if character then
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+		if humanoid and noclip_vs.original_state ~= nil then
+			humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, noclip_vs.original_state)
+		end
+
+		if noclip_vs.collision_states then
+			for part, original_state in pairs(noclip_vs.collision_states) do
+				if part and part.Parent then
+					pcall(function()
+						stuff.rawrbxset(part, 'CanCollide', original_state)
+					end)
+				end
+			end
+		else
+			for _, part in pairs(character:GetDescendants()) do
+				if part:IsA('BasePart') and part.Name ~= 'HumanoidRootPart' then
+					stuff.rawrbxset(part, 'CanCollide', true)
+				end
+			end
 		end
 	end
 
-	if stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
-		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-		local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
-		stuff.rawrbxset(hrp, 'CFrame', hrp_cf + Vector3.new(0, 3, 0))
-	end
+	noclip_vs.collision_states = {}
+	noclip_vs.saved_cframe = nil
+	noclip_vs.is_moving = false
+
+	notify('noclip', 'noclip disabled', 1)
 end)
 
 cmd_library.add({'freeze'}, 'freezes your character in place', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
@@ -4891,6 +5231,37 @@ cmd_library.add({'visible', 'uninvis', 'uninvisible'}, 'makes your character vis
 end)
 
 -- c5: exploit
+
+cmd_library.add({'antikick', 'antiban'}, 'attempts to prevent kicks and bans', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		notify('antikick', 'anti kick enabled', 1)
+
+		vstorage.old_kick = hookmetamethod(game, '__namecall', function(self, ...)
+			local method = getnamecallmethod()
+
+			if vstorage.enabled and method == 'Kick' then
+				notify('antikick', 'blocked kick attempt', 3)
+				return
+			end
+
+			return vstorage.old_kick(self, ...)
+		end)
+
+		vstorage.old_teleport = services.teleport_service.Teleport
+		services.teleport_service.Teleport = function(...)
+			if vstorage.enabled then
+				notify('antikick', 'blocked teleport attempt', 3)
+				return
+			end
+			return vstorage.old_teleport(...)
+		end
+	else
+		notify('antikick', 'anti kick disabled', 1)
+		vstorage.enabled = false
+	end
+end)
 
 cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts', {
 	{'radius', 'number'},
@@ -5330,8 +5701,9 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	{'fov', 'number'},
 	{'aimrange', 'number'},
 	{'smoothing', 'number'},
+	{'prediction', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, toggle_key, wallcheck, fov_size, aim_range, smoothness, et)
+}, function(vstorage, toggle_key, wallcheck, fov_size, aim_range, smoothness, prediction, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unaimbot')
 		return
@@ -5348,9 +5720,10 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	vstorage.aim_range = aim_range or 300
 	vstorage.smoothness = math.clamp(smoothness or 0.2, 0.05, 1)
 	vstorage.wallcheck = wallcheck ~= false
+	vstorage.prediction = prediction or 0.1
 	vstorage.current_target = nil
 
-	local notification_text = `aimbot enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | smooth: {vstorage.smoothness} | wallcheck: {vstorage.wallcheck}`
+	local notification_text = `aimbot enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | smooth: {vstorage.smoothness} | wallcheck: {vstorage.wallcheck} | predict: {vstorage.prediction}`
 
 	if not stuff.is_mobile then
 		notification_text = notification_text .. ` | press '{vstorage.toggle_key}' to toggle`
@@ -5452,10 +5825,20 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 		if target_humanoid then
 			local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
 			local walk_speed = stuff.rawrbxget(target_humanoid, 'WalkSpeed')
-			target_position = target_position + (move_direction * walk_speed * 0.1)
+
+			if move_direction.Magnitude > 0 then
+				local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
+				if target_hrp then
+					local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
+					local ping = stuff.owner:GetNetworkPing()
+					local prediction_time = vstorage.prediction + ping
+
+					target_position = target_position + (target_velocity * prediction_time)
+				end
+			end
 		end
-		
-		local jitter = Vector3.new(math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05 )
+
+		local jitter = Vector3.new(math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05)
 		local goal_cframe = CFrame.lookAt(camera_cframe.Position, target_position + jitter)
 		local smoothed_cframe = camera_cframe:Lerp(goal_cframe, vstorage.smoothness)
 
@@ -6293,6 +6676,170 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 	end
 end)
 
+cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts', {
+	{'radius', 'number'},
+	{'torso_mode', 'boolean'}
+}, function(vstorage, radius, torso_mode)
+	radius = radius or 50
+
+	notify('flingaura', 'fetching all parts, your character will be reset', 1)
+
+	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+	local old_cframe = stuff.rawrbxget(hrp, 'CFrame')
+	local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+
+	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+	humanoid:ChangeState(15)
+	stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+	task.wait(services.players.RespawnTime + 0.5)
+
+	stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+	local new_hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+	stuff.rawrbxset(new_hrp, 'CFrame', old_cframe)
+	stuff.rawrbxset(workspace, 'CurrentCamera', cam)
+	task.wait(0.2)
+
+	local parts = {}
+	local part_index = 1
+
+	local r = false
+	maid.add('flingaura_died', stuff.owner_char.Humanoid.Died, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unflingaura')
+	end)
+
+	maid.add('flingaura_char_added', stuff.owner.CharacterAdded, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unflingaura')
+	end)
+
+	local predict_movement = function(player, future)
+		local char = player.Character
+		if not char then return end
+
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		local humanoid = char:FindFirstChild('Humanoid')
+		if not (hrp and humanoid) then return end
+
+		local move_dir = humanoid.MoveDirection
+		if move_dir == Vector3.zero then
+			return hrp.CFrame
+		end
+
+		return hrp.CFrame + move_dir * future
+	end
+
+	local is_player_part = function(part)
+		for _, plr in ipairs(services.players:GetPlayers()) do
+			if plr.Character and plr.Character:IsAncestorOf(part) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local is_valid_part = function(part)
+		local anchored = stuff.rawrbxget(part, 'Anchored')
+		if anchored or is_player_part(part) or part:IsDescendantOf(stuff.owner_char) then
+			return false
+		end
+		if part.Parent ~= workspace and (part.Parent:FindFirstChildOfClass('Humanoid') or part.Parent.Parent and part.Parent.Parent:FindFirstChildOfClass('Humanoid')) then
+			return false
+		end
+		return #part:GetConnectedParts() < 2
+	end
+
+	for _, part in ipairs(workspace:GetDescendants()) do
+		if part:IsA('BasePart') and is_valid_part(part) then
+			table.insert(parts, part)
+		end
+	end
+
+	local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
+		if part:IsA('BasePart') and is_valid_part(part) then
+			table.insert(parts, part)
+		end
+	end)
+
+	vstorage.fling_aura_conn = desc_added_conn
+
+	task.wait(1)
+
+	maid.add('fling_aura', services.run_service.Heartbeat, function(dt)
+		if not stuff.owner_char or not new_hrp:IsDescendantOf(workspace) then
+			maid.remove('fling_aura')
+			desc_added_conn:Disconnect()
+			return
+		end
+
+		local owner_pos = stuff.rawrbxget(new_hrp, 'Position')
+		local nearby_targets = {}
+
+		for _, player in ipairs(services.players:GetPlayers()) do
+			if player ~= stuff.owner and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
+				local target_hrp = player.Character.HumanoidRootPart
+				local target_pos = stuff.rawrbxget(target_hrp, 'Position')
+				local distance = (target_pos - owner_pos).Magnitude
+
+				if distance <= radius then
+					local predicted_cf = predict_movement(player, 0.15)
+					table.insert(nearby_targets, {player = player, hrp = target_hrp, predicted_cf = predicted_cf})
+				end
+			end
+		end
+
+		if #nearby_targets == 0 then return end
+
+		for i = #parts, 1, -1 do
+			local part = parts[i]
+
+			if not part:IsDescendantOf(game) then
+				table.remove(parts, i)
+				continue
+			end
+
+			pcall(function()
+				if part.ReceiveAge ~= 0 then return end
+				local anchored = stuff.rawrbxget(part, 'Anchored')
+				if anchored then return end
+
+				stuff.rawrbxset(part, 'CanCollide', false)
+				stuff.rawrbxset(part, 'Velocity', Vector3.new(0, 500000000000, 0))
+
+				local target = nearby_targets[(part_index % #nearby_targets) + 1]
+
+				if not torso_mode then
+					stuff.rawrbxset(part, 'CFrame', target.predicted_cf)
+				else
+					local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+					if humanoid then
+						humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
+						stuff.rawrbxset(humanoid, 'Sit', true)
+					end
+					local offset_cframe = target.predicted_cf * CFrame.new(0, 0, -(17 + part.Size.Magnitude))
+					stuff.rawrbxset(part, 'CFrame', offset_cframe)
+					stuff.owner_char:PivotTo(offset_cframe)
+				end
+
+				part_index = part_index + 1
+			end)
+		end
+	end)
+end)
+
+cmd_library.add({'unflingaura', 'unfaura', 'unfa'}, 'stop fling aura', {}, function(vstorage)
+	maid.remove('fling_aura')
+	maid.remove('flingaura_died')
+	maid.remove('flingaura_char_added')
+	if vstorage.fling_aura_conn then
+		vstorage.fling_aura_conn:Disconnect()
+		vstorage.fling_aura_conn = nil
+	end
+	notify('unflingaura', 'fling aura stopped', 1)
+end)
+
 cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling', {
 	{'player', 'player'},
 	{'torso_mode', 'boolean'}
@@ -6302,6 +6849,19 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 	end
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
+
+	local r = false
+	maid.add('partwalkfling_died', stuff.owner_char.Humanoid.Died, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unpartwalkfling')
+	end)
+
+	maid.add('partwalkfling_char_added', stuff.owner.CharacterAdded, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unpartwalkfling')
+	end)
 
 	for _, target in pairs(targets) do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
@@ -6362,6 +6922,8 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			end
 		end)
 
+		vstorage.partwalkfling_conn = desc_added_conn
+
 		task.wait(1)
 
 		maid.add('part_walkfling_'..target.Name, services.run_service.Heartbeat, function(dt)
@@ -6414,7 +6976,62 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 	end
 end)
 
+cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', 'unpwf'}, 'stop partwalkfling', {}, function(vstorage)
+	for _, player in ipairs(services.players:GetPlayers()) do
+		maid.remove('part_walkfling_'..player.Name)
+	end
+
+	maid.remove('partwalkfling_died')
+	maid.remove('partwalkfling_char_added')
+
+	if vstorage.partwalkfling_conn then
+		vstorage.partwalkfling_conn:Disconnect()
+		vstorage.partwalkfling_conn = nil
+	end
+
+	notify('unpartwalkfling', 'partwalkfling stopped', 1)
+end)
+
 -- c6: visual
+
+cmd_library.add({'xray'}, 'makes walls transparent', {
+	{'transparency', 'number'}
+}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		vstorage.original_transparency = {}
+		notify('xray', 'xray enabled', 1)
+
+		for _, part in pairs(workspace:GetDescendants()) do
+			if part:IsA('BasePart') and not part:IsDescendantOf(stuff.owner.Character) and part.Transparency < 1 then
+				vstorage.original_transparency[part] = stuff.rawrbxget(part, 'Transparency')
+				stuff.rawrbxset(part, 'Transparency', 0.7)
+			end
+		end
+
+		maid.add('xray_descendant', workspace.DescendantAdded, function(descendant)
+			if vstorage.enabled and descendant:IsA('BasePart') and not descendant:IsDescendantOf(stuff.owner.Character) then
+				task.wait()
+				if descendant.Transparency < 1 then
+					vstorage.original_transparency[descendant] = stuff.rawrbxget(descendant, 'Transparency')
+					stuff.rawrbxset(descendant, 'Transparency', 0.7)
+				end
+			end
+		end)
+	else
+		notify('xray', 'xray disabled', 1)
+		maid.remove('xray_descendant')
+
+		for part, original_transparency in pairs(vstorage.original_transparency or {}) do
+			if part and part.Parent then
+				stuff.rawrbxset(part, 'Transparency', original_transparency)
+			end
+		end
+
+		vstorage.original_transparency = {}
+	end
+end)
 
 cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
 	{'color', 'color3'}
@@ -6838,16 +7455,41 @@ maid.add('tracers_update', services.run_service.RenderStepped, function()
 	end
 end, true)
 
-cmd_library.add({'fullbright', 'fb'}, 'overrides lighting properties', {}, function(vstorage)
-	hypernull(function()
-		stuff.rawrbxset(services.lighting, 'Brightness', 10)
-		stuff.rawrbxset(services.lighting, 'ClockTime', 14.5)
-		stuff.rawrbxset(services.lighting, 'FogEnd', 10000)
-		stuff.rawrbxset(services.lighting, 'GlobalShadows', true)
-		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', Color3.fromRGB(255, 255, 255))
-	end)
+cmd_library.add({'fullbright', 'fb'}, 'removes darkness', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
 
-	notify('fullbright', 'lighting properties set', 1)
+	if vstorage.enabled then
+		notify('fullbright', 'fullbright enabled', 1)
+
+		vstorage.original_ambient = stuff.rawrbxget(services.lighting, 'Ambient')
+		vstorage.original_brightness = stuff.rawrbxget(services.lighting, 'Brightness')
+		vstorage.original_outdoor_ambient = stuff.rawrbxget(services.lighting, 'OutdoorAmbient')
+
+		stuff.rawrbxset(services.lighting, 'Ambient', Color3.new(1, 1, 1))
+		stuff.rawrbxset(services.lighting, 'Brightness', 2)
+		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', Color3.new(1, 1, 1))
+
+		maid.add('fullbright', services.lighting.ChildAdded, function(child)
+			if vstorage.enabled then
+				if child:IsA('BloomEffect') or child:IsA('BlurEffect') or child:IsA('ColorCorrectionEffect') or child:IsA('SunRaysEffect') then
+					stuff.rawrbxset(child, 'Enabled', false)
+				end
+			end
+		end)
+
+		for _, effect in pairs(services.lighting:GetChildren()) do
+			if effect:IsA('BloomEffect') or effect:IsA('BlurEffect') or effect:IsA('ColorCorrectionEffect') or effect:IsA('SunRaysEffect') then
+				stuff.rawrbxset(effect, 'Enabled', false)
+			end
+		end
+	else
+		notify('fullbright', 'fullbright disabled', 1)
+		maid.remove('fullbright')
+
+		stuff.rawrbxset(services.lighting, 'Ambient', vstorage.original_ambient)
+		stuff.rawrbxset(services.lighting, 'Brightness', vstorage.original_brightness)
+		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', vstorage.original_outdoor_ambient)
+	end
 end)
 
 cmd_library.add({'view', 'spectate'}, 'spectate another player', {
