@@ -46,6 +46,7 @@ local services = {
 	virt_user = game:GetService('VirtualUser'),
 	marketplace_service = game:GetService('MarketplaceService'),
 	network_client = game:GetService('NetworkClient'),
+	virt_input = game:GetService('VirtualInputManager'),
 }
 
 local stuff = {
@@ -1794,10 +1795,10 @@ cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstor
 		mouse1click()
 	elseif services.virtual_user then
 		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
-	elseif services.virtual_input then
-		services.virtual_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+	elseif services.virt_input then
+		services.virt_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
 		task.wait()
-		services.virtual_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+		services.virt_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
 	end
 end)
 
