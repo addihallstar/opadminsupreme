@@ -58,7 +58,7 @@ local stuff = {
 	disconnect = nil,
 	owner = services.players.LocalPlayer,
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
-	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://131430979206692')[1]):Clone(),
+	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
 	open_keybind = nil,
 
 	rawrbxget = nil,
