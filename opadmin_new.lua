@@ -24,9 +24,9 @@ writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
 
-if _G.opadmin_loaded then
-	return warn('opadmin is already loaded')
-end;_G.opadmin_loaded = true
+-- if _G.opadmin_loaded then
+-- 	return warn('opadmin is already loaded')
+-- end;_G.opadmin_loaded = true
 
 
 local services = {
@@ -519,8 +519,14 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
-	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+	-- xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
+	-- xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+
+    stuff.rawrbxget, stuff.rawrbxset = function(t,b)
+        return t[b]
+    end, function(t,b,v)
+        t[b] = v
+    end -- for some reason some executors don't work with rawrbxset and rawrbxget
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
@@ -6703,19 +6709,6 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 	local parts = {}
 	local part_index = 1
 
-	local r = false
-	maid.add('flingaura_died', stuff.owner_char.Humanoid.Died, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unflingaura')
-	end)
-
-	maid.add('flingaura_char_added', stuff.owner.CharacterAdded, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unflingaura')
-	end)
-
 	local predict_movement = function(player, future)
 		local char = player.Character
 		if not char then return end
@@ -6758,20 +6751,18 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		end
 	end
 
-	local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
+    maid.add('fa_desc_added', workspace.DescendantAdded, function(part)
 		if part:IsA('BasePart') and is_valid_part(part) then
 			table.insert(parts, part)
 		end
 	end)
-
-	vstorage.fling_aura_conn = desc_added_conn
 
 	task.wait(1)
 
 	maid.add('fling_aura', services.run_service.Heartbeat, function(dt)
 		if not stuff.owner_char or not new_hrp:IsDescendantOf(workspace) then
 			maid.remove('fling_aura')
-			desc_added_conn:Disconnect()
+			maid.remove('fa_desc_added')
 			return
 		end
 
@@ -6832,12 +6823,7 @@ end)
 
 cmd_library.add({'unflingaura', 'unfaura', 'unfa'}, 'stop fling aura', {}, function(vstorage)
 	maid.remove('fling_aura')
-	maid.remove('flingaura_died')
-	maid.remove('flingaura_char_added')
-	if vstorage.fling_aura_conn then
-		vstorage.fling_aura_conn:Disconnect()
-		vstorage.fling_aura_conn = nil
-	end
+	maid.remove('fa_desc_added')
 	notify('unflingaura', 'fling aura stopped', 1)
 end)
 
@@ -6850,19 +6836,6 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 	end
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
-
-	local r = false
-	maid.add('partwalkfling_died', stuff.owner_char.Humanoid.Died, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unpartwalkfling')
-	end)
-
-	maid.add('partwalkfling_char_added', stuff.owner.CharacterAdded, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unpartwalkfling')
-	end)
 
 	for _, target in pairs(targets) do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
@@ -6917,20 +6890,18 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			end
 		end
 
-		local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
+        maid.add('pwf_desc_added',  workspace.DescendantAdded, function(part)
 			if part:IsA('BasePart') and is_valid_part(part) then
 				table.insert(parts, part)
 			end
 		end)
-
-		vstorage.partwalkfling_conn = desc_added_conn
 
 		task.wait(1)
 
 		maid.add('part_walkfling_'..target.Name, services.run_service.Heartbeat, function(dt)
 			if not target.Character or not target_hrp:IsDescendantOf(workspace) or not target:IsDescendantOf(game) then
 				maid.remove('part_walkfling_'..target.Name)
-				desc_added_conn:Disconnect()
+				maid.remove('pwf_desc_added')
 				return
 			end
 
@@ -6980,15 +6951,9 @@ end)
 cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', 'unpwf'}, 'stop partwalkfling', {}, function(vstorage)
 	for _, player in ipairs(services.players:GetPlayers()) do
 		maid.remove('part_walkfling_'..player.Name)
-	end
+    end
 
-	maid.remove('partwalkfling_died')
-	maid.remove('partwalkfling_char_added')
-
-	if vstorage.partwalkfling_conn then
-		vstorage.partwalkfling_conn:Disconnect()
-		vstorage.partwalkfling_conn = nil
-	end
+	maid.remove('pwf_desc_added')
 
 	notify('unpartwalkfling', 'partwalkfling stopped', 1)
 end)
@@ -7970,6 +7935,7 @@ local ui_cmdlist_template = ui_cmdlist_commandlist.template
 
 local ui_notifications_main_container = ui_notifications.main_container
 local ui_notifications_template = ui_notifications_main_container.template
+ui_notifications_template.Size = UDim2.new(0, 0, 0, 25)
 
 ui_cmdlist_template.Parent = nil
 ui_notifications_template.Parent = nil
