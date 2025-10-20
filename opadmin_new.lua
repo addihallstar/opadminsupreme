@@ -24,9 +24,9 @@ writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
 
--- if _G.opadmin_loaded then
--- 	return warn('opadmin is already loaded')
--- end;_G.opadmin_loaded = true
+if _G.opadmin_loaded then
+ 	return warn('opadmin is already loaded')
+end;_G.opadmin_loaded = true
 
 
 local services = {
