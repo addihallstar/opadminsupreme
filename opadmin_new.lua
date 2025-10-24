@@ -62,7 +62,8 @@ local stuff = {
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
 	open_keybind = nil,
-
+	chat_prefix = nil,
+	
 	rawrbxget = nil,
 	rawrbxset = nil,
 
@@ -71,6 +72,7 @@ local stuff = {
 	is_mobile = services.user_input_service.TouchEnabled and not services.user_input_service.KeyboardEnabled,
 
 	highlights = {},
+	target = nil,
 	active_notifications = {},
 	max_notifications = 10,
 	ui_notifications_template = nil,
@@ -78,7 +80,7 @@ local stuff = {
 	ui_cmdlist = nil,
 	ui_cmdlist_template = nil,
 	ui_cmdlist_commandlist = nil,
-	update_keybinds = nil
+	update_keybinds = nil,
 }
 if not stuff.ui then
 	return warn('opadmin ui failed to load')
@@ -133,6 +135,8 @@ end
 local hwait = function(sig)
 	return services.run_service[sig and tostring(sig) or 'Heartbeat']:Wait()
 end
+
+
 
 local protect_gui = function(gui)
 	if syn and syn.protect_gui then
@@ -1168,6 +1172,8 @@ hook_lib.presets.freegamepass = function()
 
 	return hooks
 end
+
+stuff.chat_prefix = config.get('chat_prefix') or "!"
 
 
 -- c1: movement
@@ -2843,6 +2849,19 @@ cmd_library.add({'settings'}, 'manage settings', {
 	end
 end)
 
+cmd_library.add({'prefix', 'changeprefix', 'setprefix'}, 'changes the chat command prefix', {
+	{'new_prefix', 'string'}
+}, function(vstorage, new_prefix)
+	if not new_prefix or new_prefix == '' then
+		return notify('prefix', `current prefix: '{stuff.chat_prefix or '!'}'`, 4)
+	end
+
+	stuff.chat_prefix = new_prefix
+
+	config.set('chat_prefix', stuff.chat_prefix)
+	notify('prefix', `chat prefix changed to '{stuff.chat_prefix}'`, 1)
+end)
+
 cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybind', {
 	{'key', 'string'}
 }, function(vstorage, key)
@@ -4379,6 +4398,8 @@ cmd_library.add({'chat', 'say'}, 'says something in chat', {
 	end
 end)
 
+
+
 cmd_library.add({'spamchat'}, 'spams chat with a message', {
 	{'interval', 'number'}
 }, function(vstorage, interval, ...)
@@ -5681,6 +5702,23 @@ cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 end)
 
 -- c4: character
+
+cmd_library.add({'67'}, '67', {}, function(vstorage)
+	notify('67', '67', 1)
+	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+	local animator = humanoid:FindFirstChildOfClass('Animator')
+
+	if not animator then
+		animator = Instance.new('Animator')
+		stuff.rawrbxset(animator, 'Parent', humanoid)
+	end
+
+	local animation = Instance.new('Animation')
+	stuff.rawrbxset(animation, 'AnimationId', `rbxassetid://106367055475970`)
+
+	local track = animator:LoadAnimation(animation)
+	track:Play()
+end) -- most op command
 
 cmd_library.add({'camerainvert', 'invert', 'backwards'}, 'makes your character look opposite to camera direction', {
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -9660,23 +9698,6 @@ cmd_library.add({'colorshift'}, 'sets color shift', {
 	stuff.rawrbxset(services.lighting, 'ColorShift_Bottom', bottom or Color3.new(0, 0, 0))
 end)
 
-cmd_library.add({'67'}, '67', {}, function(vstorage)
-	notify('67', '67', 1)
-	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	local animator = humanoid:FindFirstChildOfClass('Animator')
-
-	if not animator then
-		animator = Instance.new('Animator')
-		stuff.rawrbxset(animator, 'Parent', humanoid)
-	end
-
-	local animation = Instance.new('Animation')
-	stuff.rawrbxset(animation, 'AnimationId', `rbxassetid://106367055475970`)
-
-	local track = animator:LoadAnimation(animation)
-	track:Play()
-end) -- most op command
-
 cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', {}, function(vstorage)
 	notify('fixlighting', 'lighting reset', 1)
 
@@ -10379,6 +10400,19 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 		stuff.owner_char:PivotTo(old_pos)
 	end
 end)
+
+--chat cmds
+
+services.players.LocalPlayer.Chatted:Connect(function(msg)
+	if msg:sub(1, #(stuff.chat_prefix)) == stuff.chat_prefix then
+		local args = msg:sub(#(stuff.chat_prefix) + 1):split(" ")
+		local cmd = table.remove(args, 1)
+		if cmd then
+			cmd_library.execute(cmd, unpack(args))
+		end
+	end
+end)
+
 
 -- ui
 
