@@ -9,10 +9,10 @@ firetouchinterest = firetouchinterest or nil
 setclipboard = setclipboard or function() end
 saveinstance = saveinstance or function() end
 hookmetamethod = hookmetamethod or function() end
-getloadedmodules = getloadedmodules or function() return {} end
+getloadedmodules = getloadedmodules or nil
 decompile = decompile or function() return '' end
 getnamecallmethod = getnamecallmethod or function() return '' end
-checkcaller = checkcaller or function() return false end
+checkcaller = checkcaller or nil
 syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
 set_hidden_property = sethiddenproperty or function() end
@@ -23,11 +23,13 @@ mouse1click = mouse1click or nil
 writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
+getgenv = getgenv or function() return {} end
 
-if _G.opadmin_loaded then
- 	return warn('opadmin is already loaded')
-end;_G.opadmin_loaded = true
+local env = getgenv and getgenv() or shared or _G
 
+env['\0opadmin'] = env['\0opadmin'] or {}
+if env['\0opadmin'].i then return end
+env['\0opadmin'].i = true
 
 local services = {
 	core_gui = game:GetService('CoreGui'),
@@ -143,14 +145,12 @@ local protect_gui = function(gui)
 	end
 end
 
-local hypernull;hypernull = function(fn, ...)
-	if(coroutine.status(task.spawn(hypernull,fn,...)) == 'dead')then return end
-	fn(...)
-end
-
 local predict_movement = function(player, future)
 	local char = player.Character
 	if not char then return end
+	if future == nil  then
+		future  = ((char:FindFirstChildOfClass("Humanoid").WalkSpeed * 68.75) / 100)
+	end
 
 	local hrp = char:FindFirstChild('HumanoidRootPart')
 	local humanoid = char:FindFirstChild('Humanoid')
@@ -184,29 +184,6 @@ local get_closest_part = function()
 	end
 
 	return best_part
-end
-
-local get_closest_player = function(fov)
-	local mouse = stuff.owner:GetMouse()
-	local closest_player, closest_distance = nil, fov
-
-	for _, plr in pairs(get_plrs()) do
-		if plr ~= stuff.owner and plr.Character and plr.Character:FindFirstChild('Head') then
-			local head = plr.Character.Head
-			local screen_pos, on_screen = workspace.CurrentCamera:WorldToScreenPoint(head.Position)
-
-			if on_screen then
-				local mouse_distance = (Vector2.new(mouse.X, mouse.Y) - Vector2.new(screen_pos.X, screen_pos.Y)).Magnitude
-
-				if mouse_distance < closest_distance then
-					closest_distance = mouse_distance
-					closest_player = plr
-				end
-			end
-		end
-	end
-
-	return closest_player
 end
 
 local remove_notification = function(notification_data)
@@ -272,6 +249,11 @@ local notify = function(log, text, log_type)
 	task.delay(4, function()
 		remove_notification(notification_data)
 	end)
+end
+
+local fov_to_radius = function(fov)
+	local viewport_size = stuff.rawrbxget(workspace.CurrentCamera, 'ViewportSize')
+	return math.tan(math.rad(fov / 2)) * (viewport_size.Y / 2)
 end
 
 local str_to_type = function(str, t)
@@ -519,14 +501,20 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	-- xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
-	-- xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
-
-    stuff.rawrbxget, stuff.rawrbxset = function(t,b)
-        return t[b]
-    end, function(t,b,v)
-        t[b] = v
-    end -- for some reason some executors don't work with rawrbxset and rawrbxget
+	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
+	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+		
+	local test_instance = Instance.new('StringValue')
+	stuff.rawrbxset(test_instance, 'Value', 'test')
+	if test_instance.Value ~= 'test' then
+		stuff.rawrbxset = function(obj, key, value)
+			obj[key] = value
+		end
+		stuff.rawrbxget = function(obj, key)
+			return obj[key]
+		end
+	end
+	pcall(stuff.destroy, test_instance)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
@@ -732,29 +720,30 @@ local cmd_library;cmd_library = {
 	end
 }
 
-local settings_manager = {
+local config = {
 	file_name = 'opadmin_settings.json',
+	current_game_id = tostring(game.PlaceId),
 	default_settings = {
-		open_keybind = _G.opadmin_open_keybind and _G.opadmin_open_keybind.Name or 'Quote',
+		open_keybind = env['\0opadmin'].opadmin_open_keybind and env['\0opadmin'].opadmin_open_keybind.Name or 'Quote',
 		aliases = {},
 		binds = {},
 	},
 	current_settings = {}
 }
 
-settings_manager.load = function()
+config.load = function()
 	if readfile and isfile then
-		if isfile(settings_manager.file_name) then
+		if isfile(config.file_name) then
 			local success, result = pcall(function()
-				return services.http:JSONDecode(readfile(settings_manager.file_name))
+				return services.http:JSONDecode(readfile(config.file_name))
 			end)
 
 			if success and result then
-				settings_manager.current_settings = result
+				config.current_settings = result
 
-				for key, default_value in pairs(settings_manager.default_settings) do
-					if settings_manager.current_settings[key] == nil then
-						settings_manager.current_settings[key] = default_value
+				for key, default_value in pairs(config.default_settings) do
+					if config.current_settings[key] == nil then
+						config.current_settings[key] = default_value
 					end
 				end
 
@@ -763,40 +752,55 @@ settings_manager.load = function()
 		end
 	end
 
-	settings_manager.current_settings = table.clone(settings_manager.default_settings)
+	config.current_settings = table.clone(config.default_settings)
 	return false
 end
 
-settings_manager.save = function()
+config.save = function()
 	if writefile then
 		local success = pcall(function()
-			writefile(settings_manager.file_name, services.http:JSONEncode(settings_manager.current_settings))
+			writefile(config.file_name, services.http:JSONEncode(config.current_settings))
 		end)
 		return success
 	end
 	return false
 end
 
-settings_manager.get = function(key)
-	return settings_manager.current_settings[key]
+config.get = function(key)
+	return config.current_settings[key]
 end
 
-settings_manager.set = function(key, value)
-	settings_manager.current_settings[key] = value
-	return settings_manager.save()
+config.set = function(key, value)
+	config.current_settings[key] = value
+	return config.save()
 end
 
-settings_manager.reset = function(key)
+config.reset = function(key)
 	if key then
-		settings_manager.current_settings[key] = settings_manager.default_settings[key]
+		config.current_settings[key] = config.default_settings[key]
 	else
-		settings_manager.current_settings = table.clone(settings_manager.default_settings)
+		config.current_settings = table.clone(config.default_settings)
 	end
-	return settings_manager.save()
+	return config.save()
 end
 
-settings_manager.apply = function()
-	local settings = settings_manager.current_settings
+config.get_game_binds = function()
+	local binds = config.get('binds') or {}
+	if not binds[config.current_game_id] then
+		binds[config.current_game_id] = {}
+		config.set('binds', binds)
+	end
+	return binds[config.current_game_id]
+end
+
+config.set_game_binds = function(game_binds)
+	local binds = config.get('binds') or {}
+	binds[config.current_game_id] = game_binds
+	return config.set('binds', binds)
+end
+
+config.apply = function()
+	local settings = config.current_settings
 
 	if settings.open_keybind then
 		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.Quote
@@ -812,8 +816,9 @@ settings_manager.apply = function()
 		end
 	end
 
-	if settings.binds then
-		for bind_id, bind_data in pairs(settings.binds) do
+	local game_binds = config.get_game_binds()
+	if game_binds then
+		for bind_id, bind_data in pairs(game_binds) do
 			local keycode = Enum.KeyCode[bind_data.key]
 			if keycode and cmd_library._command_map[bind_data.command:lower()] then
 				maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
@@ -826,59 +831,410 @@ settings_manager.apply = function()
 	end
 end
 
-settings_manager.load()
-settings_manager.apply()
+config.load()
+config.apply()
+
+
+local hook_lib = {
+	active_hooks = {},
+	presets = {}
+}
+
+hook_lib.create_hook = function(name, hooks)
+	if hook_lib.active_hooks[name] then
+		hook_lib.destroy_hook(name)
+	end
+
+	local hook_data = {
+		hooks = {},
+		enabled = true
+	}
+
+	if hooks.namecall then
+		hook_data.hooks.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+			if hook_data.enabled and checkcaller and not checkcaller() then
+				local result = hooks.namecall(self, ...)
+				if result ~= nil then
+					return result
+				end
+			end
+			return hook_data.hooks.old_namecall(self, ...)
+		end)
+	end
+
+	if hooks.index then
+		hook_data.hooks.old_index = hookmetamethod(game, '__index', function(self, key)
+			if hook_data.enabled and checkcaller and not checkcaller() then
+				local result = hooks.index(self, key)
+				if result ~= nil then
+					return result
+				end
+			end
+			return hook_data.hooks.old_index(self, key)
+		end)
+	end
+
+	if hooks.newindex then
+		hook_data.hooks.old_newindex = hookmetamethod(game, '__newindex', function(self, key, value)
+			if hook_data.enabled and checkcaller and not checkcaller() then
+				local result = hooks.newindex(self, key, value)
+				if result ~= false then
+					return
+				end
+			end
+			return hook_data.hooks.old_newindex(self, key, value)
+		end)
+	end
+
+	if hooks.functions and hookfunction then
+		hook_data.hooks.function_hooks = {}
+		for func, handler in pairs(hooks.functions) do
+			pcall(function()
+				local old_func = func
+				hook_data.hooks.function_hooks[func] = hookfunction(func, function(...)
+					if hook_data.enabled then
+						local result = handler(...)
+						if result ~= nil then
+							return result
+						end
+					end
+					return old_func(...)
+				end)
+			end)
+		end
+	end
+
+	if hookfunction then
+		if getfenv then
+			local old_getfenv = getfenv
+			hook_data.hooks.getfenv_hook = hookfunction(getfenv, function(level)
+				if checkcaller and not checkcaller() then
+					local env = old_getfenv(level)
+					if type(env) == 'table' then
+						local clean_env = {}
+						for k, v in pairs(env) do
+							if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
+								clean_env[k] = v
+							end
+						end
+						return clean_env
+					end
+				end
+				return old_getfenv(level)
+			end)
+		end
+
+		if debug and debug.info then
+			local old_debug_info = debug.info
+			local original_namecall = getrawmetatable(game).__namecall
+			local original_index = getrawmetatable(game).__index
+			local original_newindex = getrawmetatable(game).__newindex
+
+			hook_data.hooks.debug_hook = hookfunction(debug.info, function(level, options)
+				local result = old_debug_info(level, options)
+				if options == 'f' then
+					if result == hook_data.hooks.old_namecall then
+						return original_namecall
+					elseif result == hook_data.hooks.old_index then
+						return original_index
+					elseif result == hook_data.hooks.old_newindex then
+						return original_newindex
+					end
+				end
+				return result
+			end)
+		end
+	end
+
+	hook_lib.active_hooks[name] = hook_data
+	return hook_data
+end
+
+hook_lib.destroy_hook = function(name)
+	local hook_data = hook_lib.active_hooks[name]
+	if hook_data then
+		hook_data.enabled = false
+		hook_lib.active_hooks[name] = nil
+	end
+end
+
+hook_lib.presets.property_spoof = function(object, properties)
+	local hooks = {}
+	local fake_itemchanged_event = Instance.new('BindableEvent')
+
+	hooks.index = function(self, key)
+		if self == object then
+			if properties[key] ~= nil then
+				return properties[key]
+			end
+
+			if key == 'Changed' then
+				return Instance.new('BindableEvent').Event
+			end
+		end
+
+		if self == game and key == 'ItemChanged' then
+			return fake_itemchanged_event.Event
+		end
+	end
+
+	hooks.newindex = function(self, key, value)
+		if self == object and properties[key] ~= nil then
+			if value ~= properties[key] then
+				return false
+			end
+		end
+	end
+
+	hooks.namecall = function(self, ...)
+		local method = getnamecallmethod()
+		local args = {...}
+
+		if self == object then
+			if method == 'GetPropertyChangedSignal' then
+				for prop, _ in pairs(properties) do
+					if args[1] == prop then
+						return Instance.new('BindableEvent').Event
+					end
+				end
+			end
+		end
+	end
+
+	if hookfunction then
+		local original_itemchanged = game.ItemChanged
+		hooks.functions = {}
+
+		local fake_connection_mt = {}
+		fake_connection_mt.__index = fake_connection_mt
+
+		function fake_connection_mt:Connect(callback)
+			return original_itemchanged:Connect(function(instance, property)
+				if instance == object and properties[property] ~= nil then
+					return
+				end
+				callback(instance, property)
+			end)
+		end
+
+		local fake_itemchanged = setmetatable({}, fake_connection_mt)
+
+		hooks.index_itemchanged = function(self, key)
+			if self == game and key == 'ItemChanged' then
+				return fake_itemchanged
+			end
+		end
+	end
+
+	return hooks
+end
+
+hook_lib.presets.method_block = function(object, methods)
+	local hooks = {}
+
+	hooks.namecall = function(self, ...)
+		local method = getnamecallmethod()
+		if self == object then
+			for _, blocked_method in ipairs(methods) do
+				if method == blocked_method then
+					return nil
+				end
+			end
+		end
+	end
+
+	return hooks
+end
+
+hook_lib.presets.state_spoof = function(humanoid, state)
+	local hooks = {}
+
+	hooks.namecall = function(self, ...)
+		local method = getnamecallmethod()
+		if self == humanoid then
+			if method == 'GetState' then
+				return state
+			elseif method == 'ChangeState' then
+				local args = {...}
+				if args[1] ~= state then
+					return nil
+				end
+			end
+		end
+	end
+
+	return hooks
+end
+
+hook_lib.presets.antikick = function(player)
+	local hooks = {}
+
+	hooks.namecall = function(self, ...)
+		local method = getnamecallmethod()
+		local args = {...}
+
+		if self == player and (method == 'Kick' or method == 'Destroy' or method == 'Remove' or method == 'ClearAllChildren') then
+			notify('antikick', `blocked {method} attempt`, 3)
+			return nil
+		end
+
+		if self == services.teleport_service and (method == 'Teleport' or method == 'TeleportAsync' or method == 'TeleportToPlaceInstance') then
+			notify('antikick', `blocked teleport attempt ({method})`, 3)
+			return nil
+		end
+	end
+
+	hooks.index = function(self, key)
+		if self == player and key == 'Parent' then
+			local parent = stuff.rawrbxget(self, 'Parent')
+			if not parent then
+				return services.players
+			end
+		end
+	end
+
+	hooks.newindex = function(self, key, value)
+		if self == player and key == 'Parent' then
+			if value == nil or value ~= services.players then
+				notify('antikick', 'blocked parent change attempt', 3)
+				return false
+			end
+		end
+	end
+
+	hooks.functions = {}
+
+	if services.teleport_service.Teleport then
+		hooks.functions[services.teleport_service.Teleport] = function(...)
+			notify('antikick', 'blocked function teleport attempt', 3)
+			return
+		end
+	end
+
+	if services.teleport_service.TeleportAsync then
+		hooks.functions[services.teleport_service.TeleportAsync] = function(...)
+			notify('antikick', 'blocked function teleport async attempt', 3)
+			return
+		end
+	end
+
+	if game.Shutdown then
+		hooks.functions[game.Shutdown] = function(...)
+			notify('antikick', 'blocked shutdown attempt', 3)
+			return
+		end
+	end
+
+	return hooks
+end
+
+hook_lib.presets.freegamepass = function()
+	local hooks = {}
+
+	hooks.namecall = function(self, ...)
+		local args = {...}
+		local method = getnamecallmethod()
+
+		if self == services.marketplace_service then
+			if method == 'UserOwnsGamePassAsync' then
+				return true
+			elseif method == 'PlayerOwnsAsset' then
+				return true
+			elseif method == 'GetProductInfo' then
+				local result = hooks.old_namecall(self, ...)
+				if result then
+					result.IsOwned = true
+				end
+				return result
+			end
+		end
+
+		if self:IsA('Player') then
+			if method == 'IsInGroup' then
+				return true
+			elseif method == 'GetRankInGroup' then
+				return 255
+			end
+		end
+	end
+
+	hooks.index = function(self, key)
+		if self:IsA('Player') then
+			if key == 'MembershipType' or key == 'Membership' then
+				return Enum.MembershipType.Premium
+			end
+		end
+	end
+
+	return hooks
+end
 
 
 -- c1: movement
+
 cmd_library.add({'speed', 'walkspeed', 'ws'}, 'sets your walkspeed to [speed]', {
 	{'speed', 'number'},
 	{'bypass_mode', 'boolean'}
 }, function(vstorage, speed, bypass)
-	notify('walkspeed', speed and `walkspeed set to {speed}` or `walkspeed set to default ({stuff.default_ws})`, 1)
+	speed = speed or stuff.default_ws
+	notify('walkspeed', `walkspeed set to {speed}`, 1)
 
 	if bypass then
-		hypernull(stuff.rawrbxset, stuff.owner_char:WaitForChild('Humanoid'), 'WalkSpeed', speed or stuff.default_ws)
-	else
-		stuff.rawrbxset(stuff.owner_char:WaitForChild('Humanoid'), 'WalkSpeed', speed or stuff.default_ws)
+		local humanoid = stuff.owner_char.Humanoid
+		hook_lib.create_hook('walkspeed_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = speed}))
 	end
+
+	stuff.rawrbxset(stuff.owner_char.Humanoid, 'WalkSpeed', speed)
 end)
 
 cmd_library.add({'jumppower', 'jp'}, 'sets your jumppower to [power]', {
 	{'power', 'number'},
 	{'bypass_mode', 'boolean'}
 }, function(vstorage, power, bypass)
-	notify('jumppower', power and `jumppower set to {power}` or `jumppower set to default ({stuff.default_jp})`, 1)
+	power = power or stuff.default_jp
+	notify('jumppower', `jumppower set to {power}`, 1)
 
-	local humanoid = stuff.owner_char:WaitForChild('Humanoid')
+	local humanoid = stuff.owner_char.Humanoid
+
 	if bypass then
-		hypernull(stuff.rawrbxset, humanoid, 'UseJumpPower', true)
-		hypernull(stuff.rawrbxset, humanoid, 'JumpPower', power or stuff.default_jp)
-	else
-		stuff.rawrbxset(humanoid, 'UseJumpPower', true)
-		stuff.rawrbxset(humanoid, 'JumpPower', power or stuff.default_jp)
+		hook_lib.create_hook('jumppower_bypass', hook_lib.presets.property_spoof(humanoid, {
+			JumpPower = power,
+			UseJumpPower = true
+		}))
 	end
+
+	stuff.rawrbxset(humanoid, 'UseJumpPower', true)
+	stuff.rawrbxset(humanoid, 'JumpPower', power)
 end)
 
 cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to [power] in a loop', {
 	{'power', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, power, et)
-
+}, function(vstorage, power, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unloopjp')
 		return
 	end
 
-	notify('loopjumppower', power and `looping jumppower set to {power}` or `looping jumppower set to default ({stuff.default_jp})`, 1)
+	power = power or stuff.default_jp
+	notify('loopjumppower', `looping jumppower set to {power}`, 1)
 
 	vstorage.enabled = true
 	vstorage.old_power = stuff.rawrbxget(stuff.owner_char.Humanoid, 'JumpPower')
 
+	if bypass then
+		local humanoid = stuff.owner_char.Humanoid
+		hook_lib.create_hook('loopjp_bypass', hook_lib.presets.property_spoof(humanoid, {
+			JumpPower = power,
+			UseJumpPower = true
+		}))
+	end
+
 	maid.add('loopjp', services.run_service.Heartbeat, function()
 		local hum = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
 		pcall(stuff.rawrbxset, hum, 'UseJumpPower', true)
-		pcall(stuff.rawrbxset, hum, 'JumpPower', power or stuff.default_jp)
+		pcall(stuff.rawrbxset, hum, 'JumpPower', power)
 	end)
 end)
 
@@ -888,6 +1244,8 @@ cmd_library.add({'unloopjumppower', 'unloopjp'}, 'disables loopjumppower', {}, f
 	if vstorage.enabled then
 		vstorage.enabled = false
 		maid.remove('loopjp')
+		hook_lib.destroy_hook('loopjp_bypass')
+
 		pcall(stuff.rawrbxset, stuff.owner_char.Humanoid, 'JumpPower', vstorage.old_power or stuff.default_jp)
 		notify('loopjumppower', 'loop jumppower disabled', 1)
 	else
@@ -897,21 +1255,27 @@ end)
 
 cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to [speed] in a loop', {
 	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
-
+}, function(vstorage, speed, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unloopws')
 		return
 	end
 
-	notify('loopwalkspeed', speed and `looping walkspeed set to {speed}` or `looping walkspeed set to default ({stuff.default_ws})`, 1)
+	speed = speed or stuff.default_ws
+	notify('loopwalkspeed', `looping walkspeed set to {speed}`, 1)
 
 	vstorage.enabled = true
 	vstorage.old_speed = stuff.rawrbxget(stuff.owner_char.Humanoid, 'WalkSpeed')
 
+	if bypass then
+		local humanoid = stuff.owner_char.Humanoid
+		hook_lib.create_hook('loopws_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = speed}))
+	end
+
 	maid.add('loopws', services.run_service.Heartbeat, function()
-		pcall(stuff.rawrbxset, stuff.rawrbxget(stuff.owner_char, 'Humanoid'), 'WalkSpeed', speed or stuff.default_ws)
+		pcall(stuff.rawrbxset, stuff.rawrbxget(stuff.owner_char, 'Humanoid'), 'WalkSpeed', speed)
 	end)
 end)
 
@@ -921,6 +1285,8 @@ cmd_library.add({'unloopwalkspeed', 'unloopws'}, 'disables loopwalkspeed', {}, f
 	if vstorage.enabled then
 		vstorage.enabled = false
 		maid.remove('loopws')
+		hook_lib.destroy_hook('loopws_bypass')
+
 		pcall(stuff.rawrbxset, stuff.owner_char.Humanoid, 'WalkSpeed', vstorage.old_speed or stuff.default_ws)
 		notify('loopwalkspeed', 'loop walkspeed disabled', 1)
 	else
@@ -930,8 +1296,9 @@ end)
 
 cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
 	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
+}, function(vstorage, speed, bypass, et)
 	if speed == nil then
 		speed = 1
 	end
@@ -956,6 +1323,32 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
 	stuff.rawrbxset(flight_part, 'Anchored', true)
 	stuff.rawrbxset(flight_part, 'Transparency', 1)
 	stuff.rawrbxset(flight_part, 'CanCollide', false)
+
+	if bypass then
+		local humanoid = stuff.owner_char.Humanoid
+		local hrp = stuff.owner_char.HumanoidRootPart
+
+		hook_lib.create_hook('fly_bypass', {
+			namecall = function(self, ...)
+				local method = getnamecallmethod()
+				if self == humanoid then
+					if method == 'GetState' then
+						return Enum.HumanoidStateType.Running
+					elseif method == 'ChangeState' then
+						local args = {...}
+						if args[1] ~= Enum.HumanoidStateType.Running then
+							return nil
+						end
+					end
+				end
+			end,
+			index = function(self, key)
+				if self == hrp and key == 'Velocity' then
+					return Vector3.zero
+				end
+			end
+		})
+	end
 
 	maid.add('flight', services.run_service.Heartbeat, function()
 		pcall(function()
@@ -983,6 +1376,7 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 	if vstorage.enabled then
 		vstorage.enabled = false
 		maid.remove('flight')
+		hook_lib.destroy_hook('fly_bypass')
 
 		if vstorage.part then
 			pcall(stuff.destroy, vstorage.part)
@@ -1142,8 +1536,9 @@ end)
 
 cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
+}, function(vstorage, speed, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unbypassfly')
 		return
@@ -1160,7 +1555,8 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 
 	vstorage.enabled = true
 	vstorage.speed = speed or 1
-	notify('bfly', 'bypass flight enabled, when you disable bfly you will teleport to the part', 1)
+	vstorage.bypass = bypass
+	notify('bfly', `bypass flight enabled{bypass and ' (hook bypass)' or ''} | when disabled you will teleport to the part`, 1)
 
 	local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 	vstorage.old_subject = stuff.rawrbxget(cam, 'CameraSubject')
@@ -1178,6 +1574,132 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 	stuff.rawrbxset(flight_part, 'Transparency', 0.5)
 	stuff.rawrbxset(flight_part, 'CanCollide', false)
 	stuff.rawrbxset(cam, 'CameraSubject', flight_part)
+
+	if bypass then
+		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+
+		hook_lib.create_hook('bfly_bypass', {
+			index = function(self, key)
+				if self == stuff.owner_char and key == 'Parent' then
+					return vstorage.old_parent or workspace
+				end
+
+				if self == cam and key == 'CameraSubject' then
+					return vstorage.old_subject or humanoid
+				end
+
+				if self == flight_part then
+					if key == 'Parent' then
+						return nil
+					end
+				end
+
+				if self == hrp then
+					if key == 'Position' or key == 'position' then
+						return stuff.rawrbxget(flight_part, 'Position')
+					elseif key == 'CFrame' or key == 'cframe' then
+						return stuff.rawrbxget(flight_part, 'CFrame')
+					elseif key == 'Velocity' or key == 'velocity' then
+						return Vector3.zero
+					elseif key == 'AssemblyLinearVelocity' then
+						return Vector3.zero
+					end
+				end
+
+				if self == humanoid then
+					if key == 'FloorMaterial' then
+						return Enum.Material.Plastic
+					elseif key == 'Jump' then
+						return false
+					end
+				end
+			end,
+
+			newindex = function(self, key, value)
+				if self == stuff.owner_char and key == 'Parent' then
+					if value ~= nil then
+						return false
+					end
+				end
+
+				if self == cam and key == 'CameraSubject' then
+					if value ~= flight_part then
+						return false
+					end
+				end
+
+				if self == flight_part then
+					if key == 'Parent' and value == nil then
+						return false
+					end
+					if key == 'CFrame' or key == 'Position' then
+						return false
+					end
+				end
+			end,
+
+			namecall = function(self, ...)
+				local method = getnamecallmethod()
+				local args = {...}
+
+				if self == stuff.owner_char then
+					if method == 'GetPivot' then
+						return stuff.rawrbxget(flight_part, 'CFrame')
+					elseif method == 'IsDescendantOf' or method == 'IsAncestorOf' then
+						if args[1] == workspace or args[1] == game then
+							return true
+						end
+					end
+				end
+
+				if self == hrp then
+					if method == 'GetPropertyChangedSignal' then
+						if args[1] == 'Position' or args[1] == 'CFrame' or args[1] == 'Velocity' then
+							return Instance.new('BindableEvent').Event
+						end
+					end
+				end
+
+				if self == workspace then
+					if method == 'FindFirstChild' or method == 'FindFirstChildOfClass' or method == 'FindFirstChildWhichIsA' then
+						if args[1] == flight_part.Name or flight_part:IsA(args[1] or '') then
+							return nil
+						end
+					end
+				end
+			end
+		})
+
+		if hookfunction then
+			vstorage.get_descendants_hook = hookfunction(game.GetDescendants, function(self)
+				if vstorage.enabled and self == workspace then
+					local descendants = game.GetDescendants(self)
+					local filtered = {}
+					for _, descendant in ipairs(descendants) do
+						if descendant ~= flight_part then
+							table.insert(filtered, descendant)
+						end
+					end
+					return filtered
+				end
+				return game.GetDescendants(self)
+			end)
+
+			vstorage.get_children_hook = hookfunction(game.GetChildren, function(self)
+				if vstorage.enabled and self == workspace then
+					local children = game.GetChildren(self)
+					local filtered = {}
+					for _, child in ipairs(children) do
+						if child ~= flight_part then
+							table.insert(filtered, child)
+						end
+					end
+					return filtered
+				end
+				return game.GetChildren(self)
+			end)
+		end
+	end
 
 	maid.add('bypassfly_connection', services.run_service.Heartbeat, function()
 		pcall(function()
@@ -1198,7 +1720,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 	end)
 end)
 
-cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', {}, function(vstorage)
+cmd_library.add({'unbfly', 'disablebfly', 'stopbfly', 'unbypassfly'}, 'disable bypass flight', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('bfly')
 
 	if not vstorage.enabled then
@@ -1207,6 +1729,17 @@ cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', 
 
 	vstorage.enabled = false
 	maid.remove('bypassfly_connection')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('bfly_bypass')
+
+		if vstorage.get_descendants_hook then
+			vstorage.get_descendants_hook = nil
+		end
+		if vstorage.get_children_hook then
+			vstorage.get_children_hook = nil
+		end
+	end
 
 	if vstorage.part then
 		maid.add('bfly_slop', services.run_service.Heartbeat, function()
@@ -1230,7 +1763,10 @@ cmd_library.add({'unbfly', 'disablebfly', 'stopbfly'}, 'disable bypass flight', 
 	notify('bfly', 'disabled bypass flight', 1)
 end)
 
-cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
+	{'height', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, height, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unairwalk')
 		return
@@ -1241,28 +1777,51 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {{'enable_togg
 	end
 
 	vstorage.enabled = true
-	notify('airwalk', 'enabled airwalk', 1)
+	vstorage.height = height or -4
+	vstorage.height_offset = 0
+	notify('airwalk', 'enabled airwalk | Q/E: down/up', 1)
 
 	local air_walk_part = Instance.new('Part', workspace)
-	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 2, 3))
+	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 0.5, 3))
 	stuff.rawrbxset(air_walk_part, 'Transparency', 1)
 	stuff.rawrbxset(air_walk_part, 'Anchored', true)
 	stuff.rawrbxset(air_walk_part, 'CanCollide', true)
 	stuff.rawrbxset(air_walk_part, 'Name', tostring(services.http:GenerateGUID()))
 	vstorage.air_walk_part = air_walk_part
 
+	maid.add('airwalk_input', services.user_input_service.InputBegan, function(input, processed)
+		if processed then return end
+
+		if input.KeyCode == Enum.KeyCode.E then
+			vstorage.height_offset = vstorage.height_offset + 0.5
+		elseif input.KeyCode == Enum.KeyCode.Q then
+			vstorage.height_offset = vstorage.height_offset - 0.5
+		end
+	end)
+
 	maid.add('air_walk', services.run_service.Heartbeat, function()
 		if vstorage.enabled and air_walk_part and stuff.rawrbxget(air_walk_part, 'Parent') then
 			pcall(function()
 				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 				local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
-				stuff.rawrbxset(air_walk_part, 'CFrame', hrp_cf + Vector3.new(0, -4, 0))
+				stuff.rawrbxset(air_walk_part, 'CFrame', hrp_cf + Vector3.new(0, vstorage.height + vstorage.height_offset, 0))
 			end)
 		else
 			maid.remove('air_walk')
+			maid.remove('airwalk_input')
 			pcall(stuff.destroy, air_walk_part)
 			vstorage.air_walk_part = nil
 			vstorage.enabled = false
+		end
+	end)
+
+	maid.add('airwalk_died', stuff.owner_char.Humanoid.Died, function()
+		cmd_library.execute('unairwalk')
+	end)
+
+	maid.add('airwalk_char_added', stuff.owner.CharacterAdded, function()
+		if vstorage.enabled then
+			cmd_library.execute('unairwalk')
 		end
 	end)
 end)
@@ -1270,22 +1829,28 @@ end)
 cmd_library.add({'unairwalk', 'unairw', 'unfloat'}, 'turns off airwalk', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('airwalk')
 
-	if vstorage.air_walk_part then
-		vstorage.enabled = false
-		maid.remove('air_walk')
+	if not vstorage.enabled then
+		return notify('airwalk', 'airwalk is already disabled', 2)
+	end
 
+	vstorage.enabled = false
+	maid.remove('air_walk')
+	maid.remove('airwalk_input')
+	maid.remove('airwalk_died')
+	maid.remove('airwalk_char_added')
+
+	if vstorage.air_walk_part then
 		pcall(stuff.destroy, vstorage.air_walk_part)
 		vstorage.air_walk_part = nil
-
-		notify('airwalk', 'disabled airwalk', 1)
-	else
-		notify('airwalk', 'airwalk is already disabled', 2)
 	end
+
+	notify('airwalk', 'disabled airwalk', 1)
 end)
 
 cmd_library.add({'to', 'goto'}, 'teleport infront of the target', {
-	{'player', 'player'}
-}, function(vstorage, targets)
+	{'player', 'player'},
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, targets, bypass)
 	if not targets or #targets == 0 then
 		return notify('goto', 'player not found', 2)
 	end
@@ -1297,11 +1862,30 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', {
 			continue
 		end
 
-		hypernull(function()
+		if bypass then
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				local target_hrp = stuff.rawrbxget(target_char, 'HumanoidRootPart')
+				local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
+
+				hook_lib.create_hook('goto_bypass', {
+					newindex = function(self, key, value)
+						if self == hrp and (key == 'CFrame' or key == 'Position') then
+							return false
+						end
+					end
+				})
+
+				stuff.owner_char:PivotTo(target_cf * CFrame.new(0, 3, -3))
+
+				task.wait(0.1)
+				hook_lib.destroy_hook('goto_bypass')
+			end
+		else
 			local target_hrp = stuff.rawrbxget(target_char, 'HumanoidRootPart')
 			local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
 			stuff.owner_char:PivotTo(target_cf * CFrame.new(0, 3, -3))
-		end)
+		end
 
 		notify('goto', `teleported to {target.Name}`, 1)
 	end
@@ -1623,8 +2207,9 @@ end)
 
 cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without changing the walkspeed', {
 	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
+}, function(vstorage, speed, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('uncframespeed')
 		return
@@ -1636,11 +2221,25 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 
 	vstorage.enabled = true
 	vstorage.speed = speed or 2
-	notify('cframespeed', `cframe speed enabled with speed {vstorage.speed}`, 1)
+	vstorage.bypass = bypass
+	notify('cframespeed', `cframe speed enabled with speed {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
 
 	pcall(function()
 		maid.remove('cframe_speed')
 	end)
+
+	if bypass then
+		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if hrp then
+			hook_lib.create_hook('cframespeed_bypass', {
+				newindex = function(self, key, value)
+					if self == hrp and (key == 'CFrame' or key == 'Position') then
+						return false
+					end
+				end
+			})
+		end
+	end
 
 	maid.add('cframe_speed', services.run_service.Heartbeat, function()
 		pcall(function()
@@ -1665,56 +2264,12 @@ cmd_library.add({'uncframespeed', 'uncfspeed', 'uncfws'}, 'stop cframe speed', {
 
 	vstorage.enabled = false
 	maid.remove('cframe_speed')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('cframespeed_bypass')
+	end
+
 	notify('cframespeed', 'cframe speed disabled', 1)
-end)
-
-cmd_library.add({'bypasscframespeed', 'bypasscfspeed', 'bypasscfws', 'bcframespeed', 'bcfspeed', 'bcfws'}, 'speeds you up without changing the walkspeed (bypass)', {
-	{'speed', 'number'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unbypasscframespeed')
-		return
-	end
-
-	if vstorage.enabled and vstorage.speed == speed then
-		return notify('bypasscframespeed', 'bypass cframe speed already enabled', 2)
-	end
-
-	vstorage.enabled = true
-	vstorage.speed = speed or 2
-	notify('bypasscframespeed', `bypass cframe speed enabled with speed {vstorage.speed}`, 1)
-
-	pcall(function()
-		maid.remove('bypass_cframe_speed')
-	end)
-
-	maid.add('bypass_cframe_speed', services.run_service.Heartbeat, function()
-		pcall(function()
-			local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-			local move_direction = stuff.rawrbxget(humanoid, 'MoveDirection')
-
-			if move_direction.Magnitude > 0 then
-				hypernull(function()
-					local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-					local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
-					stuff.rawrbxset(hrp, 'CFrame', hrp_cf + move_direction * vstorage.speed)
-				end)
-			end
-		end)
-	end)
-end)
-
-cmd_library.add({'unbypasscframespeed', 'unbypasscfspeed', 'unbypasscfws', 'unbcframespeed', 'unbcfspeed', 'unbcfws'}, 'stop bypass cframe speed', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('bypasscframespeed')
-
-	if not vstorage.enabled then
-		return notify('bypasscframespeed', 'bypass cframe speed already disabled', 2)
-	end
-
-	vstorage.enabled = false
-	maid.remove('bypass_cframe_speed')
-	notify('bypasscframespeed', 'bypass cframe speed disabled', 1)
 end)
 
 -- c2: utility
@@ -1808,64 +2363,125 @@ cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstor
 	end
 end)
 
-cmd_library.add({'alias', 'addalias'}, 'creates an alias for a command', {
+cmd_library.add({'aliases', 'listalias', 'showaliases'}, 'lists all aliases', {}, function(vstorage)
+	local aliases = config.get('aliases') or {}
+
+	if next(aliases) == nil then
+		return notify('aliases', 'no aliases found', 2)
+	end
+
+	local alias_list = {}
+	for alias, command in pairs(aliases) do
+		table.insert(alias_list, `{alias} -> {command}`)
+	end
+
+	table.sort(alias_list)
+	notify('aliases', `aliases:\n{table.concat(alias_list, '\n')}`, 1)
+end)
+
+cmd_library.add({'addalias', 'alias', 'setalias'}, 'creates a command alias', {
 	{'alias', 'string'},
 	{'command', 'string'}
 }, function(vstorage, alias, command)
 	if not alias or not command then
-		return notify('alias', 'missing alias or command', 2)
+		return notify('addalias', 'missing alias or command', 2)
 	end
 
-	local cmd_data = cmd_library._command_map[command:lower()]
-	if not cmd_data then
-		local similar = cmd_library.find_similar(command:lower())
-		if #similar > 0 then
-			return notify('alias', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
-		else
-			return notify('alias', `command '{command}' not found`, 2)
-		end
+	alias = alias:lower()
+	command = command:lower()
+
+	if cmd_library._command_map[alias] then
+		return notify('addalias', `'{alias}' is already a command`, 2)
 	end
 
-	if cmd_library._command_map[alias:lower()] then
-		return notify('alias', `alias '{alias}' already exists`, 2)
-	end
-
-	table.insert(cmd_data.names, alias:lower())
-	cmd_library._command_map[alias:lower()] = cmd_data
-
-	local aliases = settings_manager.get('aliases') or {}
-	aliases[alias:lower()] = command:lower()
-	settings_manager.set('aliases', aliases)
-
-	notify('alias', `created alias '{alias}' for command '{command}'`, 1)
-end)
-
-cmd_library.add({'unalias', 'removealias'}, 'removes an alias', {
-	{'alias', 'string'}
-}, function(vstorage, alias)
-	if not alias then
-		return notify('unalias', 'no alias specified', 2)
-	end
-
-	local cmd_data = cmd_library._command_map[alias:lower()]
-	if not cmd_data then
-		return notify('unalias', `alias '{alias}' not found`, 2)
-	end
-
-	for i, name in ipairs(cmd_data.names) do
-		if name == alias:lower() then
-			table.remove(cmd_data.names, i)
+	local similar = cmd_library.find_similar(command)
+	local matched = false
+	for _, cmd_name in ipairs(similar) do
+		if cmd_name:lower() == command then
+			matched = true
 			break
 		end
 	end
 
-	cmd_library._command_map[alias:lower()] = nil
+	if not matched then
+		if #similar > 0 then
+			return notify('addalias', `command '{command}' not found. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			return notify('addalias', `command '{command}' not found`, 2)
+		end
+	end
 
-	local aliases = settings_manager.get('aliases') or {}
-	aliases[alias:lower()] = nil
-	settings_manager.set('aliases', aliases)
+	local cmd_data = cmd_library._command_map[command]
+	if cmd_data then
+		table.insert(cmd_data.names, alias)
+		cmd_library._command_map[alias] = cmd_data
+	end
 
-	notify('unalias', `removed alias '{alias}'`, 1)
+	local aliases = config.get('aliases') or {}
+	aliases[alias] = command
+	config.set('aliases', aliases)
+
+	notify('addalias', `created alias '{alias}' for command '{command}'`, 1)
+end)
+
+cmd_library.add({'removealias', 'unalias', 'deletealias'}, 'removes a command alias', {
+	{'alias', 'string'}
+}, function(vstorage, alias)
+	if not alias then
+		return notify('removealias', 'no alias specified', 2)
+	end
+
+	alias = alias:lower()
+
+	local aliases = config.get('aliases') or {}
+
+	if not aliases[alias] then
+		return notify('removealias', `alias '{alias}' not found`, 2)
+	end
+
+	local command = aliases[alias]
+	local cmd_data = cmd_library._command_map[command]
+
+	if cmd_data then
+		for i, name in ipairs(cmd_data.names) do
+			if name == alias then
+				table.remove(cmd_data.names, i)
+				break
+			end
+		end
+		cmd_library._command_map[alias] = nil
+	end
+
+	aliases[alias] = nil
+	config.set('aliases', aliases)
+
+	notify('removealias', `removed alias '{alias}'`, 1)
+end)
+
+cmd_library.add({'clearaliases', 'removeallaliases'}, 'clears all aliases', {}, function(vstorage)
+	local aliases = config.get('aliases') or {}
+
+	if next(aliases) == nil then
+		return notify('clearaliases', 'no aliases to clear', 2)
+	end
+
+	local count = 0
+	for alias, command in pairs(aliases) do
+		local cmd_data = cmd_library._command_map[command]
+		if cmd_data then
+			for i, name in ipairs(cmd_data.names) do
+				if name == alias then
+					table.remove(cmd_data.names, i)
+					break
+				end
+			end
+			cmd_library._command_map[alias] = nil
+		end
+		count = count + 1
+	end
+
+	config.set('aliases', {})
+	notify('clearaliases', `cleared {count} alias(es)`, 1)
 end)
 
 cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
@@ -1920,13 +2536,13 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 		end
 	end)
 
-	local binds = settings_manager.get('binds') or {}
-	binds[bind_id] = {
+	local game_binds = config.get_game_binds()
+	game_binds[bind_id] = {
 		key = key:upper(),
 		command = command:lower(),
 		args = args
 	}
-	settings_manager.set('binds', binds)
+	config.set_game_binds(game_binds)
 
 	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
 end)
@@ -1944,135 +2560,230 @@ cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	end
 
 	local removed = false
-	local binds = settings_manager.get('binds') or {}
+	local game_binds = config.get_game_binds()
 
 	for bind_id, bind_data in pairs(bind_vs.binds) do
 		if bind_data.key == key:upper() then
 			maid.remove(bind_id)
 			bind_vs.binds[bind_id] = nil
-			binds[bind_id] = nil
+			game_binds[bind_id] = nil
 			removed = true
 		end
 	end
 
 	if removed then
-		settings_manager.set('binds', binds)
+		config.set_game_binds(game_binds)
 		notify('unbind', `unbound key {key:upper()}`, 1)
 	else
 		notify('unbind', `no binds found for key {key:upper()}`, 2)
 	end
 end)
 
-cmd_library.add({'aliases'}, 'lists all aliases', {}, function(vstorage)
-	local aliases = settings_manager.get('aliases') or {}
-	local count = 0
-
-	for alias, command in pairs(aliases) do
-		notify('aliases', `{alias} -> {command}`, 4)
-		count = count + 1
-		task.wait(0.1)
+cmd_library.add({'listbinds', 'binds', 'showbinds'}, 'lists all keybinds for current game', {}, function(vstorage)
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	if not bind_vs or not bind_vs.binds or next(bind_vs.binds) == nil then
+		return notify('listbinds', 'no binds exist for this game', 2)
 	end
 
-	if count == 0 then
-		notify('aliases', 'no aliases found', 3)
-	else
-		notify('aliases', `total: {count} aliases`, 1)
+	local bind_list = {}
+	for bind_id, bind_data in pairs(bind_vs.binds) do
+		local args_str = #bind_data.args > 0 and ` {table.concat(bind_data.args, ' ')}` or ''
+		table.insert(bind_list, `{bind_data.key}: {bind_data.command}{args_str}`)
 	end
+
+	table.sort(bind_list)
+	notify('listbinds', `keybinds:\n{table.concat(bind_list, '\n')}`, 1)
 end)
 
-cmd_library.add({'binds'}, 'lists all keybinds', {}, function(vstorage)
-	local binds = settings_manager.get('binds') or {}
+cmd_library.add({'clearbinds', 'unbindall'}, 'clears all keybinds for current game', {}, function(vstorage)
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	if not bind_vs or not bind_vs.binds then
+		return notify('clearbinds', 'no binds exist', 2)
+	end
+
 	local count = 0
-
-	for bind_id, bind_data in pairs(binds) do
-		local args_str = #bind_data.args > 0 and ` [{table.concat(bind_data.args, ', ')}]` or ''
-		notify('binds', `{bind_data.key} -> {bind_data.command}{args_str}`, 4)
+	for bind_id, _ in pairs(bind_vs.binds) do
+		maid.remove(bind_id)
 		count = count + 1
-		task.wait(0.1)
 	end
 
-	if count == 0 then
-		notify('binds', 'no keybinds found', 3)
-	else
-		notify('binds', `total: {count} keybinds`, 1)
-	end
+	bind_vs.binds = {}
+	config.set_game_binds({})
+
+	notify('clearbinds', `cleared {count} keybind(s)`, 1)
 end)
 
 cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 	{'amount', 'number'}
 }, function(vstorage, amount)
-	local function GetHandleTools(player)
+	amount = amount or 1
+
+	if not stuff.owner_char or not stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+		return notify('dupetools', 'character not found', 2)
+	end
+
+	notify('dupetools', `duplicating tools {amount} time(s)`, 1)
+
+	local function get_handle_tools(player)
 		player = player or stuff.owner
 		local tools = {}
-		for _, item in ipairs(player.Character and player.Character:GetChildren() or {}) do
-			if item:IsA("BackpackItem") and item:FindFirstChild("Handle") then
-				table.insert(tools, item)
+
+		if player.Character then
+			for _, item in ipairs(player.Character:GetChildren()) do
+				if item:IsA('BackpackItem') and item:FindFirstChild('Handle') then
+					table.insert(tools, item)
+				end
 			end
 		end
-		for _, item in ipairs(player.Backpack:GetChildren()) do
-			if item:IsA("BackpackItem") and item:FindFirstChild("Handle") then
-				table.insert(tools, item)
+
+		if player.Backpack then
+			for _, item in ipairs(player.Backpack:GetChildren()) do
+				if item:IsA('BackpackItem') and item:FindFirstChild('Handle') then
+					table.insert(tools, item)
+				end
 			end
 		end
+
 		return tools
 	end
 
-	local loop_count = amount or 1
-	local original_position = stuff.owner.Character.HumanoidRootPart.Position
+	local original_position = stuff.rawrbxget(stuff.owner_char.HumanoidRootPart, 'CFrame')
 	local collected_tools = {}
-	local temp_position = Vector3.new(math.random(-2e5, 2e5), 2e5, math.random(-2e5, 2e5))
+	local temp_position = CFrame.new(math.random(-200000, 200000), 200000, math.random(-200000, 200000))
 
-	for iteration = 1, loop_count do
-		local humanoid = stuff.owner.Character:WaitForChild("Humanoid")
-		wait(.1, humanoid.Parent:MoveTo(temp_position))
-		humanoid.RootPart.Anchored = stuff.owner:ClearCharacterAppearance(wait(.1)) or true
-
-		local current_tools = GetHandleTools(stuff.owner)
-		while #current_tools > 0 do
-			for _, tool in ipairs(current_tools) do
-				task.spawn(function()
-					for _ = 1, 25 do
-						tool.Parent = stuff.owner.Character
-						tool.Handle.Anchored = true
-					end
-					for _ = 1, 5 do
-						tool.Parent = workspace
-					end
-					table.insert(collected_tools, tool.Handle)
-				end)
-			end
-			current_tools = GetHandleTools(stuff.owner)
+	for iteration = 1, amount do
+		local char = stuff.owner_char
+		if not char then 
+			notify('dupetools', 'character lost, stopping', 2)
+			break 
 		end
 
-		wait(.1)
-		stuff.owner.Character = stuff.owner.Character:Destroy()
-		stuff.owner.CharacterAdded:Wait():WaitForChild("Humanoid").Parent:MoveTo(loop_count == iteration and original_position or temp_position, wait(.1))
+		local humanoid = char:FindFirstChild('Humanoid')
+		local hrp = char:FindFirstChild('HumanoidRootPart')
 
-		if iteration == loop_count or iteration % 5 == 0 then
-			local humanoid_root_part = stuff.owner.Character.HumanoidRootPart
-			if type(firetouchinterest) == "function" then
+		if not humanoid or not hrp then 
+			notify('dupetools', 'humanoid or hrp missing, stopping', 2)
+			break 
+		end
+
+		task.wait(0.1)
+
+		pcall(char.PivotTo, char, temp_position)
+
+		task.wait(0.1)
+		stuff.rawrbxset(hrp, 'Anchored', true)
+
+		pcall(stuff.owner.ClearCharacterAppearance, stuff.owner)
+
+		task.wait(0.1)
+
+		local current_tools = get_handle_tools(stuff.owner)
+
+		if #current_tools == 0 then
+			notify('dupetools', 'no tools found to duplicate', 2)
+			stuff.rawrbxset(hrp, 'Anchored', false)
+			break
+		end
+
+		for _, tool in ipairs(current_tools) do
+			task.spawn(function()
+				pcall(function()
+					for i = 1, 25 do
+						stuff.rawrbxset(tool, 'Parent', char)
+						if tool:FindFirstChild('Handle') then
+							stuff.rawrbxset(tool.Handle, 'Anchored', true)
+						end
+						task.wait()
+					end
+
+					task.wait(0.05)
+
+					for i = 1, 5 do
+						stuff.rawrbxset(tool, 'Parent', workspace)
+						task.wait()
+					end
+
+					if tool:FindFirstChild('Handle') then
+						table.insert(collected_tools, tool.Handle)
+					end
+				end)
+			end)
+		end
+
+		task.wait(0.3)
+
+		pcall(function()
+			stuff.rawrbxset(humanoid, 'Health', 0)
+		end)
+
+		local new_char = stuff.owner.CharacterAdded:Wait()
+		new_char:WaitForChild('Humanoid')
+		new_char:WaitForChild('HumanoidRootPart')
+
+		task.wait(0.2)
+
+		if iteration == amount then
+			pcall(function()
+				new_char:PivotTo(original_position)
+			end)
+		else
+			pcall(function()
+				new_char:PivotTo(temp_position)
+			end)
+		end
+
+		task.wait(0.1)
+
+		if iteration == amount or iteration % 5 == 0 then
+			local new_hrp = new_char:FindFirstChild('HumanoidRootPart')
+			if not new_hrp then continue end
+
+			if firetouchinterest then
 				for _, handle in ipairs(collected_tools) do
-					handle.Anchored = not firetouchinterest(handle, humanoid_root_part, 1, firetouchinterest(handle, humanoid_root_part, 0)) and false or false
+					task.spawn(function()
+						pcall(function()
+							if handle and handle:IsDescendantOf(workspace) then
+								stuff.rawrbxset(handle, 'Anchored', false)
+								task.wait()
+								firetouchinterest(handle, new_hrp, 1)
+								task.wait()
+								firetouchinterest(handle, new_hrp, 0)
+							end
+						end)
+					end)
 				end
 			else
 				for _, handle in ipairs(collected_tools) do
 					task.spawn(function()
-						local original_can_collide = handle.CanCollide
-						handle.CanCollide = false
-						handle.Anchored = false
-						for _ = 1, 10 do
-							handle.CFrame = humanoid_root_part.CFrame
-							wait()
-						end
-						handle.CanCollide = original_can_collide
+						pcall(function()
+							if handle and handle:IsDescendantOf(workspace) then
+								local original_can_collide = stuff.rawrbxget(handle, 'CanCollide')
+								stuff.rawrbxset(handle, 'CanCollide', false)
+								stuff.rawrbxset(handle, 'Anchored', false)
+
+								for i = 1, 15 do
+									local hrp_cf = stuff.rawrbxget(new_hrp, 'CFrame')
+									stuff.rawrbxset(handle, 'CFrame', hrp_cf)
+									task.wait()
+								end
+
+								stuff.rawrbxset(handle, 'CanCollide', original_can_collide)
+							end
+						end)
 					end)
 				end
 			end
-			wait(.1)
-			collected_tools = {}
+
+			task.wait(0.3)
+			table.clear(collected_tools)
 		end
-		temp_position = temp_position + Vector3.new(10, math.random(-5, 5), 0)
+
+		temp_position = temp_position * CFrame.new(10, math.random(-5, 5), 0)
+
+		notify('dupetools', `iteration {iteration}/{amount} complete`, 1)
 	end
+
+	notify('dupetools', 'tool duplication complete', 1)
 end)
 
 cmd_library.add({'settings'}, 'manage settings', {
@@ -2083,25 +2794,25 @@ cmd_library.add({'settings'}, 'manage settings', {
 	action = action and action:lower()
 
 	if action == 'save' then
-		if settings_manager.save() then
+		if config.save() then
 			notify('settings', 'settings saved successfully', 1)
 		else
 			notify('settings', 'failed to save settings', 2)
 		end
 	elseif action == 'load' then
-		if settings_manager.load() then
-			settings_manager.apply()
+		if config.load() then
+			config.apply()
 			notify('settings', 'settings loaded successfully', 1)
 		else
 			notify('settings', 'failed to load settings', 2)
 		end
 	elseif action == 'reset' then
-		settings_manager.reset(key)
-		settings_manager.apply()
+		config.reset(key)
+		config.apply()
 		notify('settings', key and `reset setting '{key}'` or 'reset all settings', 1)
 	elseif action == 'get' then
 		if key then
-			local val = settings_manager.get(key)
+			local val = config.get(key)
 			notify('settings', `{key}: {tostring(val)}`, 4)
 		else
 			notify('settings', 'no key specified', 2)
@@ -2117,13 +2828,13 @@ cmd_library.add({'settings'}, 'manage settings', {
 				parsed_value = tonumber(value)
 			end
 
-			settings_manager.set(key, parsed_value)
+			config.set(key, parsed_value)
 			notify('settings', `set {key} to {tostring(parsed_value)}`, 1)
 		else
 			notify('settings', 'key and value required', 2)
 		end
 	elseif action == 'list' then
-		for k, v in pairs(settings_manager.current_settings) do
+		for k, v in pairs(config.current_settings) do
 			notify('settings', `{k}: {tostring(v)}`, 4)
 			task.wait(0.1)
 		end
@@ -2143,8 +2854,8 @@ cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybi
 	if not keycode then
 		return notify('openbind', `invalid keycode '{key}'`, 2)
 	end
-	
-	settings_manager.set('open_keybind', keycode.Name)
+
+	config.set('open_keybind', keycode.Name)
 	stuff.open_keybind = keycode
 	notify('openbind', `command bar keybind changed to {keycode.Name}`, 1)
 
@@ -2158,7 +2869,7 @@ cmd_library.add({'netless', 'net'}, 'enables netless for your character (prevent
 	if vstorage.enabled then
 		return notify('netless', 'netless already enabled', 2)
 	end
-	
+
 	hat_vel = hat_vel or Vector3.new(-17.7, 0, -17.7)
 	body_vel = body_vel or Vector3.new(-17.7, 0, -17.7)
 
@@ -2217,25 +2928,33 @@ cmd_library.add({'unnetless'}, 'disables netless', {}, function(vstorage)
 	maid.remove('netless_nocollide')
 end)
 
-cmd_library.add({'tptool', 'tpt'}, 'gives you the tp tool', {}, function()
-	notify('tptool', 'giving tptool',1)
+cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press lmb to teleport)', {
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, bypass, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unclicktp')
+		return
+	end
 
-	local tptool = Instance.new('Tool')
-	tptool.Name = 'tp tool'
-	tptool.RequiresHandle = false
-	tptool.Activated:Connect(function()
-		local pos = stuff.owner:GetMouse().Hit.Position
-		pos = pos + Vector3.new(0,1.5,0)
-		stuff.owner_char:PivotTo(CFrame.new(pos))
-	end)
-	tptool.Parent = stuff.owner.Backpack
-end)
-
-cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press lmb to teleport)', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
+	vstorage.bypass = bypass
 
 	if vstorage.enabled then
-		notify('clicktp', 'click teleport enabled', 1)
+		notify('clicktp', `click teleport enabled{bypass and ' (bypass)' or ''}`, 1)
+
+		if bypass then
+			hook_lib.create_hook('clicktp_bypass', {
+				newindex = function(self, key, value)
+					if vstorage.is_teleporting then
+						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+						if self == hrp and (key == 'CFrame' or key == 'Position') then
+							return false
+						end
+					end
+				end
+			})
+		end
 
 		maid.add('clicktp', services.user_input_service.InputBegan, function(input, processed)
 			if processed then return end
@@ -2245,11 +2964,14 @@ cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press 
 				local target = mouse.Hit
 
 				if target then
-					local char = stuff.owner.Character
+					local char = stuff.owner_char
 					local hrp = char and char:FindFirstChild('HumanoidRootPart')
 
 					if hrp then
+						vstorage.is_teleporting = true
 						stuff.rawrbxset(hrp, 'CFrame', target + Vector3.new(0, 4, 0))
+						task.wait(0.1)
+						vstorage.is_teleporting = false
 					end
 				end
 			end
@@ -2257,7 +2979,140 @@ cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press 
 	else
 		notify('clicktp', 'click teleport disabled', 1)
 		maid.remove('clicktp')
+
+		if vstorage.bypass then
+			hook_lib.destroy_hook('clicktp_bypass')
+		end
 	end
+end)
+
+cmd_library.add({'unclicktp', 'unctp'}, 'disables click teleport', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('clicktp')
+
+	if not vstorage.enabled then
+		return notify('clicktp', 'click teleport not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	maid.remove('clicktp')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('clicktp_bypass')
+	end
+
+	notify('clicktp', 'click teleport disabled', 1)
+end)
+
+cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
+	{'bypass_mode', 'boolean'},
+	{'cooldown', 'number'}
+}, function(vstorage, bypass, cooldown)
+	cooldown = cooldown or 0.5
+	notify('tptool', `giving tp tool | cooldown: {cooldown}s{bypass and ' (bypass)' or ''}`, 1)
+
+	local last_use = 0
+	local is_teleporting = false
+
+	if bypass then
+		hook_lib.create_hook('tptool_bypass', {
+			newindex = function(self, key, value)
+				if is_teleporting then
+					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					if self == hrp and (key == 'CFrame' or key == 'Position') then
+						return false
+					end
+				end
+			end
+		})
+	end
+
+	local tptool = Instance.new('Tool')
+	stuff.rawrbxset(tptool, 'Name', 'tp tool')
+	stuff.rawrbxset(tptool, 'RequiresHandle', false)
+	stuff.rawrbxset(tptool, 'CanBeDropped', false)
+
+	local billboard = Instance.new('BillboardGui')
+	stuff.rawrbxset(billboard, 'Size', UDim2.new(0, 100, 0, 50))
+	stuff.rawrbxset(billboard, 'AlwaysOnTop', true)
+	stuff.rawrbxset(billboard, 'Enabled', false)
+
+	local label = Instance.new('TextLabel')
+	stuff.rawrbxset(label, 'Size', UDim2.new(1, 0, 1, 0))
+	stuff.rawrbxset(label, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(label, 'TextColor3', Color3.new(1, 1, 1))
+	stuff.rawrbxset(label, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(label, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(label, 'TextSize', 14)
+	stuff.rawrbxset(label, 'Parent', billboard)
+
+	local ppart = Instance.new('Part')
+	stuff.rawrbxset(ppart, 'Size', Vector3.zero)
+	stuff.rawrbxset(ppart, 'Anchored', true)
+	stuff.rawrbxset(ppart, 'CanCollide', false)
+	stuff.rawrbxset(ppart, 'CanTouch', false)
+	stuff.rawrbxset(ppart, 'CanQuery', false)
+	stuff.rawrbxset(ppart, 'Transparency', 1)
+	stuff.rawrbxset(billboard, 'Adornee', ppart)
+
+	tptool.Equipped:Connect(function()
+		stuff.rawrbxset(billboard, 'Parent', services.core_gui)
+		stuff.rawrbxset(ppart, 'Parent', workspace.Terrain)
+
+		maid.add('tptool_i', services.run_service.RenderStepped, function()
+			local mouse = stuff.owner:GetMouse()
+			local target = mouse.Hit
+
+			if target then
+				local pos = target.Position + Vector3.new(0, 1.5, 0)
+				stuff.rawrbxset(ppart, 'CFrame', CFrame.new(pos))
+				stuff.rawrbxset(billboard, 'Enabled', true)
+
+				local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+				if hrp then
+					local distance = (stuff.rawrbxget(hrp, 'Position') - pos).Magnitude
+					stuff.rawrbxset(label, 'Text', `distance: {math.floor(distance)}m`)
+				end
+			end
+		end)
+	end)
+
+	tptool.Unequipped:Connect(function()
+		maid.remove('tptool_i')
+		stuff.rawrbxset(billboard, 'Enabled', false)
+		pcall(stuff.destroy, ppart)
+		pcall(stuff.destroy, billboard)
+
+		if bypass then
+			hook_lib.destroy_hook('tptool_bypass')
+		end
+	end)
+
+	tptool.Activated:Connect(function()
+		local current_time = tick()
+		if current_time - last_use < cooldown then
+			local remaining = math.ceil((cooldown - (current_time - last_use)) * 10) / 10
+			notify('tptool', `cooldown: {remaining}s`, 2)
+			return
+		end
+
+		local mouse = stuff.owner:GetMouse()
+		local pos = mouse.Hit.Position
+		pos = pos + Vector3.new(0, 1.5, 0)
+
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if hrp then
+			is_teleporting = true
+			stuff.rawrbxset(hrp, 'CFrame', CFrame.new(pos))
+			last_use = current_time
+
+			task.wait(0.1)
+			is_teleporting = false
+		end
+	end)
+
+	stuff.rawrbxset(tptool, 'Parent', stuff.owner.Backpack)
+
+	vstorage.tool = tptool
 end)
 
 cmd_library.add({'test'}, 'test the status of the notification system', {}, function()
@@ -2504,19 +3359,41 @@ cmd_library.add({'saveposition', 'savepos'}, 'save a position to load with loadp
 	notify('savepos', `saved position: x:{math.floor(pos.X)}, y:{math.floor(pos.Y)}, z:{math.floor(pos.Z)}`, 1)
 end)
 
-cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savepos', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('savepos')
-	if vstorage.pos then
-		hypernull(function()
-			stuff.owner_char:PivotTo(vstorage.pos)
-		end)
+cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savepos', {
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, bypass)
+	local savepos_vstorage = cmd_library.get_variable_storage('savepos')
+	if savepos_vstorage.pos then
+		if bypass then
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				hook_lib.create_hook('loadpos_bypass', {
+					newindex = function(self, key, value)
+						if self == hrp and (key == 'CFrame' or key == 'Position') then
+							return false
+						end
+					end
+				})
+
+				stuff.owner_char:PivotTo(savepos_vstorage.pos)
+
+				task.wait(0.1)
+				hook_lib.destroy_hook('loadpos_bypass')
+			end
+		else
+			stuff.owner_char:PivotTo(savepos_vstorage.pos)
+		end
+
 		notify('loadpos', 'loaded position', 1)
 	else
 		notify('loadpos', 'you haven\'t saved a position using saveposition', 2)
 	end
 end)
 
-cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respawn at the position where you died', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respawn at the position where you died', {
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unillusion')
 		return
@@ -2526,7 +3403,8 @@ cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respa
 	end
 
 	vstorage.enabled = true
-	notify('deathrespawn', 'enabled death respawn', 1)
+	vstorage.bypass = bypass
+	notify('deathrespawn', `enabled death respawn{bypass and ' (bypass)' or ''}`, 1)
 
 	local has_died = false
 	local death_pos
@@ -2542,9 +3420,26 @@ cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respa
 				has_died = true
 				death_pos = stuff.owner_char:GetPivot()
 			elseif has_died and health > 0 then
-				hypernull(function()
+				if vstorage.bypass then
+					local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						hook_lib.create_hook('deathrespawn_bypass', {
+							newindex = function(self, key, value)
+								if self == hrp and (key == 'CFrame' or key == 'Position') then
+									return false
+								end
+							end
+						})
+
+						stuff.owner_char:PivotTo(death_pos)
+
+						task.wait(0.1)
+						hook_lib.destroy_hook('deathrespawn_bypass')
+					end
+				else
 					stuff.owner_char:PivotTo(death_pos)
-				end)
+				end
+
 				if health > 1 then
 					has_died = false
 				end
@@ -2553,8 +3448,8 @@ cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respa
 	end)
 end)
 
-cmd_library.add({'unillusion', 'undeathrespawn', 'undrespawn', 'undr'}, 'disable death respawn', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('deathrespawn')
+cmd_library.add({'unillusion', 'undeathrespawn', 'undrespawn', 'undr'}, 'disables death respawn', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('illusion')
 
 	if not vstorage.enabled then
 		return notify('deathrespawn', 'death respawn not enabled', 2)
@@ -2562,7 +3457,12 @@ cmd_library.add({'unillusion', 'undeathrespawn', 'undrespawn', 'undr'}, 'disable
 
 	vstorage.enabled = false
 	maid.remove('death_respawn')
-	notify('deathrespawn', 'disabled death respawn', 1)
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('deathrespawn_bypass')
+	end
+
+	notify('deathrespawn', 'death respawn disabled', 1)
 end)
 
 cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your character', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
@@ -2943,14 +3843,16 @@ cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]
 	end
 end)
 
-cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', {
+cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox bigger', {
 	{'size', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, size, et)
+}, function(vstorage, size, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unhitbox')
 		return
 	end
+
 	size = size or 10
 
 	if vstorage.enabled then
@@ -2958,28 +3860,121 @@ cmd_library.add({'hitbox', 'torsosize'}, 'makes rootpart hitbox bigger', {
 	end
 
 	vstorage.enabled = true
-	notify('hitbox', `hitbox size set to {size}`, 1)
+	vstorage.size = size
+	vstorage.bypass = bypass
+	vstorage.original_properties = {}
 
-	pcall(function()
-		maid.remove('hitbox_connection')
-	end)
+	notify('hitbox', `hitbox size set to {size}{bypass and ' (bypass)' or ''}`, 1)
+
+	local function store_original_properties(hrp)
+		local hrp_id = tostring(hrp)
+		if not vstorage.original_properties[hrp_id] then
+			vstorage.original_properties[hrp_id] = {
+				size = stuff.rawrbxget(hrp, 'Size'),
+				transparency = stuff.rawrbxget(hrp, 'Transparency'),
+				can_collide = stuff.rawrbxget(hrp, 'CanCollide'),
+				brick_color = stuff.rawrbxget(hrp, 'BrickColor')
+			}
+		end
+	end
+
+	if bypass then
+		hook_lib.create_hook('hitbox_bypass', {
+			index = function(self, key)
+				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
+					local hrp_id = tostring(self)
+					local original = vstorage.original_properties[hrp_id]
+
+					if original then
+						if key == 'Size' then
+							return original.size
+						elseif key == 'Transparency' then
+							return original.transparency
+						elseif key == 'CanCollide' then
+							return original.can_collide
+						elseif key == 'BrickColor' then
+							return original.brick_color
+						end
+					end
+				end
+			end,
+
+			newindex = function(self, key, value)
+				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
+					local hrp_id = tostring(self)
+
+					if vstorage.original_properties[hrp_id] then
+						if key == 'Size' or key == 'Transparency' or key == 'CanCollide' or key == 'BrickColor' then
+							return false
+						end
+					end
+				end
+			end,
+
+			namecall = function(self, ...)
+				local method = getnamecallmethod()
+				local args = {...}
+
+				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
+					local hrp_id = tostring(self)
+
+					if vstorage.original_properties[hrp_id] and method == 'GetPropertyChangedSignal' then
+						if args[1] == 'Size' or args[1] == 'Transparency' or args[1] == 'CanCollide' or args[1] == 'BrickColor' then
+							return Instance.new('BindableEvent').Event
+						end
+					end
+				end
+			end
+		})
+	end
 
 	maid.add('hitbox_connection', services.run_service.Heartbeat, function()
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and plr.Character then
-				local head = plr.Character:FindFirstChild('HumanoidRootPart')
-				if head then
-					stuff.rawrbxset(head, 'Size', Vector3.new(size, size, size))
-					stuff.rawrbxset(head, 'Transparency', 0.75)
-					stuff.rawrbxset(head, 'BrickColor', BrickColor.random())
-					stuff.rawrbxset(head, 'CanCollide', false)
+				local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+				if hrp then
+					store_original_properties(hrp)
+
+					stuff.rawrbxset(hrp, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
+					stuff.rawrbxset(hrp, 'Transparency', 0.75)
+					stuff.rawrbxset(hrp, 'BrickColor', BrickColor.random())
+					stuff.rawrbxset(hrp, 'CanCollide', false)
 				end
 			end
 		end
 	end)
+
+	maid.add('hitbox_player_added', services.players.PlayerAdded, function(player)
+		if not vstorage.enabled then return end
+
+		maid.add(`hitbox_char_added_{player.UserId}`, player.CharacterAdded, function(character)
+			if not vstorage.enabled then return end
+			if player == stuff.owner then return end
+
+			task.wait(0.5)
+			local hrp = character:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				store_original_properties(hrp)
+			end
+		end)
+	end)
+
+	for _, player in pairs(services.players:GetPlayers()) do
+		if player ~= stuff.owner then
+			maid.add(`hitbox_char_added_{player.UserId}`, player.CharacterAdded, function(character)
+				if not vstorage.enabled then return end
+
+				task.wait(0.5)
+				local hrp = character:FindFirstChild('HumanoidRootPart')
+				if hrp then
+					store_original_properties(hrp)
+				end
+			end)
+		end
+	end
 end)
 
-cmd_library.add({'unhitbox', 'untorsosize'}, 'resets rootpart hitbox', {}, function(vstorage)
+cmd_library.add({'unhitbox', 'untorsosize', 'unexpandhitbox'}, 'disables hitbox expansion', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('hitbox')
 
 	if not vstorage.enabled then
@@ -2987,18 +3982,35 @@ cmd_library.add({'unhitbox', 'untorsosize'}, 'resets rootpart hitbox', {}, funct
 	end
 
 	vstorage.enabled = false
-	notify('hitbox', 'hitbox reset', 1)
 	maid.remove('hitbox_connection')
 
-	for _, plr in pairs(services.players:GetPlayers()) do
-		if plr.Character and plr ~= stuff.owner then
-			local head = plr.Character:FindFirstChild('HumanoidRootPart')
-			if head then
-				stuff.rawrbxset(head, 'Size', Vector3.new(2, 1, 1))
-				stuff.rawrbxset(head, 'Transparency', 1)
+	if vstorage.bypass then
+		hook_lib.destroy_hook('hitbox_bypass')
+	end
+
+	for hrp_id, original in pairs(vstorage.original_properties) do
+		for _, player in pairs(services.players:GetPlayers()) do
+			if player.Character then
+				local hrp = player.Character:FindFirstChild('HumanoidRootPart')
+				if hrp and tostring(hrp) == hrp_id then
+					pcall(stuff.rawrbxset, hrp, 'Size', original.size)
+					pcall(stuff.rawrbxset, hrp, 'Transparency', original.transparency)
+					pcall(stuff.rawrbxset, hrp, 'CanCollide', original.can_collide)
+					pcall(stuff.rawrbxset, hrp, 'BrickColor', original.brick_color)
+				end
 			end
 		end
 	end
+
+	vstorage.original_properties = {}
+
+	for _, player in pairs(services.players:GetPlayers()) do
+		maid.remove(`hitbox_char_added_{player.UserId}`)
+	end
+
+	maid.remove('hitbox_player_added')
+
+	notify('hitbox', 'hitbox disabled', 1)
 end)
 
 cmd_library.add({'age', 'accountage'}, 'shows account age', {
@@ -3084,44 +4096,86 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 end)
 
 cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
-	{'speed', 'number'}
-}, function(vstorage, speed)
+	{'speed', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, speed, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unfreecam')
+		return
+	end
+
 	vstorage.enabled = not vstorage.enabled
 
 	if vstorage.enabled then
 		vstorage.speed = speed or 1
-		notify('freecam', `freecam enabled | speed: {vstorage.speed}`, 1)
+		notify('freecam', `freecam enabled | speed: {vstorage.speed} | E/Q: up/down | Shift: faster`, 1)
 
 		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
 		vstorage.camera_cframe = stuff.rawrbxget(camera, 'CFrame')
+		vstorage.old_camera_type = stuff.rawrbxget(camera, 'CameraType')
+		vstorage.old_camera_subject = stuff.rawrbxget(camera, 'CameraSubject')
+		vstorage.old_mouse_behavior = stuff.rawrbxget(services.user_input_service, 'MouseBehavior')
+		vstorage.old_mouse_icon_enabled = stuff.rawrbxget(services.user_input_service, 'MouseIconEnabled')
 
 		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Scriptable)
 
+		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', Enum.MouseBehavior.LockCenter)
+		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', false)
+
 		maid.add('freecam', services.run_service.RenderStepped, function()
-			local move_vector = get_move_vector(vstorage.speed)
+			pcall(function()
+				local move_vector = get_move_vector(vstorage.speed)
+				local speed_multiplier = services.user_input_service:IsKeyDown(Enum.KeyCode.LeftShift) and 2 or 1
 
-			local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-			local camera_cframe = vstorage.camera_cframe or stuff.rawrbxget(camera, 'CFrame')
+				local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+				local camera_cframe = vstorage.camera_cframe or stuff.rawrbxget(camera, 'CFrame')
 
-			local new_cframe = camera_cframe * CFrame.new(
-				move_vector.X,
-				(services.user_input_service:IsKeyDown(Enum.KeyCode.E) and vstorage.speed) or 
-					(services.user_input_service:IsKeyDown(Enum.KeyCode.Q) and -vstorage.speed) or 0,
-				move_vector.Z
-			)
+				local vertical_input = 0
+				if services.user_input_service:IsKeyDown(Enum.KeyCode.E) then
+					vertical_input = vstorage.speed * speed_multiplier
+				elseif services.user_input_service:IsKeyDown(Enum.KeyCode.Q) then
+					vertical_input = -vstorage.speed * speed_multiplier
+				end
 
-			local mouse_delta = services.user_input_service:GetMouseDelta()
-			new_cframe = new_cframe * CFrame.Angles(-math.rad(mouse_delta.Y * 0.5), -math.rad(mouse_delta.X * 0.5), 0)
+				local new_cframe = camera_cframe * CFrame.new(
+					move_vector.X * speed_multiplier,
+					vertical_input,
+					move_vector.Z * speed_multiplier
+				)
 
-			vstorage.camera_cframe = new_cframe
-			stuff.rawrbxset(camera, 'CFrame', new_cframe)
+				local mouse_delta = services.user_input_service:GetMouseDelta()
+				new_cframe = new_cframe * CFrame.Angles(-math.rad(mouse_delta.Y * 0.4), -math.rad(mouse_delta.X * 0.4), 0)
+
+				vstorage.camera_cframe = new_cframe
+				stuff.rawrbxset(camera, 'CFrame', new_cframe)
+			end)
+		end)
+
+		maid.add('freecam_died', stuff.owner_char.Humanoid.Died, function()
+			cmd_library.execute('unfreecam')
+		end)
+
+		maid.add('freecam_char_added', stuff.owner.CharacterAdded, function()
+			if vstorage.enabled then
+				cmd_library.execute('unfreecam')
+			end
 		end)
 	else
 		notify('freecam', 'freecam disabled', 1)
 		maid.remove('freecam')
+		maid.remove('freecam_died')
+		maid.remove('freecam_char_added')
 
 		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Custom)
+		stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
+
+		if vstorage.old_camera_subject then
+			pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
+		end
+
+		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
+		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
+
 		vstorage.camera_cframe = nil
 	end
 end)
@@ -3137,19 +4191,20 @@ cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', {}, fun
 	notify('freecam', 'freecam disabled', 1)
 
 	maid.remove('freecam')
+	maid.remove('freecam_died')
+	maid.remove('freecam_char_added')
 
-	local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-	stuff.rawrbxset(stuff.owner_char, 'Parent', vstorage.old_parent)
-	stuff.rawrbxset(cam, 'CameraType', Enum.CameraType.Custom)
+	local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+	stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
 
-	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	stuff.rawrbxset(humanoid, 'WalkSpeed', vstorage.old_speed or stuff.default_ws)
-	stuff.rawrbxset(cam, 'CameraSubject', vstorage.old_subject or humanoid)
-
-	if vstorage.part then
-		pcall(stuff.destroy, vstorage.part)
-		vstorage.part = nil
+	if vstorage.old_camera_subject then
+		pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
 	end
+
+	pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
+	pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
+
+	vstorage.camera_cframe = nil
 end)
 
 cmd_library.add({'maxzoom'}, 'sets max camera zoom distance', {
@@ -3375,7 +4430,7 @@ cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', {
 	if not firetouchinterest then
 		return notify('autopickup', 'firetouchinterest not found', 2)
 	end
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('unautopickup')
 		return
@@ -3983,7 +5038,7 @@ cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage
 	if not firetouchinterest then
 		return notify('instakillreach', 'firetouchinterest not found', 2)
 	end
-	
+
 	if et and vstorage.enabled then
 		cmd_library.execute('uninstakillreach')
 		return
@@ -4300,7 +5355,7 @@ cmd_library.add({'carpetfling', 'cfling'}, 'flings player using carpet animation
 	if not targets or #targets == 0 then
 		return notify('carpetfling', 'no player specified', 2)
 	end
-	
+
 	local is_r15 = stuff.owner_char.Humanoid.RigType == Enum.HumanoidRigType.R15
 	if not is_r15 then
 		return notify('carpetfling', 'only works with r15', 2)
@@ -4583,18 +5638,43 @@ cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position', 
 end)
 
 cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
-	{'power', 'number'}
-}, function(vstorage, power)
+	{'power', 'number'},
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, power, bypass)
 	power = power or 100
-	notify('rocket', `launching with power {power}`, 1)
+	notify('rocket', `launching with power {power}{bypass and ' (bypass)' or ''}`, 1)
 
 	local bv = Instance.new('BodyVelocity')
 	stuff.rawrbxset(bv, 'MaxForce', Vector3.new(math.huge, math.huge, math.huge))
 	stuff.rawrbxset(bv, 'Velocity', Vector3.new(0, power, 0))
 
-	hypernull(function()
-		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-		stuff.rawrbxset(bv, 'Parent', hrp)
+	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+
+	if bypass then
+		hook_lib.create_hook('rocket_bypass', {
+			newindex = function(self, key, value)
+				if self == bv and (key == 'Velocity' or key == 'MaxForce') then
+					return false
+				end
+			end,
+			index = function(self, key)
+				if self == bv then
+					if key == 'Velocity' then
+						return Vector3.new(0, power, 0)
+					elseif key == 'MaxForce' then
+						return Vector3.new(math.huge, math.huge, math.huge)
+					end
+				end
+			end
+		})
+	end
+
+	stuff.rawrbxset(bv, 'Parent', hrp)
+
+	task.delay(0.5, function()
+		if bypass then
+			hook_lib.destroy_hook('rocket_bypass')
+		end
 	end)
 
 	services.debris:AddItem(bv, 0.5)
@@ -4691,8 +5771,9 @@ end)
 
 cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
 	{'mode', 'string'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, mode, et)
+}, function(vstorage, mode, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unnoclip')
 		return
@@ -4711,7 +5792,8 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
 
 	vstorage.enabled = true
 	vstorage.mode = mode
-	notify('noclip', `noclip enabled | mode: {vstorage.mode}`, 1)
+	vstorage.bypass = bypass
+	notify('noclip', `noclip enabled | mode: {vstorage.mode}{bypass and ' (bypass)' or ''}`, 1)
 
 	local character = stuff.owner.Character
 	if not character then
@@ -4722,6 +5804,47 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
 	if humanoid then
 		vstorage.original_state = humanoid:GetStateEnabled(Enum.HumanoidStateType.Climbing)
 		humanoid:SetStateEnabled(Enum.HumanoidStateType.Climbing, false)
+	end
+
+	vstorage.collision_states = {}
+	for _, part in pairs(character:GetDescendants()) do
+		if part:IsA('BasePart') then
+			vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
+		end
+	end
+
+	if bypass then
+		hook_lib.create_hook('noclip_bypass', {
+			index = function(self, key)
+				if self:IsA('BasePart') and self:IsDescendantOf(character) then
+					if key == 'CanCollide' then
+						return vstorage.collision_states[self] or true
+					end
+				end
+			end,
+
+			newindex = function(self, key, value)
+				if self:IsA('BasePart') and self:IsDescendantOf(character) then
+					if key == 'CanCollide' then
+						if value ~= false then
+							vstorage.collision_states[self] = value
+						end
+						return false
+					end
+				end
+			end,
+
+			namecall = function(self, ...)
+				local method = getnamecallmethod()
+				local args = {...}
+
+				if self:IsA('BasePart') and self:IsDescendantOf(character) then
+					if method == 'GetPropertyChangedSignal' and args[1] == 'CanCollide' then
+						return Instance.new('BindableEvent').Event
+					end
+				end
+			end
+		})
 	end
 
 	if vstorage.mode == 'normal' then
@@ -4748,14 +5871,6 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
 		end)
 
 	elseif vstorage.mode == 'smart' then
-		vstorage.collision_states = {}
-
-		for _, part in pairs(character:GetDescendants()) do
-			if part:IsA('BasePart') then
-				vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
-			end
-		end
-
 		maid.add('noclip_stepped', services.run_service.Stepped, function()
 			for _, part in pairs(character:GetDescendants()) do
 				if part:IsA('BasePart') then
@@ -4779,15 +5894,8 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
 		end)
 
 	elseif vstorage.mode == 'cframe' then
-		vstorage.collision_states = {}
 		vstorage.saved_cframe = nil
 		vstorage.is_moving = false
-
-		for _, part in pairs(character:GetDescendants()) do
-			if part:IsA('BasePart') then
-				vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
-			end
-		end
 
 		local hrp = character:FindFirstChild('HumanoidRootPart')
 		if not hrp then
@@ -4869,6 +5977,10 @@ cmd_library.add({'unnoclip', 'unc', 'clip'}, 'disables noclip', {}, function(vst
 	maid.remove('noclip_died')
 	maid.remove('noclip_char_added')
 
+	if noclip_vs.bypass then
+		hook_lib.destroy_hook('noclip_bypass')
+	end
+
 	local character = stuff.owner.Character
 	if character then
 		local humanoid = character:FindFirstChildOfClass('Humanoid')
@@ -4948,8 +6060,9 @@ end)
 
 cmd_library.add({'spin'}, 'spins your character', {
 	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, speed, et)
+}, function(vstorage, speed, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unspin')
 		return
@@ -4961,32 +6074,47 @@ cmd_library.add({'spin'}, 'spins your character', {
 
 	vstorage.speed = speed or 20
 	vstorage.enabled = true
-	notify('spin', `spinning at speed {vstorage.speed}`, 1)
+	vstorage.bypass = bypass
+	notify('spin', `spinning at speed {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
 
 	if vstorage.spin_part then
 		pcall(stuff.destroy, vstorage.spin_part)
 	end
-	
+
 	local spin_part = Instance.new('BodyAngularVelocity')
 	stuff.rawrbxset(spin_part, 'Name', 'spin_velocity')
 
-	hypernull(function()
-		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-		stuff.rawrbxset(spin_part, 'Parent', hrp)
-	end)
+	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+	stuff.rawrbxset(spin_part, 'Parent', hrp)
+	stuff.rawrbxset(spin_part, 'MaxTorque', Vector3.new(0, math.huge, 0))
+	stuff.rawrbxset(spin_part, 'AngularVelocity', Vector3.new(0, vstorage.speed, 0))
 
-	hypernull(function()
-		stuff.rawrbxset(spin_part, 'MaxTorque', Vector3.new(0, math.huge, 0))
-		stuff.rawrbxset(spin_part, 'AngularVelocity', Vector3.new(0, vstorage.speed, 0))
-	end)
-	
+	if bypass then
+		hook_lib.create_hook('spin_bypass', {
+			newindex = function(self, key, value)
+				if self == spin_part and (key == 'AngularVelocity' or key == 'MaxTorque') then
+					return false
+				end
+			end,
+			index = function(self, key)
+				if self == spin_part then
+					if key == 'AngularVelocity' then
+						return Vector3.new(0, vstorage.speed, 0)
+					elseif key == 'MaxTorque' then
+						return Vector3.new(0, math.huge, 0)
+					end
+				end
+			end
+		})
+	end
+
 	local r = false
 	maid.add('died', stuff.owner_char.Humanoid.Died, function()
 		if r then return end
 		r = true
 		cmd_library.execute('unspin')
 	end)
-	
+
 	maid.add('spin_char_added', stuff.owner.CharacterAdded, function()
 		if r then return end
 		r = true
@@ -5006,9 +6134,16 @@ cmd_library.add({'unspin'}, 'stops spinning your character', {}, function(vstora
 	notify('spin', 'stopped spinning', 1)
 	vstorage.enabled = false
 
+	maid.remove('died')
+	maid.remove('spin_char_added')
+
 	if vstorage.spin_part then
 		pcall(stuff.destroy, vstorage.spin_part)
 		vstorage.spin_part = nil
+	end
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('spin_bypass')
 	end
 end)
 
@@ -5239,34 +6374,240 @@ end)
 
 -- c5: exploit
 
+cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appear completely normal to the client', {
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unghostmode')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('ghostmode', 'ghost mode already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	notify('ghostmode', 'ghost mode enabled - character will appear normal', 1)
+
+	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local humanoid = stuff.owner_char:FindFirstChild('Humanoid')
+
+	if not hrp or not humanoid then
+		vstorage.enabled = false
+		return notify('ghostmode', 'missing humanoid or rootpart', 2)
+	end
+
+	vstorage.normal_velocity = Vector3.zero
+	vstorage.normal_cframe = stuff.rawrbxget(hrp, 'CFrame')
+	vstorage.normal_ws = stuff.default_ws or 16
+	vstorage.normal_jp = stuff.default_jp or 50
+	vstorage.normal_health = stuff.rawrbxget(humanoid, 'Health')
+	vstorage.normal_max_health = stuff.rawrbxget(humanoid, 'MaxHealth')
+
+	maid.add('ghostmode_update', services.run_service.Heartbeat, function()
+		pcall(function()
+			local current_hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+			local current_humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+
+			if current_hrp then
+				local actual_velocity = stuff.rawrbxget(current_hrp, 'AssemblyLinearVelocity')
+				local move_dir = stuff.rawrbxget(current_humanoid, 'MoveDirection')
+
+				if move_dir.Magnitude > 0 then
+					vstorage.normal_velocity = move_dir * vstorage.normal_ws
+				else
+					vstorage.normal_velocity = Vector3.new(0, actual_velocity.Y, 0)
+				end
+
+				vstorage.normal_cframe = stuff.rawrbxget(current_hrp, 'CFrame')
+			end
+
+			if current_humanoid then
+				local actual_health = stuff.rawrbxget(current_humanoid, 'Health')
+				if actual_health > 0 then
+					vstorage.normal_health = actual_health
+				end
+			end
+		end)
+	end)
+
+	hook_lib.create_hook('ghostmode', {
+		index = function(self, key)
+			if self == hrp or (self:IsA('BasePart') and self.Name == 'HumanoidRootPart' and self:IsDescendantOf(stuff.owner_char)) then
+				if key == 'Velocity' or key == 'velocity' then
+					return vstorage.normal_velocity
+				elseif key == 'AssemblyLinearVelocity' then
+					return vstorage.normal_velocity
+				elseif key == 'AssemblyAngularVelocity' then
+					return Vector3.zero
+				elseif key == 'RotVelocity' then
+					return Vector3.zero
+				elseif key == 'CFrame' or key == 'cframe' then
+					return vstorage.normal_cframe
+				elseif key == 'Position' or key == 'position' then
+					return vstorage.normal_cframe.Position
+				elseif key == 'Orientation' then
+					local x, y, z = vstorage.normal_cframe:ToOrientation()
+					return Vector3.new(math.deg(x), math.deg(y), math.deg(z))
+				end
+			end
+
+			if self == humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
+				if key == 'WalkSpeed' then
+					return vstorage.normal_ws
+				elseif key == 'JumpPower' then
+					return vstorage.normal_jp
+				elseif key == 'JumpHeight' then
+					return 7.2
+				elseif key == 'Health' then
+					return vstorage.normal_health
+				elseif key == 'MaxHealth' then
+					return vstorage.normal_max_health
+				elseif key == 'HipHeight' then
+					return 0
+				elseif key == 'UseJumpPower' then
+					return true
+				elseif key == 'Sit' then
+					return false
+				elseif key == 'PlatformStand' then
+					return false
+				elseif key == 'MoveDirection' then
+					return stuff.rawrbxget(self, 'MoveDirection')
+				end
+			end
+
+			if self:IsA('BodyMover') and self:IsDescendantOf(stuff.owner_char) then
+				if key == 'Parent' then
+					return nil
+				end
+			end
+		end,
+
+		newindex = function(self, key, value)
+			if self:IsA('BodyMover') and self:IsDescendantOf(stuff.owner_char) then
+				if key == 'Velocity' or key == 'MaxForce' or key == 'AngularVelocity' or key == 'MaxTorque' then
+					return false
+				end
+			end
+		end,
+
+		namecall = function(self, ...)
+			local method = getnamecallmethod()
+			local args = {...}
+
+			if self == humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
+				if method == 'GetState' then
+					local actual_state = stuff.rawrbxget(self, 'MoveDirection').Magnitude > 0 and Enum.HumanoidStateType.Running or Enum.HumanoidStateType.Idle
+					return actual_state
+				elseif method == 'GetPropertyChangedSignal' then
+					if args[1] == 'WalkSpeed' or args[1] == 'JumpPower' or args[1] == 'Health' then
+						return Instance.new('BindableEvent').Event
+					end
+				end
+			end
+
+			if (self == hrp or (self:IsA('BasePart') and self.Name == 'HumanoidRootPart' and self:IsDescendantOf(stuff.owner_char))) then
+				if method == 'GetVelocityAtPosition' then
+					return vstorage.normal_velocity
+				elseif method == 'GetPropertyChangedSignal' then
+					if args[1] == 'Velocity' or args[1] == 'CFrame' or args[1] == 'Position' then
+						return Instance.new('BindableEvent').Event
+					end
+				end
+			end
+
+			if self:IsA('BodyMover') and self:IsDescendantOf(stuff.owner_char) then
+				if method == 'IsA' then
+					return false
+				elseif method == 'FindFirstChild' or method == 'FindFirstChildOfClass' or method == 'FindFirstChildWhichIsA' then
+					return nil
+				end
+			end
+		end
+	})
+
+	if hookfunction then
+		local children_cache = {}
+		vstorage.get_children_hook = hookfunction(game.GetChildren, function(self)
+			if vstorage.enabled and self == hrp then
+				if not children_cache[self] then
+					local actual_children = game.GetChildren(self)
+					local filtered = {}
+					for _, child in ipairs(actual_children) do
+						if not child:IsA('BodyMover') then
+							table.insert(filtered, child)
+						end
+					end
+					children_cache[self] = filtered
+				end
+				return children_cache[self]
+			end
+			return game.GetChildren(self)
+		end)
+
+		vstorage.get_descendants_hook = hookfunction(game.GetDescendants, function(self)
+			if vstorage.enabled and self == stuff.owner_char then
+				local actual_descendants = game.GetDescendants(self)
+				local filtered = {}
+				for _, descendant in ipairs(actual_descendants) do
+					if not descendant:IsA('BodyMover') then
+						table.insert(filtered, descendant)
+					end
+				end
+				return filtered
+			end
+			return game.GetDescendants(self)
+		end)
+	end
+end)
+
+cmd_library.add({'unghostmode', 'unghost', 'unnormalmode'}, 'disables ghost mode', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('ghostmode')
+
+	if not vstorage.enabled then
+		return notify('ghostmode', 'ghost mode not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	maid.remove('ghostmode_update')
+	hook_lib.destroy_hook('ghostmode')
+
+	if vstorage.get_children_hook then
+		vstorage.get_children_hook = nil
+	end
+	if vstorage.get_descendants_hook then
+		vstorage.get_descendants_hook = nil
+	end
+
+	notify('ghostmode', 'ghost mode disabled', 1)
+end)
+
 cmd_library.add({'antikick', 'antiban'}, 'attempts to prevent kicks and bans', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
 
 	if vstorage.enabled then
 		notify('antikick', 'anti kick enabled', 1)
 
-		vstorage.old_kick = hookmetamethod(game, '__namecall', function(self, ...)
-			local method = getnamecallmethod()
+		hook_lib.create_hook('antikick', hook_lib.presets.antikick(stuff.owner))
 
-			if vstorage.enabled and method == 'Kick' then
-				notify('antikick', 'blocked kick attempt', 3)
-				return
+		maid.add('antikick_m', services.run_service.Heartbeat, function()
+			if not stuff.owner:IsDescendantOf(game) then
+				stuff.rawrbxset(stuff.owner, 'Parent', services.players)
 			end
 
-			return vstorage.old_kick(self, ...)
+			if stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+				pcall(function()
+					stuff.owner_char.HumanoidRootPart:SetNetworkOwner(stuff.owner)
+				end)
+			end
 		end)
 
-		vstorage.old_teleport = services.teleport_service.Teleport
-		services.teleport_service.Teleport = function(...)
-			if vstorage.enabled then
-				notify('antikick', 'blocked teleport attempt', 3)
-				return
-			end
-			return vstorage.old_teleport(...)
-		end
 	else
 		notify('antikick', 'anti kick disabled', 1)
 		vstorage.enabled = false
+
+		hook_lib.destroy_hook('antikick')
+		maid.remove('antikick_m')
 	end
 end)
 
@@ -5282,7 +6623,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	if vstorage.enabled then
 		notify('blackhole', 'blackhole is already enabled', 2)
 	end
-	
+
 	vstorage.radius = radius or 10
 	vstorage.angle = 1
 
@@ -5410,118 +6751,27 @@ cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vst
 	notify('blackhole', 'black hole disabled', 1)
 end)
 
-cmd_library.add({'freegamepass', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
+cmd_library.add({'togglefreegamepass', 'tfreegp', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
 
 	if vstorage.enabled then
 		notify('freegamepass', 'free gamepass enabled', 1)
-
-		vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-			local args = {...}
-			local method = getnamecallmethod()
-
-			if vstorage.enabled and checkcaller and not checkcaller() then
-				if self == game:GetService('MarketplaceService') then
-					if method:lower() == 'userownsgamepassasync' then
-						return true
-					elseif method:lower() == 'playerownsasset' then
-						return true
-					elseif method:lower() == 'getproductinfo' then
-						local result = vstorage.old_namecall(self, ...)
-						if result then
-							result.IsOwned = true
-						end
-						return result
-					end
-				end
-
-				if method:lower() == 'isingroup' and self:IsA('Player') then
-					return true
-				end
-			end
-
-			return vstorage.old_namecall(self, ...)
-		end)
-
-		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
-			if vstorage.enabled and checkcaller and not checkcaller() then
-				if self:IsA('Player') and (key == 'MembershipType' or key == 'Membership') then
-					return Enum.MembershipType.Premium
-				end
-			end
-
-			return vstorage.old_index(self, key)
-		end)
-
-		if hookfunction then
-			if getfenv then
-				local old_getfenv = getfenv
-				vstorage.getfenv_hook = hookfunction(getfenv, function(level)
-					if checkcaller and not checkcaller() then
-						local env = old_getfenv(level)
-						if type(env) == 'table' then
-							local clean_env = {}
-							for k, v in pairs(env) do
-								if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
-									clean_env[k] = v
-								end
-							end
-							return clean_env
-						end
-					end
-					return old_getfenv(level)
-				end)
-			end
-
-			if debug and debug.info then
-				local old_debug_info = debug.info
-				local original_namecall = getrawmetatable(game).__namecall
-				local original_index = getrawmetatable(game).__index
-
-				vstorage.debug_hook_gp = hookfunction(debug.info, function(level, options)
-					local result = old_debug_info(level, options)
-					if options == "f" then
-						if result == vstorage.old_namecall then
-							return original_namecall
-						elseif result == vstorage.old_index then
-							return original_index
-						end
-						if level == 2 or level == 3 then
-							local caller = old_debug_info(2, "f")
-							if caller == vstorage.old_namecall then
-								return original_namecall
-							elseif caller == vstorage.old_index then
-								return original_index
-							end
-						end
-					end
-					return result
-				end)
-			end
-		end
+		hook_lib.create_hook('freegamepass', hook_lib.presets.freegamepass())
 	else
 		notify('freegamepass', 'free gamepass disabled', 1)
 		vstorage.enabled = false
+		hook_lib.destroy_hook('freegamepass')
 	end
 end)
 
-cmd_library.add({'unfreegamepass', 'unfreegp'}, 'disables free gamepass', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('freegamepass')
-
-	if not vstorage or not vstorage.enabled then
-		return notify('freegamepass', 'free gamepass not enabled', 2)
-	end
-
-	vstorage.enabled = false
-	notify('freegamepass', 'free gamepass disabled', 1)
-end)
-
-cmd_library.add({'triggerbot'}, 'automatically clicks when aiming at enemies', {
+cmd_library.add({'triggerbot', 'tbot'}, 'automatically clicks when aiming at enemies', {
 	{'toggle_key', 'string'},
 	{'delay', 'number'},
-	{'body', 'table'},
+	{'randomize', 'boolean'},
+	{'body_parts', 'table'},
+	{'target_priority', 'string'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, toggle_key, delay, body, et)
+}, function(vstorage, toggle_key, delay, randomize, body_parts, target_priority, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('untriggerbot')
 		return
@@ -5535,18 +6785,25 @@ cmd_library.add({'triggerbot'}, 'automatically clicks when aiming at enemies', {
 	vstorage.active = stuff.is_mobile
 	vstorage.toggle_key = (toggle_key and toggle_key:gsub('^%l', string.upper)) or 'T'
 	vstorage.delay = delay or 0.1
-	vstorage.body = body or {'head', 'torso', 'arms', 'legs'}
+	vstorage.randomize = randomize or false
+	vstorage.body_parts = body_parts or {'head', 'torso', 'arms', 'legs'}
+	vstorage.target_priority = target_priority or 'closest'
 	vstorage.last_click = 0
 
-	local notification_text = `triggerbot enabled | delay: {vstorage.delay}s | parts: {table.concat(vstorage.body, ', ')}`
+	local valid_priorities = {'closest', 'random', 'headonly'}
+	if not table.find(valid_priorities, vstorage.target_priority) then
+		vstorage.target_priority = 'closest'
+	end
+
+	local notification_text = `triggerbot enabled | delay: {vstorage.delay}s | parts: {table.concat(vstorage.body_parts, ', ')} | priority: {vstorage.target_priority}`
 
 	if not stuff.is_mobile then
 		notification_text = notification_text .. ` | press '{vstorage.toggle_key}' to toggle`
 	end
 
 	notify('triggerbot', notification_text, 1)
-	
-	local body_parts = {
+
+	local body_parts_map = {
 		r6 = {
 			head = {'Head'},
 			torso = {'Torso'},
@@ -5561,12 +6818,29 @@ cmd_library.add({'triggerbot'}, 'automatically clicks when aiming at enemies', {
 		}
 	}
 
+	local function is_player_valid(player)
+		if not player or not player.Character then return false end
+
+		local character = player.Character
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+
+		if not humanoid then return false end
+
+		local health = stuff.rawrbxget(humanoid, 'Health')
+		if health <= 0 then return false end
+
+		local forcefield = character:FindFirstChild('ForceField')
+		if forcefield then return false end
+
+		return true
+	end
+
 	local function get_valid_parts(character)
 		local valid_parts = {}
 		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
-		local parts_table = is_r15 and body_parts.r15 or body_parts.r6
+		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
 
-		for _, body_type in ipairs(vstorage.body) do
+		for _, body_type in ipairs(vstorage.body_parts) do
 			local part_list = parts_table[body_type:lower()]
 			if part_list then
 				for _, part_name in ipairs(part_list) do
@@ -5585,7 +6859,7 @@ cmd_library.add({'triggerbot'}, 'automatically clicks when aiming at enemies', {
 		if mouse1click then
 			mouse1click()
 		elseif services.virtual_user then
-			services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
+			services.virtual_user:ClickButton1(Vector2.new(0, 0))
 		elseif services.virtual_input then
 			services.virtual_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
 			task.wait()
@@ -5611,106 +6885,90 @@ cmd_library.add({'triggerbot'}, 'automatically clicks when aiming at enemies', {
 		if not target then return end
 
 		local current_time = tick()
-		if current_time - vstorage.last_click < vstorage.delay then return end
+		local actual_delay = vstorage.delay
+
+		if vstorage.randomize then
+			actual_delay = vstorage.delay + (math.random() * 0.05)
+		end
+
+		if current_time - vstorage.last_click < actual_delay then return end
+
+		local hit_targets = {}
 
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if plr.Character and target:IsDescendantOf(plr.Character) then
+				if is_player_valid(plr) and plr.Character and target:IsDescendantOf(plr.Character) then
 					local valid_parts = get_valid_parts(plr.Character)
+					local humanoid = plr.Character:FindFirstChildOfClass('Humanoid')
+					local health = humanoid and stuff.rawrbxget(humanoid, 'Health') or 100
 
 					for _, part in ipairs(valid_parts) do
-						if target == part then
-							vstorage.last_click = current_time
-							task.spawn(click_mouse)
-							return
+						if target == part or target:IsDescendantOf(part) then
+							table.insert(hit_targets, {
+								player = plr,
+								part = part,
+								health = health,
+								distance = (stuff.rawrbxget(stuff.owner_char.HumanoidRootPart, 'Position') - stuff.rawrbxget(part, 'Position')).Magnitude,
+								is_head = part.Name == 'Head'
+							})
+							break
 						end
 					end
 				end
 			end
 		end
+
+		if #hit_targets == 0 then return end
+
+		local chosen_target
+		if vstorage.target_priority == 'headonly' then
+			for _, t in ipairs(hit_targets) do
+				if t.is_head then
+					chosen_target = t
+					break
+				end
+			end
+		elseif vstorage.target_priority == 'random' then
+			chosen_target = hit_targets[math.random(1, #hit_targets)]
+		else
+			table.sort(hit_targets, function(a, b) return a.distance < b.distance end)
+			chosen_target = hit_targets[1]
+		end
+
+		if chosen_target then
+			vstorage.last_click = current_time
+			task.spawn(click_mouse)
+		end
 	end)
 end)
 
-cmd_library.add({'untriggerbot'}, 'disables triggerbot', {}, function(vstorage)
-	local triggerbot_vs = cmd_library.get_variable_storage('triggerbot')
+cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('triggerbot')
 
-	if not triggerbot_vs or not triggerbot_vs.enabled then
+	if not vstorage.enabled then
 		return notify('triggerbot', 'triggerbot not enabled', 2)
 	end
 
-	triggerbot_vs.enabled = false
-	triggerbot_vs.active = false
-
+	vstorage.enabled = false
+	vstorage.active = false
 	maid.remove('triggerbot')
 	maid.remove('triggerbot_toggle')
-
 	notify('triggerbot', 'triggerbot disabled', 1)
 end)
 
-cmd_library.add({'yjitterbot', 'yjitter'}, 'randomly rotates your character on y axis', {
-	{'intensity', 'number'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, intensity, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unyjitterbot')
-		return
-	end
-
-	if vstorage.enabled then
-		return notify('yjitterbot', 'yjitterbot already enabled', 2)
-	end
-
-	vstorage.enabled = true
-	vstorage.intensity = intensity or 180
-
-	notify('yjitterbot', `yjitterbot enabled | intensity: {vstorage.intensity}°`, 1)
-
-	local character = stuff.owner.Character
-	if not character or not character:FindFirstChild('HumanoidRootPart') then
-		return notify('yjitterbot', 'character not found', 2)
-	end
-
-	local humanoid_root_part = character.HumanoidRootPart
-
-	maid.add('yjitterbot', services.run_service.Heartbeat, function()
-		if not character.Parent or not humanoid_root_part.Parent then
-			cmd_library.execute('unyjitterbot')
-			return
-		end
-
-		local current_cf = stuff.rawrbxget(humanoid_root_part, 'CFrame')
-		local position = current_cf.Position
-
-		local random_y = math.rad(math.random(-vstorage.intensity, vstorage.intensity))
-
-		local new_cf = CFrame.new(position) * CFrame.Angles(0, random_y, 0)
-
-		stuff.rawrbxset(humanoid_root_part, 'CFrame', new_cf)
-	end)
-end)
-
-cmd_library.add({'unyjitterbot', 'unyjitter'}, 'disables yjitterbot', {}, function(vstorage)
-	local jitterbot_vs = cmd_library.get_variable_storage('yjitterbot')
-
-	if not jitterbot_vs or not jitterbot_vs.enabled then
-		return notify('yjitterbot', 'yjitterbot not enabled', 2)
-	end
-
-	jitterbot_vs.enabled = false
-	maid.remove('yjitterbot')
-
-	notify('yjitterbot', 'yjitterbot disabled', 1)
-end)
-
-cmd_library.add({'aimbot'}, 'aims at nearest player', {
+cmd_library.add({'aimbot', 'aim'}, 'aims at nearest player', {
 	{'toggle_key', 'string'},
 	{'wallcheck', 'boolean'},
 	{'fov', 'number'},
 	{'aimrange', 'number'},
 	{'smoothing', 'number'},
-	{'prediction', 'number'},
+	{'resolver', 'boolean'},
+	{'resolver_amount', 'number'},
+	{'resolver_mode', 'string'},
+	{'target_priority', 'string'},
+	{'body_part', 'string'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, toggle_key, wallcheck, fov_size, aim_range, smoothness, prediction, et)
+}, function(vstorage, toggle_key, wallcheck, fov, aim_range, smoothness, resolver, resolver_amount, resolver_mode, target_priority, body_part, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unaimbot')
 		return
@@ -5723,64 +6981,308 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 	vstorage.enabled = true
 	vstorage.active = stuff.is_mobile
 	vstorage.toggle_key = (toggle_key and toggle_key:gsub('^%l', string.upper)) or 'G'
-	vstorage.fov = fov_size or 200
+	vstorage.fov = fov or 90
+	vstorage.radius = fov_to_radius(vstorage.fov)
 	vstorage.aim_range = aim_range or 300
 	vstorage.smoothness = math.clamp(smoothness or 0.2, 0.05, 1)
 	vstorage.wallcheck = wallcheck ~= false
-	vstorage.prediction = prediction or 0.1
+	vstorage.resolver = resolver or false
+	vstorage.resolver_amount = resolver_amount or 0.15
+	vstorage.resolver_mode = resolver_mode or 'hybrid'
+	vstorage.target_priority = target_priority or 'closest'
+	vstorage.body_part = body_part or 'head'
 	vstorage.current_target = nil
+	vstorage.target_data = {}
 
-	local notification_text = `aimbot enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | smooth: {vstorage.smoothness} | wallcheck: {vstorage.wallcheck} | predict: {vstorage.prediction}`
+	local valid_priorities = {'closest', 'lowesthealth', 'highesthealth', 'mostthreat'}
+	if not table.find(valid_priorities, vstorage.target_priority) then
+		vstorage.target_priority = 'closest'
+	end
+
+	local valid_body_parts = {'head', 'torso', 'random', 'closest'}
+	if not table.find(valid_body_parts, vstorage.body_part) then
+		vstorage.body_part = 'head'
+	end
+
+	if vstorage.resolver then
+		local valid_modes = {'velocity', 'pattern', 'hybrid', 'delta'}
+		if not table.find(valid_modes, vstorage.resolver_mode) then
+			vstorage.resolver_mode = 'hybrid'
+		end
+	end
+
+	local notification_text = `aimbot enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | smooth: {vstorage.smoothness} | priority: {vstorage.target_priority} | part: {vstorage.body_part}`
+
+	if vstorage.resolver then
+		notification_text = notification_text .. ` | resolver: {vstorage.resolver_mode}`
+	end
 
 	if not stuff.is_mobile then
-		notification_text = notification_text .. ` | press '{vstorage.toggle_key}' to toggle`
+		notification_text = notification_text .. ` | '{vstorage.toggle_key}' to toggle`
 	end
 
 	notify('aimbot', notification_text, 1)
 
-	local get_aimbot_target = function()
+	local body_parts_map = {
+		r6 = {
+			head = {'Head'},
+			torso = {'Torso'}
+		},
+		r15 = {
+			head = {'Head'},
+			torso = {'UpperTorso', 'LowerTorso'}
+		}
+	}
+
+	local function is_player_valid(player)
+		if not player or not player.Character then return false end
+
+		local character = player.Character
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+
+		if not humanoid then return false end
+
+		local health = stuff.rawrbxget(humanoid, 'Health')
+		if health <= 0 then return false end
+
+		local forcefield = character:FindFirstChild('ForceField')
+		if forcefield then return false end
+
+		return true
+	end
+
+	local function get_body_part(character, part_type)
+		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
+		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
+
+		if part_type == 'random' then
+			local all_parts = {}
+			for _, part_list in pairs(parts_table) do
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						table.insert(all_parts, part)
+					end
+				end
+			end
+			return all_parts[math.random(1, #all_parts)]
+		elseif part_type == 'closest' then
+			local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+			local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
+			local closest_part = nil
+			local closest_dist = math.huge
+
+			for _, part_list in pairs(parts_table) do
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						local part_pos = stuff.rawrbxget(part, 'Position')
+						local dist = (cam_pos - part_pos).Magnitude
+						if dist < closest_dist then
+							closest_dist = dist
+							closest_part = part
+						end
+					end
+				end
+			end
+			return closest_part
+		else
+			local part_list = parts_table[part_type]
+			if part_list then
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						return part
+					end
+				end
+			end
+		end
+
+		return character:FindFirstChild('Head')
+	end
+
+	local function get_target_data(player)
+		if not vstorage.target_data[player] then
+			vstorage.target_data[player] = {
+				positions = {},
+				velocities = {},
+				last_update = tick(),
+				movement_pattern = 'linear',
+				strafe_direction = 0,
+				jump_count = 0,
+				last_jump = 0
+			}
+		end
+		return vstorage.target_data[player]
+	end
+
+	local function update_target_data(player, position, velocity)
+		local data = get_target_data(player)
+		local current_time = tick()
+
+		table.insert(data.positions, {pos = position, time = current_time})
+		table.insert(data.velocities, velocity)
+
+		if #data.positions > 10 then
+			table.remove(data.positions, 1)
+			table.remove(data.velocities, 1)
+		end
+
+		if velocity.Y > 20 and current_time - data.last_jump > 0.5 then
+			data.jump_count = data.jump_count + 1
+			data.last_jump = current_time
+		end
+
+		if #data.positions >= 3 then
+			local prev_vel = data.velocities[#data.velocities - 1]
+			if prev_vel then
+				local vel_change = Vector3.new(velocity.X - prev_vel.X, 0, velocity.Z - prev_vel.Z)
+				if vel_change.Magnitude > 5 then
+					data.strafe_direction = data.strafe_direction + (vel_change.X > 0 and 1 or -1)
+				end
+			end
+		end
+
+		if #data.positions >= 5 then
+			local is_circular = true
+			local avg_turn = 0
+			for i = 2, #data.positions - 1 do
+				local v1 = (data.positions[i].pos - data.positions[i-1].pos).Unit
+				local v2 = (data.positions[i+1].pos - data.positions[i].pos).Unit
+				local dot = v1:Dot(v2)
+				avg_turn = avg_turn + math.acos(math.clamp(dot, -1, 1))
+			end
+			avg_turn = avg_turn / (#data.positions - 2)
+
+			if avg_turn > 0.3 then
+				data.movement_pattern = 'circular'
+			elseif math.abs(data.strafe_direction) > 3 then
+				data.movement_pattern = 'strafe'
+			else
+				data.movement_pattern = 'linear'
+			end
+		end
+
+		data.last_update = current_time
+	end
+
+	local function resolve_position(player, target_part, current_pos, current_vel)
+		local data = get_target_data(player)
+		local ping = stuff.owner:GetNetworkPing()
+		local base_prediction = ping + vstorage.resolver_amount
+
+		if vstorage.resolver_mode == 'velocity' then
+			return current_pos + (current_vel * base_prediction)
+
+		elseif vstorage.resolver_mode == 'pattern' then
+			if data.movement_pattern == 'circular' and #data.positions >= 3 then
+				local center = Vector3.zero
+				for _, pos_data in ipairs(data.positions) do
+					center = center + pos_data.pos
+				end
+				center = center / #data.positions
+
+				local radius = (current_pos - center).Magnitude
+				local current_angle = math.atan2(current_pos.Z - center.Z, current_pos.X - center.X)
+				local angular_velocity = current_vel.Magnitude / math.max(radius, 0.1)
+				local predicted_angle = current_angle + (angular_velocity * base_prediction)
+
+				return center + Vector3.new(
+					math.cos(predicted_angle) * radius,
+					current_pos.Y + (current_vel.Y * base_prediction),
+					math.sin(predicted_angle) * radius
+				)
+
+			elseif data.movement_pattern == 'strafe' then
+				local strafe_factor = data.strafe_direction > 0 and 1.2 or 0.8
+				return current_pos + (current_vel * base_prediction * strafe_factor)
+			else
+				return current_pos + (current_vel * base_prediction)
+			end
+
+		elseif vstorage.resolver_mode == 'delta' then
+			if #data.velocities >= 2 then
+				local vel_delta = data.velocities[#data.velocities] - data.velocities[#data.velocities - 1]
+				local predicted_vel = current_vel + vel_delta
+				return current_pos + (predicted_vel * base_prediction)
+			end
+			return current_pos + (current_vel * base_prediction)
+
+		else
+			local vel_prediction = current_pos + (current_vel * base_prediction)
+
+			if data.movement_pattern == 'circular' and #data.positions >= 3 then
+				local center = Vector3.zero
+				for _, pos_data in ipairs(data.positions) do
+					center = center + pos_data.pos
+				end
+				center = center / #data.positions
+
+				local radius = (current_pos - center).Magnitude
+				local current_angle = math.atan2(current_pos.Z - center.Z, current_pos.X - center.X)
+				local angular_velocity = current_vel.Magnitude / math.max(radius, 0.1)
+				local predicted_angle = current_angle + (angular_velocity * base_prediction)
+
+				local pattern_prediction = center + Vector3.new(
+					math.cos(predicted_angle) * radius,
+					current_pos.Y + (current_vel.Y * base_prediction),
+					math.sin(predicted_angle) * radius
+				)
+
+				return vel_prediction:Lerp(pattern_prediction, 0.6)
+			end
+
+			if #data.velocities >= 2 then
+				local vel_delta = data.velocities[#data.velocities] - data.velocities[#data.velocities - 1]
+				local delta_prediction = current_pos + ((current_vel + vel_delta) * base_prediction)
+				return vel_prediction:Lerp(delta_prediction, 0.4)
+			end
+
+			return vel_prediction
+		end
+	end
+
+	local function get_aimbot_target()
 		local mouse = stuff.owner:GetMouse()
 		local mouse_pos = Vector2.new(mouse.X, mouse.Y)
 		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 
 		local closest_player = nil
-		local closest_distance = vstorage.fov
+		local closest_distance = vstorage.radius
 
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if plr.Character and plr.Character:FindFirstChild('Head') then
-					local head = plr.Character.Head
+				if is_player_valid(plr) and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
+					local target_part = get_body_part(plr.Character, vstorage.body_part)
+					if not target_part then continue end
+
 					local owner_head = stuff.owner_char and stuff.owner_char:FindFirstChild('Head')
+					if not owner_head then continue end
 
-					if owner_head then
-						local head_pos = stuff.rawrbxget(head, 'Position')
-						local owner_head_pos = stuff.rawrbxget(owner_head, 'Position')
-						local world_distance = (owner_head_pos - head_pos).Magnitude
+					local part_pos = stuff.rawrbxget(target_part, 'Position')
+					local owner_head_pos = stuff.rawrbxget(owner_head, 'Position')
+					local world_distance = (owner_head_pos - part_pos).Magnitude
 
-						if world_distance <= vstorage.aim_range then
-							local screen_pos, on_screen = cam:WorldToViewportPoint(head_pos)
+					if world_distance <= vstorage.aim_range then
+						local screen_pos, on_screen = cam:WorldToViewportPoint(part_pos)
 
-							if on_screen and screen_pos.Z > 0 then
-								local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
-								local distance = (mouse_pos - screen_2d).Magnitude
+						if on_screen and screen_pos.Z > 0 then
+							local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
+							local distance = (mouse_pos - screen_2d).Magnitude
 
-								if distance < closest_distance then
-									if vstorage.wallcheck then
-										local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-										local direction = (head_pos - cam_pos).Unit
-										local ray_params = RaycastParams.new()
-										ray_params.FilterDescendantsInstances = {stuff.owner_char}
-										ray_params.FilterType = Enum.RaycastFilterType.Exclude
-										ray_params.IgnoreWater = true
+							if distance < closest_distance then
+								if vstorage.wallcheck then
+									local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
+									local direction = (part_pos - cam_pos).Unit
+									local ray_params = RaycastParams.new()
+									ray_params.FilterDescendantsInstances = {stuff.owner_char}
+									ray_params.FilterType = Enum.RaycastFilterType.Exclude
+									ray_params.IgnoreWater = true
 
-										local ray_result = workspace:Raycast(cam_pos, direction * world_distance, ray_params)
+									local ray_result = workspace:Raycast(cam_pos, direction * world_distance, ray_params)
 
-										if ray_result then
-											if ray_result.Instance:IsDescendantOf(plr.Character) then
-												closest_distance = distance
-												closest_player = plr
-											end
-										else
+									if ray_result then
+										if ray_result.Instance:IsDescendantOf(plr.Character) then
 											closest_distance = distance
 											closest_player = plr
 										end
@@ -5788,6 +7290,9 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 										closest_distance = distance
 										closest_player = plr
 									end
+								else
+									closest_distance = distance
+									closest_player = plr
 								end
 							end
 						end
@@ -5828,54 +7333,330 @@ cmd_library.add({'aimbot'}, 'aims at nearest player', {
 		local target_head = target.Character.Head
 		local target_position = stuff.rawrbxget(target_head, 'Position')
 
-		local target_humanoid = target.Character:FindFirstChildOfClass('Humanoid')
-		if target_humanoid then
-			local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
-			local walk_speed = stuff.rawrbxget(target_humanoid, 'WalkSpeed')
+		if vstorage.resolver then
+			local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
+			if target_hrp then
+				local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
 
-			if move_direction.Magnitude > 0 then
-				local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
-				if target_hrp then
-					local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
-					local ping = stuff.owner:GetNetworkPing()
-					local prediction_time = vstorage.prediction + ping
+				update_target_data(target, target_position, target_velocity)
+				target_position = resolve_position(target, target_head, target_position, target_velocity)
+			end
+		else
+			local target_humanoid = target.Character:FindFirstChildOfClass('Humanoid')
+			if target_humanoid then
+				local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
 
-					target_position = target_position + (target_velocity * prediction_time)
+				if move_direction.Magnitude > 0 then
+					local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
+					if target_hrp then
+						local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
+						local ping = stuff.owner:GetNetworkPing()
+						local prediction_time = 0.1 + ping
+
+						target_position = target_position + (target_velocity * prediction_time)
+					end
 				end
 			end
 		end
 
-		local jitter = Vector3.new(math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05, math.random() * 0.1 - 0.05)
-		local goal_cframe = CFrame.lookAt(camera_cframe.Position, target_position + jitter)
+		local goal_cframe = CFrame.lookAt(camera_cframe.Position, target_position)
 		local smoothed_cframe = camera_cframe:Lerp(goal_cframe, vstorage.smoothness)
 
 		stuff.rawrbxset(camera, 'CFrame', smoothed_cframe)
 	end)
+
+	if vstorage.resolver then
+		maid.add('aimbot_cleanup', services.run_service.Heartbeat, function()
+			local current_time = tick()
+			for player, data in pairs(vstorage.target_data) do
+				if current_time - data.last_update > 5 then
+					vstorage.target_data[player] = nil
+				end
+			end
+		end)
+	end
 end)
 
-cmd_library.add({'unaimbot'}, 'disables aimbot', {}, function(vstorage)
+cmd_library.add({'unaimbot', 'unaim'}, 'disables aimbot', {}, function(vstorage)
 	local aimbot_vs = cmd_library.get_variable_storage('aimbot')
 
-	if not aimbot_vs or not aimbot_vs.enabled then
+	if not aimbot_vs.enabled then
 		return notify('aimbot', 'aimbot not enabled', 2)
 	end
 
 	aimbot_vs.enabled = false
 	aimbot_vs.active = false
-	aimbot_vs.current_target = nil
-
 	maid.remove('aimbot')
 	maid.remove('aimbot_toggle')
-
+	maid.remove('aimbot_cleanup')
 	notify('aimbot', 'aimbot disabled', 1)
 end)
 
+cmd_library.add({'antiaim', 'aa'}, 'makes your character harder to hit', {
+	{'mode', 'string'},
+	{'speed', 'number'},
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, mode, speed, bypass, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unantiaim')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('antiaim', 'antiaim already enabled', 2)
+	end
+
+	local valid_modes = {'jitter', 'spin', 'desync', 'random', 'strafe', 'offset'}
+	mode = mode and mode:lower() or 'jitter'
+
+	if not table.find(valid_modes, mode) then
+		return notify('antiaim', `invalid mode '{mode}'. valid modes: {table.concat(valid_modes, ', ')}`, 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.mode = mode
+	vstorage.speed = speed or 20
+	vstorage.bypass = bypass
+	vstorage.angle = 0
+	vstorage.tick_count = 0
+	vstorage.desync_offset = CFrame.new()
+	vstorage.lag_positions = {}
+	vstorage.lag_tick = 0
+
+	notify('antiaim', `antiaim enabled | mode: {vstorage.mode} | speed: {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
+
+	local function setup_antiaim()
+		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return
+		end
+
+		maid.remove('antiaim')
+
+		if vstorage.bypass then
+			hook_lib.destroy_hook('antiaim_bypass')
+
+			hook_lib.create_hook('antiaim_bypass', {
+				index = function(self, key)
+					if self == hrp then
+						if key == 'CFrame' or key == 'cframe' then
+							local real_cf = stuff.rawrbxget(hrp, 'CFrame')
+							return CFrame.new(real_cf.Position)
+						elseif key == 'Orientation' then
+							return Vector3.new(0, 0, 0)
+						end
+					end
+				end,
+
+				newindex = function(self, key, value)
+					if self == hrp and (key == 'CFrame' or key == 'Position') then
+						return false
+					end
+				end
+			})
+		end
+
+		if vstorage.mode == 'jitter' then
+			local angles = {-180, 180, -90, 90, -135, 135, -45, 45}
+			local current_index = 1
+
+			maid.add('antiaim', services.run_service.Heartbeat, function()
+				if not vstorage.enabled then return end
+
+				vstorage.tick_count = vstorage.tick_count + 1
+
+				if vstorage.tick_count % math.max(1, math.floor(60 / vstorage.speed)) == 0 then
+					current_index = math.random(1, #angles)
+				end
+
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+				if hrp then
+					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(angles[current_index]), 0)
+					stuff.rawrbxset(hrp, 'CFrame', new_cf)
+				end
+			end)
+
+		elseif vstorage.mode == 'spin' then
+			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
+				if not vstorage.enabled then return end
+
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+				if hrp then
+					vstorage.angle = (vstorage.angle + (vstorage.speed * dt * 10)) % 360
+					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(vstorage.angle), 0)
+					stuff.rawrbxset(hrp, 'CFrame', new_cf)
+				end
+			end)
+
+		elseif vstorage.mode == 'desync' then
+			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
+				if not vstorage.enabled then return end
+
+				vstorage.tick_count = vstorage.tick_count + 1
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+
+				if hrp then
+					local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+					local move_dir = stuff.rawrbxget(humanoid, 'MoveDirection')
+
+					local base_angle = 0
+					if move_dir.Magnitude > 0 then
+						base_angle = math.atan2(move_dir.Z, move_dir.X)
+					end
+
+					local desync_angle = base_angle + math.rad(90 + (math.sin(vstorage.tick_count * 0.1) * 90))
+
+					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+					local offset_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, desync_angle, 0)
+					stuff.rawrbxset(hrp, 'CFrame', offset_cf)
+				end
+			end)
+
+		elseif vstorage.mode == 'random' then
+			maid.add('antiaim', services.run_service.Heartbeat, function()
+				if not vstorage.enabled then return end
+
+				vstorage.tick_count = vstorage.tick_count + 1
+
+				if vstorage.tick_count % math.max(1, math.floor(60 / vstorage.speed)) == 0 then
+					vstorage.angle = math.random(-180, 180)
+				end
+
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+				if hrp then
+					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(vstorage.angle), 0)
+					stuff.rawrbxset(hrp, 'CFrame', new_cf)
+				end
+			end)
+
+		elseif vstorage.mode == 'strafe' then
+			local strafe_direction = 1
+
+			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
+				if not vstorage.enabled then return end
+
+				vstorage.tick_count = vstorage.tick_count + 1
+
+				if vstorage.tick_count % math.floor(60 / vstorage.speed) == 0 then
+					strafe_direction = -strafe_direction
+				end
+
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+				if hrp then
+					local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+					local move_dir = stuff.rawrbxget(humanoid, 'MoveDirection')
+
+					if move_dir.Magnitude > 0 then
+						local move_angle = math.atan2(move_dir.Z, move_dir.X)
+						local strafe_angle = move_angle + (math.rad(90) * strafe_direction)
+
+						local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+						local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, strafe_angle, 0)
+						stuff.rawrbxset(hrp, 'CFrame', new_cf)
+					else
+						local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+						local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(90 * strafe_direction), 0)
+						stuff.rawrbxset(hrp, 'CFrame', new_cf)
+					end
+				end
+			end)
+
+		elseif vstorage.mode == 'offset' then
+			local offset_table = {
+				Vector3.new(3, 0, 0),
+				Vector3.new(-3, 0, 0),
+				Vector3.new(0, 0, 3),
+				Vector3.new(0, 0, -3),
+				Vector3.new(2, 0, 2),
+				Vector3.new(-2, 0, -2)
+			}
+			local current_offset = 1
+
+			maid.add('antiaim', services.run_service.Heartbeat, function()
+				if not vstorage.enabled then return end
+
+				vstorage.tick_count = vstorage.tick_count + 1
+
+				if vstorage.tick_count % math.floor(60 / vstorage.speed) == 0 then
+					current_offset = (current_offset % #offset_table) + 1
+				end
+
+				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+				if hrp then
+					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
+					local new_cf = current_cf + offset_table[current_offset]
+					stuff.rawrbxset(hrp, 'CFrame', new_cf)
+				end
+			end)
+		end
+	end
+
+	setup_antiaim()
+
+	maid.add('antiaim_died', stuff.owner_char.Humanoid.Died, function()
+		if not vstorage.enabled then return end
+		maid.remove('antiaim')
+		if vstorage.bypass then
+			hook_lib.destroy_hook('antiaim_bypass')
+		end
+	end)
+
+	maid.add('antiaim_char_added', stuff.owner.CharacterAdded, function(char)
+		if not vstorage.enabled then return end
+
+		char:WaitForChild('Humanoid')
+		char:WaitForChild('HumanoidRootPart')
+		task.wait(0.2)
+
+		vstorage.tick_count = 0
+		vstorage.angle = 0
+		vstorage.lag_positions = {}
+
+		setup_antiaim()
+		notify('antiaim', 'antiaim reapplied after respawn', 1)
+	end)
+end)
+
+cmd_library.add({'unantiaim', 'unaa'}, 'disables antiaim', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('antiaim')
+
+	if not vstorage.enabled then
+		return notify('antiaim', 'antiaim not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	maid.remove('antiaim')
+	maid.remove('antiaim_died')
+	maid.remove('antiaim_char_added')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('antiaim_bypass')
+	end
+
+	local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	if hrp then
+		local current_pos = stuff.rawrbxget(hrp, 'Position')
+		stuff.rawrbxset(hrp, 'CFrame', CFrame.new(current_pos))
+	end
+
+	notify('antiaim', 'antiaim disabled', 1)
+end)
+
+-- thank you, Averiias (github.com/Averiias/Universal-SilentAim)
 cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 	{'fov', 'number'},
-	{'wallbang', 'boolean'},
+	{'wallcheck', 'boolean'},
 	{'aim_range', 'number'},
+	{'hit_chance', 'number'},
+	{'prediction', 'number'},
+	{'target_priority', 'string'},
+	{'body_part', 'string'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, fov_size, wallbang, aim_range, et)
+}, function(vstorage, fov, wallcheck, aim_range, hit_chance, prediction, target_priority, body_part, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unsilentaim')
 		return
@@ -5885,64 +7666,176 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 		return notify('silentaim', 'silent aim already enabled', 2)
 	end
 
-	vstorage.aimrange = aim_range or 300
 	vstorage.enabled = true
-	vstorage.fov = fov_size or 200
-	vstorage.wallbang = wallbang ~= false
+	vstorage.fov = fov or 90
+	vstorage.radius = fov_to_radius(vstorage.fov)
+	vstorage.aim_range = aim_range or 300
+	vstorage.wallcheck = wallcheck ~= false
+	vstorage.hit_chance = hit_chance or 100
+	vstorage.prediction = prediction or 0.165
+	vstorage.target_priority = target_priority or 'closest'
+	vstorage.body_part = body_part or 'head'
 
-	notify('silentaim', `silent aim enabled | fov: {vstorage.fov} | range: {vstorage.aimrange} | wallbang: {vstorage.wallbang}`, 1)
+	local valid_priorities = {'closest', 'lowesthealth', 'highesthealth', 'mostthreat'}
+	if not table.find(valid_priorities, vstorage.target_priority) then
+		vstorage.target_priority = 'closest'
+	end
 
-	local get_target = function()
+	local valid_body_parts = {'head', 'torso', 'random', 'closest'}
+	if not table.find(valid_body_parts, vstorage.body_part) then
+		vstorage.body_part = 'head'
+	end
+
+	notify('silentaim', `silent aim enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | wallcheck: {vstorage.wallcheck} | chance: {vstorage.hit_chance}% | priority: {vstorage.target_priority} | part: {vstorage.body_part}`, 1)
+
+	local body_parts_map = {
+		r6 = {
+			head = {'Head'},
+			torso = {'Torso'}
+		},
+		r15 = {
+			head = {'Head'},
+			torso = {'UpperTorso', 'LowerTorso'}
+		}
+	}
+
+	local function is_player_valid(player)
+		if not player or not player.Character then return false end
+
+		local character = player.Character
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+
+		if not humanoid then return false end
+
+		local health = stuff.rawrbxget(humanoid, 'Health')
+		if health <= 0 then return false end
+
+		local forcefield = character:FindFirstChild('ForceField')
+		if forcefield then return false end
+
+		return true
+	end
+
+	local function get_body_part(character, part_type)
+		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
+		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
+
+		if part_type == 'random' then
+			local all_parts = {}
+			for _, part_list in pairs(parts_table) do
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						table.insert(all_parts, part)
+					end
+				end
+			end
+			return all_parts[math.random(1, #all_parts)]
+		elseif part_type == 'closest' then
+			local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+			local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
+			local closest_part = nil
+			local closest_dist = math.huge
+
+			for _, part_list in pairs(parts_table) do
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						local part_pos = stuff.rawrbxget(part, 'Position')
+						local dist = (cam_pos - part_pos).Magnitude
+						if dist < closest_dist then
+							closest_dist = dist
+							closest_part = part
+						end
+					end
+				end
+			end
+			return closest_part
+		else
+			local part_list = parts_table[part_type]
+			if part_list then
+				for _, part_name in ipairs(part_list) do
+					local part = character:FindFirstChild(part_name)
+					if part then
+						return part
+					end
+				end
+			end
+		end
+
+		return character:FindFirstChild('Head') or character:FindFirstChild('HumanoidRootPart')
+	end
+
+	local calculate_chance = function(percentage)
+		percentage = math.floor(percentage)
+		local chance = math.floor(Random.new():NextNumber(0, 1) * 100) / 100
+		return chance <= percentage / 100
+	end
+
+	local get_direction = function(origin, position)
+		return (position - origin).Unit * 1000
+	end
+
+	local is_player_visible = function(player)
+		local player_character = player.Character
+		local local_character = stuff.owner_char
+
+		if not (player_character and local_character) then return false end
+
+		local player_part = get_body_part(player_character, vstorage.body_part)
+		if not player_part then return false end
+
+		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+		local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
+		local part_pos = stuff.rawrbxget(player_part, 'Position')
+
+		local ray_params = RaycastParams.new()
+		ray_params.FilterDescendantsInstances = {local_character, player_character}
+		ray_params.FilterType = Enum.RaycastFilterType.Exclude
+		ray_params.IgnoreWater = true
+
+		local result = workspace:Raycast(cam_pos, (part_pos - cam_pos), ray_params)
+		return result == nil
+	end
+
+	local function get_target()
 		local mouse = stuff.owner:GetMouse()
 		local mouse_pos = Vector2.new(mouse.X, mouse.Y)
 		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
 
 		local closest_player = nil
-		local closest_distance = vstorage.fov
+		local closest_part = nil
+		local closest_distance = vstorage.radius
 
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if plr.Character and plr.Character:FindFirstChild('Head') then
-					local head = plr.Character.Head
+				if is_player_valid(plr) and plr.Character then
+					local character = plr.Character
+					if not character then continue end
+
+					if vstorage.wallcheck and not is_player_visible(plr) then continue end
+
+					local target_part_instance = get_body_part(character, vstorage.body_part)
+					if not target_part_instance then continue end
+
 					local owner_head = stuff.owner_char and stuff.owner_char:FindFirstChild('Head')
+					if not owner_head then continue end
 
-					if owner_head then
-						local head_pos = stuff.rawrbxget(head, 'Position')
-						local owner_head_pos = stuff.rawrbxget(owner_head, 'Position')
-						local world_distance = (owner_head_pos - head_pos).Magnitude
+					local part_pos = stuff.rawrbxget(target_part_instance, 'Position')
+					local owner_pos = stuff.rawrbxget(owner_head, 'Position')
+					local world_distance = (owner_pos - part_pos).Magnitude
 
-						if world_distance <= vstorage.aimrange then
-							local screen_pos, on_screen = cam:WorldToViewportPoint(head_pos)
+					if world_distance <= vstorage.aim_range then
+						local screen_pos, on_screen = cam:WorldToViewportPoint(part_pos)
 
-							if on_screen and screen_pos.Z > 0 then
-								local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
-								local distance = (mouse_pos - screen_2d).Magnitude
+						if on_screen and screen_pos.Z > 0 then
+							local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
+							local distance = (mouse_pos - screen_2d).Magnitude
 
-								if distance < closest_distance then
-									if vstorage.wallbang then
-										closest_distance = distance
-										closest_player = plr
-									else
-										local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-										local direction = (head_pos - cam_pos).Unit
-										local ray_params = RaycastParams.new()
-										ray_params.FilterDescendantsInstances = {stuff.owner_char}
-										ray_params.FilterType = Enum.RaycastFilterType.Exclude
-										ray_params.IgnoreWater = true
-
-										local ray_result = workspace:Raycast(cam_pos, direction * world_distance, ray_params)
-
-										if ray_result then
-											if ray_result.Instance:IsDescendantOf(plr.Character) then
-												closest_distance = distance
-												closest_player = plr
-											end
-										else
-											closest_distance = distance
-											closest_player = plr
-										end
-									end
-								end
+							if distance < closest_distance then
+								closest_distance = distance
+								closest_player = plr
+								closest_part = target_part_instance
 							end
 						end
 					end
@@ -5950,120 +7843,93 @@ cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
 			end
 		end
 
-		return closest_player
+		return closest_part
 	end
 
-	if not vstorage.hooks_initialized then
-		vstorage.hooks_initialized = true
+	hook_lib.create_hook('silentaim', {
+		index = function(self, key)
+			if not calculate_chance(vstorage.hit_chance) then return end
 
-		vstorage.old_index = hookmetamethod(game, '__index', function(self, key)
-			if vstorage.enabled and checkcaller and not checkcaller() then
-				if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
-					local target = get_target()
-					if target and target.Character and target.Character:FindFirstChild('Head') then
-						if key == 'Hit' then
-							local head = stuff.rawrbxget(target.Character, 'Head')
-							return stuff.rawrbxget(head, 'CFrame')
-						elseif key == 'Target' then
-							return stuff.rawrbxget(target.Character, 'Head')
-						end
+			if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
+				local target_part = get_target()
+				if target_part then
+					if key == 'Hit' then
+						local part_cframe = stuff.rawrbxget(target_part, 'CFrame')
+						local part_velocity = stuff.rawrbxget(target_part, 'AssemblyLinearVelocity')
+						return part_cframe + (part_velocity * vstorage.prediction)
+					elseif key == 'Target' then
+						return target_part
 					end
 				end
 			end
-			return vstorage.old_index(self, key)
-		end)
+		end,
 
-		vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
+		namecall = function(self, ...)
+			if not calculate_chance(vstorage.hit_chance) then return end
+
 			local args = {...}
 			local method = getnamecallmethod()
+			local target_part = get_target()
 
-			if vstorage.enabled and checkcaller and not checkcaller() then
-				local target = get_target()
+			if not target_part then return end
 
-				if target and target.Character and target.Character:FindFirstChild('Head') then
-					local head = stuff.rawrbxget(target.Character, 'Head')
-					local head_pos = stuff.rawrbxget(head, 'Position')
+			local target_pos = stuff.rawrbxget(target_part, 'Position')
+			local target_vel = stuff.rawrbxget(target_part, 'AssemblyLinearVelocity')
+			target_pos = target_pos + (target_vel * vstorage.prediction)
 
-					if method:lower() == 'raycast' and self == workspace then
-						if args[1] and typeof(args[1]) == 'Vector3' and args[2] and typeof(args[2]) == 'Vector3' then
-							args[2] = (head_pos - args[1]).Unit * args[2].Magnitude
-							return vstorage.old_namecall(self, unpack(args))
-						end
-					elseif (method:lower() == 'findpartonray' or method:lower() == 'findpartonraywithignorelist' or method:lower() == 'findpartonraywithwhitelist') and self == workspace then
-						if args[1] and typeof(args[1]) == 'Ray' then
-							args[1] = Ray.new(args[1].Origin, (head_pos - args[1].Origin).Unit * 999)
-							return vstorage.old_namecall(self, unpack(args))
-						end
-					elseif method:lower() == 'screenpointtoray' and self:IsA('Camera') then
-						local cam_cf = stuff.rawrbxget(self, 'CFrame')
-						return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
-					elseif method:lower() == 'viewportpointtoray' and self:IsA('Camera') then
-						local cam_cf = stuff.rawrbxget(self, 'CFrame')
-						return Ray.new(cam_cf.Position, (head_pos - cam_cf.Position).Unit)
+			if self == workspace then
+				if method == 'FindPartOnRayWithIgnoreList' then
+					if typeof(args[2]) == 'Ray' then
+						local ray = args[2]
+						local origin = ray.Origin
+						local direction = get_direction(origin, target_pos)
+						args[2] = Ray.new(origin, direction)
+						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
+					end
+				elseif method == 'FindPartOnRayWithWhitelist' then
+					if typeof(args[2]) == 'Ray' then
+						local ray = args[2]
+						local origin = ray.Origin
+						local direction = get_direction(origin, target_pos)
+						args[2] = Ray.new(origin, direction)
+						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
+					end
+				elseif method == 'FindPartOnRay' then
+					if typeof(args[2]) == 'Ray' then
+						local ray = args[2]
+						local origin = ray.Origin
+						local direction = get_direction(origin, target_pos)
+						args[2] = Ray.new(origin, direction)
+						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
+					end
+				elseif method == 'Raycast' then
+					if typeof(args[2]) == 'Vector3' and typeof(args[3]) == 'Vector3' then
+						local origin = args[2]
+						args[3] = get_direction(origin, target_pos)
+						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
 					end
 				end
 			end
 
-			return vstorage.old_namecall(self, ...)
-		end)
-
-		if hookfunction then
-			if getfenv then
-				local old_getfenv = getfenv
-				vstorage.getfenv_hook = hookfunction(getfenv, function(level)
-					if checkcaller and not checkcaller() then
-						local env = old_getfenv(level)
-						if type(env) == 'table' then
-							local clean_env = {}
-							for k, v in pairs(env) do
-								if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
-									clean_env[k] = v
-								end
-							end
-							return clean_env
-						end
-					end
-					return old_getfenv(level)
-				end)
-			end
-
-			if debug and debug.info then
-				local old_debug_info = debug.info
-				local original_index = getrawmetatable(game).__index
-				local original_namecall = getrawmetatable(game).__namecall
-
-				vstorage.debug_hook = hookfunction(debug.info, function(level, options)
-					local result = old_debug_info(level, options)
-					if options == 'f' then
-						if result == vstorage.old_index then
-							return original_index
-						elseif result == vstorage.old_namecall then
-							return original_namecall
-						end
-						if level == 2 or level == 3 then
-							local caller = old_debug_info(2, 'f')
-							if caller == vstorage.old_index then
-								return original_index
-							elseif caller == vstorage.old_namecall then
-								return original_namecall
-							end
-						end
-					end
-					return result
-				end)
+			if self:IsA('Camera') then
+				if method == 'ScreenPointToRay' or method == 'ViewportPointToRay' then
+					local cam_cf = stuff.rawrbxget(self, 'CFrame')
+					return Ray.new(cam_cf.Position, (target_pos - cam_cf.Position).Unit)
+				end
 			end
 		end
-	end
+	})
 end)
 
 cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
 	local silentaim_vs = cmd_library.get_variable_storage('silentaim')
 
-	if not silentaim_vs or not silentaim_vs.enabled then
+	if not silentaim_vs.enabled then
 		return notify('silentaim', 'silent aim not enabled', 2)
 	end
 
 	silentaim_vs.enabled = false
+	hook_lib.destroy_hook('silentaim')
 	notify('silentaim', 'silent aim disabled', 1)
 end)
 
@@ -6683,6 +8549,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 	end
 end)
 
+
 cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts', {
 	{'radius', 'number'},
 	{'torso_mode', 'boolean'}
@@ -6709,9 +8576,25 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 	local parts = {}
 	local part_index = 1
 
+	local r = false
+	maid.add('flingaura_died', stuff.owner_char.Humanoid.Died, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unflingaura')
+	end)
+
+	maid.add('flingaura_char_added', stuff.owner.CharacterAdded, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unflingaura')
+	end)
+
 	local predict_movement = function(player, future)
 		local char = player.Character
 		if not char then return end
+		if future == nil  then
+			future  = ((char:FindFirstChildOfClass("Humanoid").WalkSpeed * 68.75) / 100)
+		end
 
 		local hrp = char:FindFirstChild('HumanoidRootPart')
 		local humanoid = char:FindFirstChild('Humanoid')
@@ -6751,18 +8634,20 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		end
 	end
 
-    maid.add('fa_desc_added', workspace.DescendantAdded, function(part)
+	local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
 		if part:IsA('BasePart') and is_valid_part(part) then
 			table.insert(parts, part)
 		end
 	end)
+
+	vstorage.fling_aura_conn = desc_added_conn
 
 	task.wait(1)
 
 	maid.add('fling_aura', services.run_service.Heartbeat, function(dt)
 		if not stuff.owner_char or not new_hrp:IsDescendantOf(workspace) then
 			maid.remove('fling_aura')
-			maid.remove('fa_desc_added')
+			desc_added_conn:Disconnect()
 			return
 		end
 
@@ -6776,13 +8661,14 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 				local distance = (target_pos - owner_pos).Magnitude
 
 				if distance <= radius then
-					local predicted_cf = predict_movement(player, 0.15)
+					local predicted_cf = predict_movement(player)
 					table.insert(nearby_targets, {player = player, hrp = target_hrp, predicted_cf = predicted_cf})
 				end
 			end
 		end
 
-		if #nearby_targets == 0 then return end
+		if #nearby_targets == 0 then
+			return end
 
 		for i = #parts, 1, -1 do
 			local part = parts[i]
@@ -6793,9 +8679,11 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 			end
 
 			pcall(function()
-				if part.ReceiveAge ~= 0 then return end
+				if part.ReceiveAge ~= 0 then
+					return end
 				local anchored = stuff.rawrbxget(part, 'Anchored')
-				if anchored then return end
+				if anchored then
+					return end
 
 				stuff.rawrbxset(part, 'CanCollide', false)
 				stuff.rawrbxset(part, 'Velocity', Vector3.new(0, 500000000000, 0))
@@ -6823,7 +8711,12 @@ end)
 
 cmd_library.add({'unflingaura', 'unfaura', 'unfa'}, 'stop fling aura', {}, function(vstorage)
 	maid.remove('fling_aura')
-	maid.remove('fa_desc_added')
+	maid.remove('flingaura_died')
+	maid.remove('flingaura_char_added')
+	if vstorage.fling_aura_conn then
+		vstorage.fling_aura_conn:Disconnect()
+		vstorage.fling_aura_conn = nil
+	end
 	notify('unflingaura', 'fling aura stopped', 1)
 end)
 
@@ -6836,6 +8729,19 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 	end
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
+
+	local r = false
+	maid.add('partwalkfling_died', stuff.owner_char.Humanoid.Died, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unpartwalkfling')
+	end)
+
+	maid.add('partwalkfling_char_added', stuff.owner.CharacterAdded, function()
+		if r then return end
+		r = true
+		cmd_library.execute('unpartwalkfling')
+	end)
 
 	for _, target in pairs(targets) do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
@@ -6890,18 +8796,20 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			end
 		end
 
-        maid.add('pwf_desc_added',  workspace.DescendantAdded, function(part)
+		local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
 			if part:IsA('BasePart') and is_valid_part(part) then
 				table.insert(parts, part)
 			end
 		end)
+
+		vstorage.partwalkfling_conn = desc_added_conn
 
 		task.wait(1)
 
 		maid.add('part_walkfling_'..target.Name, services.run_service.Heartbeat, function(dt)
 			if not target.Character or not target_hrp:IsDescendantOf(workspace) or not target:IsDescendantOf(game) then
 				maid.remove('part_walkfling_'..target.Name)
-				maid.remove('pwf_desc_added')
+				desc_added_conn:Disconnect()
 				return
 			end
 
@@ -6951,9 +8859,15 @@ end)
 cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', 'unpwf'}, 'stop partwalkfling', {}, function(vstorage)
 	for _, player in ipairs(services.players:GetPlayers()) do
 		maid.remove('part_walkfling_'..player.Name)
-    end
+	end
 
-	maid.remove('pwf_desc_added')
+	maid.remove('partwalkfling_died')
+	maid.remove('partwalkfling_char_added')
+
+	if vstorage.partwalkfling_conn then
+		vstorage.partwalkfling_conn:Disconnect()
+		vstorage.partwalkfling_conn = nil
+	end
 
 	notify('unpartwalkfling', 'partwalkfling stopped', 1)
 end)
@@ -6999,11 +8913,120 @@ cmd_library.add({'xray'}, 'makes walls transparent', {
 	end
 end)
 
+cmd_library.add({'crosshair', 'crossh'}, 'toggles custom crosshair', {
+	{'size', 'number'},
+	{'thickness', 'number'},
+	{'color', 'color3'},
+	{'style', 'string'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, size, thickness, color, style, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('uncrosshair')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('crosshair', 'crosshair already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.size = size or 10
+	vstorage.thickness = thickness or 2
+	vstorage.color = color or Color3.fromRGB(176, 126, 215)
+	vstorage.style = style or 'cross'
+
+	local valid_styles = {'cross', 'dot'}
+	local style_valid = false
+	for _, valid_style in ipairs(valid_styles) do
+		if vstorage.style == valid_style then
+			style_valid = true
+			break
+		end
+	end
+
+	if not style_valid then
+		vstorage.style = 'cross'
+	end
+
+	notify('crosshair', `crosshair enabled | size: {vstorage.size} | style: {vstorage.style}`, 1)
+
+	local gui = Instance.new('ScreenGui')
+	stuff.rawrbxset(gui, 'Name', 'crosshair_gui')
+	stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
+	stuff.rawrbxset(gui, 'ResetOnSpawn', false)
+	stuff.rawrbxset(gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
+	pcall(protect_gui, gui)
+	vstorage.gui = gui
+
+	if vstorage.style == 'cross' then
+		local horizontal = Instance.new('Frame')
+		stuff.rawrbxset(horizontal, 'Size', UDim2.new(0, vstorage.size * 2, 0, vstorage.thickness))
+		stuff.rawrbxset(horizontal, 'Position', UDim2.new(0.5, 0, 0.5, 0))
+		stuff.rawrbxset(horizontal, 'AnchorPoint', Vector2.new(0.5, 0.5))
+		stuff.rawrbxset(horizontal, 'BackgroundColor3', vstorage.color)
+		stuff.rawrbxset(horizontal, 'BorderSizePixel', 0)
+		stuff.rawrbxset(horizontal, 'ZIndex', 10000)
+		stuff.rawrbxset(horizontal, 'Parent', gui)
+
+		local vertical = Instance.new('Frame')
+		stuff.rawrbxset(vertical, 'Size', UDim2.new(0, vstorage.thickness, 0, vstorage.size * 2))
+		stuff.rawrbxset(vertical, 'Position', UDim2.new(0.5, 0, 0.5, 0))
+		stuff.rawrbxset(vertical, 'AnchorPoint', Vector2.new(0.5, 0.5))
+		stuff.rawrbxset(vertical, 'BackgroundColor3', vstorage.color)
+		stuff.rawrbxset(vertical, 'BorderSizePixel', 0)
+		stuff.rawrbxset(vertical, 'ZIndex', 10000)
+		stuff.rawrbxset(vertical, 'Parent', gui)
+
+		local center = Instance.new('Frame')
+		stuff.rawrbxset(center, 'Size', UDim2.new(0, vstorage.thickness, 0, vstorage.thickness))
+		stuff.rawrbxset(center, 'Position', UDim2.new(0.5, 0, 0.5, 0))
+		stuff.rawrbxset(center, 'AnchorPoint', Vector2.new(0.5, 0.5))
+		stuff.rawrbxset(center, 'BackgroundColor3', vstorage.color)
+		stuff.rawrbxset(center, 'BorderSizePixel', 0)
+		stuff.rawrbxset(center, 'ZIndex', 10001)
+		stuff.rawrbxset(center, 'Parent', gui)
+	elseif vstorage.style == 'dot' then
+		local dot = Instance.new('Frame')
+		stuff.rawrbxset(dot, 'Size', UDim2.new(0, vstorage.size, 0, vstorage.size))
+		stuff.rawrbxset(dot, 'Position', UDim2.new(0.5, 0, 0.5, 0))
+		stuff.rawrbxset(dot, 'AnchorPoint', Vector2.new(0.5, 0.5))
+		stuff.rawrbxset(dot, 'BackgroundColor3', vstorage.color)
+		stuff.rawrbxset(dot, 'BorderSizePixel', 0)
+		stuff.rawrbxset(dot, 'ZIndex', 10000)
+		stuff.rawrbxset(dot, 'Parent', gui)
+
+		local corner = Instance.new('UICorner')
+		stuff.rawrbxset(corner, 'CornerRadius', UDim.new(1, 0))
+		stuff.rawrbxset(corner, 'Parent', dot)
+	end
+
+	stuff.rawrbxset(gui, 'Parent', services.core_gui)
+end)
+
+cmd_library.add({'uncrosshair', 'uncrossh'}, 'disables crosshair', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('crosshair')
+
+	if not vstorage.enabled then
+		return notify('crosshair', 'crosshair not enabled', 2)
+	end
+
+	vstorage.enabled = false
+
+	if vstorage.gui then
+		pcall(stuff.destroy, vstorage.gui)
+		vstorage.gui = nil
+	end
+
+	notify('crosshair', 'crosshair disabled', 1)
+end)
+
 cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3'},
+	{'include_npcs', 'boolean'}
+}, function(vstorage, color, include_npcs)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.team = color == 'team'
+	vstorage.include_npcs = include_npcs or false
 	vstorage.billboards = vstorage.billboards or {}
 
 	if not vstorage.team then
@@ -7016,7 +9039,7 @@ cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
 	vstorage.color = vstorage.color or Color3.fromRGB(176, 126, 215)
 
 	if vstorage.enabled then
-		notify('esp', 'esp enabled', 1)
+		notify('esp', `esp enabled{vstorage.include_npcs and ' (with npcs)' or ''}`, 1)
 	else
 		notify('esp', 'esp disabled', 1)
 
@@ -7049,13 +9072,49 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 	local esp_vs = cmd_library.get_variable_storage('esp')
 	if not esp_vs or not esp_vs.enabled then return end
 
-	for _, plr in pairs(services.players:GetPlayers()) do
-		local char = plr.Character
-		if plr ~= stuff.owner and char and char:FindFirstChild('HumanoidRootPart') then
-			local hrp = char.HumanoidRootPart
-			local humanoid = char:FindFirstChildOfClass('Humanoid')
+	local entities = {}
 
-			local esp_billboard = esp_vs.billboards[plr]
+	for _, plr in pairs(services.players:GetPlayers()) do
+		if plr ~= stuff.owner and plr.Character then
+			table.insert(entities, {
+				name = plr.Name,
+				character = plr.Character,
+				player = plr,
+				is_npc = false
+			})
+		end
+	end
+
+	if esp_vs.include_npcs then
+		for _, model in pairs(workspace:GetDescendants()) do
+			if model:IsA('Model') and model:FindFirstChild('Humanoid') and model:FindFirstChild('HumanoidRootPart') then
+				local is_player_char = false
+				for _, plr in pairs(services.players:GetPlayers()) do
+					if plr.Character == model then
+						is_player_char = true
+						break
+					end
+				end
+
+				if not is_player_char and model ~= stuff.owner_char then
+					table.insert(entities, {
+						name = model.Name,
+						character = model,
+						player = model,
+						is_npc = true
+					})
+				end
+			end
+		end
+	end
+
+	for _, entity in pairs(entities) do
+		local char = entity.character
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		local humanoid = char:FindFirstChildOfClass('Humanoid')
+
+		if hrp then
+			local esp_billboard = esp_vs.billboards[entity.player]
 			if not esp_billboard or not esp_billboard.Parent then
 				if esp_billboard then
 					pcall(stuff.destroy, esp_billboard)
@@ -7069,7 +9128,7 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 				stuff.rawrbxset(esp_billboard, 'ClipsDescendants', false)
 				stuff.rawrbxset(esp_billboard, 'Adornee', hrp)
 				stuff.rawrbxset(esp_billboard, 'Parent', services.core_gui)
-				esp_vs.billboards[plr] = esp_billboard
+				esp_vs.billboards[entity.player] = esp_billboard
 
 				local box_frame = Instance.new('Frame')
 				stuff.rawrbxset(box_frame, 'Size', UDim2.new(0.048, 0, 0.072, 0))
@@ -7184,16 +9243,23 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 			local health_text = health_bg:GetChildren()[2]
 			local tool_label = box_frame:GetChildren()[8]
 
-			local color = esp_vs.team and 
-				(plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)) or 
-				esp_vs.color
+			local color = esp_vs.color
+			if not entity.is_npc and esp_vs.team and entity.player.Team then
+				color = entity.player.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
+			elseif entity.is_npc then
+				color = Color3.fromRGB(255, 255, 130)
+			end
 
 			stuff.rawrbxset(top, 'BackgroundColor3', color)
 			stuff.rawrbxset(bottom, 'BackgroundColor3', color)
 			stuff.rawrbxset(left, 'BackgroundColor3', color)
 			stuff.rawrbxset(right, 'BackgroundColor3', color)
 
-			stuff.rawrbxset(name_label, 'Text', plr.Name)
+			local display_name = entity.name
+			if entity.is_npc then
+				display_name = `[NPC] {entity.name}`
+			end
+			stuff.rawrbxset(name_label, 'Text', display_name)
 			stuff.rawrbxset(name_label, 'TextColor3', color)
 
 			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
@@ -7213,21 +9279,7 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 				end
 			end
 
-			local backpack_tools = {}
-			local backpack = plr:FindFirstChild('Backpack')
-			if backpack then
-				for _, tool in pairs(backpack:GetChildren()) do
-					if tool:IsA('Tool') then
-						local tool_name = stuff.rawrbxget(tool, 'Name')
-						table.insert(backpack_tools, tool_name)
-					end
-				end
-			end
-
 			local tool_text = #tool_names > 0 and table.concat(tool_names, '\n') or ''
-			if #backpack_tools > 0 and #tool_names == 0 then
-				tool_text = table.concat(backpack_tools, '\n')
-			end
 			stuff.rawrbxset(tool_label, 'Text', tool_text)
 			stuff.rawrbxset(tool_label, 'TextColor3', Color3.fromRGB(200, 200, 200))
 
@@ -7250,7 +9302,7 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 				stuff.rawrbxset(health_text, 'TextColor3', health_color)
 			end
 
-			local highlight = stuff.highlights[plr]
+			local highlight = stuff.highlights[entity.player]
 			if not highlight or not highlight.Parent then
 				if highlight then
 					pcall(stuff.destroy, highlight)
@@ -7264,7 +9316,7 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 				stuff.rawrbxset(highlight, 'OutlineTransparency', 0.5)
 				stuff.rawrbxset(highlight, 'DepthMode', Enum.HighlightDepthMode.AlwaysOnTop)
 				stuff.rawrbxset(highlight, 'Parent', services.core_gui)
-				stuff.highlights[plr] = highlight
+				stuff.highlights[entity.player] = highlight
 			else
 				if stuff.rawrbxget(highlight, 'Adornee') ~= char then
 					stuff.rawrbxset(highlight, 'Adornee', char)
@@ -7277,10 +9329,12 @@ maid.add('esp_update', services.run_service.RenderStepped, function()
 end, true)
 
 cmd_library.add({'tracers', 'toggletracers'}, 'toggles tracers', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3'},
+	{'include_npcs', 'boolean'}
+}, function(vstorage, color, include_npcs)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.team = color == 'team'
+	vstorage.include_npcs = include_npcs or false
 
 	if not vstorage.team then
 		local parsed = color
@@ -7295,7 +9349,7 @@ cmd_library.add({'tracers', 'toggletracers'}, 'toggles tracers', {
 	vstorage.mode = vstorage.mode or 'bottom'
 
 	if vstorage.enabled then
-		notify('tracers', 'tracers enabled', 1)
+		notify('tracers', `tracers enabled{vstorage.include_npcs and ' (with npcs)' or ''}`, 1)
 
 		if not vstorage.gui then
 			local gui = Instance.new('ScreenGui')
@@ -7357,64 +9411,98 @@ maid.add('tracers_update', services.run_service.RenderStepped, function()
 	end
 
 	local seen = {}
+	local entities = {}
 
 	for _, plr in pairs(services.players:GetPlayers()) do
-		if plr ~= stuff.owner then
-			local line = tracers_vs.lines and tracers_vs.lines[plr]
-			if not line then
-				line = Instance.new('Frame')
-				stuff.rawrbxset(line, 'BorderSizePixel', 0)
-				stuff.rawrbxset(line, 'ZIndex', 9999)
-				stuff.rawrbxset(line, 'Parent', tracers_vs.gui)
-				tracers_vs.lines = tracers_vs.lines or {}
-				tracers_vs.lines[plr] = line
-			end
+		if plr ~= stuff.owner and plr.Character then
+			table.insert(entities, {
+				player = plr,
+				character = plr.Character,
+				is_npc = false
+			})
+		end
+	end
 
-			seen[plr] = true
-
-			local char = plr.Character
-			local hrp = char and char:FindFirstChild('HumanoidRootPart')
-			if hrp then
-				local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
-				local hrp_size = stuff.rawrbxget(hrp, 'Size')
-				local target = (hrp_cf * CFrame.new(0, -hrp_size.Y / 2, 0)).Position
-				local vec, on_screen = cam:WorldToViewportPoint(target)
-
-				if on_screen and vec.Z > 0 then
-					local color = tracers_vs.team and 
-						(plr.Team == stuff.owner.Team and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)) or 
-						tracers_vs.color
-
-					local end_x = vec.X
-					local end_y = vec.Y
-
-					local dx = end_x - start_x
-					local dy = end_y - start_y
-					local distance = math.sqrt(dx * dx + dy * dy)
-					local angle = math.deg(math.atan2(dy, dx))
-
-					local center_x = (start_x + end_x) / 2
-					local center_y = (start_y + end_y) / 2
-
-					stuff.rawrbxset(line, 'BackgroundColor3', color)
-					stuff.rawrbxset(line, 'BackgroundTransparency', tracers_vs.transparency)
-					stuff.rawrbxset(line, 'Size', UDim2.new(0, distance, 0, tracers_vs.thickness))
-					stuff.rawrbxset(line, 'Position', UDim2.new(0, center_x, 0, center_y))
-					stuff.rawrbxset(line, 'AnchorPoint', Vector2.new(0.5, 0.5))
-					stuff.rawrbxset(line, 'Rotation', angle)
-					stuff.rawrbxset(line, 'Visible', true)
-				else
-					stuff.rawrbxset(line, 'Visible', false)
+	if tracers_vs.include_npcs then
+		for _, model in pairs(workspace:GetDescendants()) do
+			if model:IsA('Model') and model:FindFirstChild('Humanoid') and model:FindFirstChild('HumanoidRootPart') then
+				local is_player_char = false
+				for _, plr in pairs(services.players:GetPlayers()) do
+					if plr.Character == model then
+						is_player_char = true
+						break
+					end
 				end
-			else
-				stuff.rawrbxset(line, 'Visible', false)
+
+				if not is_player_char and model ~= stuff.owner_char then
+					table.insert(entities, {
+						player = model,
+						character = model,
+						is_npc = true
+					})
+				end
 			end
 		end
 	end
 
+	for _, entity in pairs(entities) do
+		local line = tracers_vs.lines and tracers_vs.lines[entity.player]
+		if not line then
+			line = Instance.new('Frame')
+			stuff.rawrbxset(line, 'BorderSizePixel', 0)
+			stuff.rawrbxset(line, 'ZIndex', 9999)
+			stuff.rawrbxset(line, 'Parent', tracers_vs.gui)
+			tracers_vs.lines = tracers_vs.lines or {}
+			tracers_vs.lines[entity.player] = line
+		end
+
+		seen[entity.player] = true
+
+		local char = entity.character
+		local hrp = char and char:FindFirstChild('HumanoidRootPart')
+		if hrp then
+			local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
+			local hrp_size = stuff.rawrbxget(hrp, 'Size')
+			local target = (hrp_cf * CFrame.new(0, -hrp_size.Y / 2, 0)).Position
+			local vec, on_screen = cam:WorldToViewportPoint(target)
+
+			if on_screen and vec.Z > 0 then
+				local color = tracers_vs.color
+				if not entity.is_npc and tracers_vs.team and entity.player.Team then
+					color = entity.player.Team == stuff.owner.Team and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+				elseif entity.is_npc then
+					color = Color3.fromRGB(255, 255, 130)
+				end
+
+				local end_x = vec.X
+				local end_y = vec.Y
+
+				local dx = end_x - start_x
+				local dy = end_y - start_y
+				local distance = math.sqrt(dx * dx + dy * dy)
+				local angle = math.deg(math.atan2(dy, dx))
+
+				local center_x = (start_x + end_x) / 2
+				local center_y = (start_y + end_y) / 2
+
+				stuff.rawrbxset(line, 'BackgroundColor3', color)
+				stuff.rawrbxset(line, 'BackgroundTransparency', tracers_vs.transparency)
+				stuff.rawrbxset(line, 'Size', UDim2.new(0, distance, 0, tracers_vs.thickness))
+				stuff.rawrbxset(line, 'Position', UDim2.new(0, center_x, 0, center_y))
+				stuff.rawrbxset(line, 'AnchorPoint', Vector2.new(0.5, 0.5))
+				stuff.rawrbxset(line, 'Rotation', angle)
+				stuff.rawrbxset(line, 'Visible', true)
+			else
+				stuff.rawrbxset(line, 'Visible', false)
+			end
+		else
+			stuff.rawrbxset(line, 'Visible', false)
+		end
+	end
+
 	if tracers_vs.lines then
-		for plr, line in pairs(tracers_vs.lines) do
-			if not seen[plr] and line then
+		for player, line in pairs(tracers_vs.lines) do
+			if not seen[player] and line then
 				stuff.rawrbxset(line, 'Visible', false)
 			end
 		end
@@ -7572,6 +9660,23 @@ cmd_library.add({'colorshift'}, 'sets color shift', {
 	stuff.rawrbxset(services.lighting, 'ColorShift_Bottom', bottom or Color3.new(0, 0, 0))
 end)
 
+cmd_library.add({'67'}, '67', {}, function(vstorage)
+	notify('67', '67', 1)
+	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+	local animator = humanoid:FindFirstChildOfClass('Animator')
+
+	if not animator then
+		animator = Instance.new('Animator')
+		stuff.rawrbxset(animator, 'Parent', humanoid)
+	end
+
+	local animation = Instance.new('Animation')
+	stuff.rawrbxset(animation, 'AnimationId', `rbxassetid://106367055475970`)
+
+	local track = animator:LoadAnimation(animation)
+	track:Play()
+end) -- most op command
+
 cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', {}, function(vstorage)
 	notify('fixlighting', 'lighting reset', 1)
 
@@ -7585,64 +9690,67 @@ cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', {}, functio
 	stuff.rawrbxset(services.lighting, 'ClockTime', 14)
 end)
 
-cmd_library.add({'showfov'}, 'shows fov circle', {
+cmd_library.add({'showfov', 'showcircle'}, 'shows aim circle', {
 	{'fov', 'number'},
 	{'color', 'color3'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, fov, color, et)
-	fov = fov or 200
-	
+	fov = fov or 60
+
 	if et and vstorage.enabled then
 		cmd_library.execute('hidefov')
 		return
 	end
 
 	if vstorage.enabled and vstorage.fov == fov then
-		return notify('showfov', 'fov circle already enabled', 2)
+		return notify('showfov', 'aim circle already enabled', 2)
 	end
 
 	vstorage.fov = fov
+	local radius = fov_to_radius(fov)
 
-	local fov_circle = vstorage.circle
-	if fov_circle then
-		stuff.destroy(fov_circle)
+	local circle_gui = vstorage.circle
+	if circle_gui then
+		stuff.destroy(circle_gui)
 		vstorage.circle = nil
 	end
 
 	vstorage.enabled = true
-	notify('showfov', `fov circle enabled with radius {fov}`, 1)
+	notify('showfov', `aim circle enabled with fov {fov}`, 1)
 
-	local fov_circle = Instance.new('ScreenGui')
-	stuff.rawrbxset(fov_circle, 'Name', 'fov_circle')
-	stuff.rawrbxset(fov_circle, 'IgnoreGuiInset', true)
-	stuff.rawrbxset(fov_circle, 'ResetOnSpawn', false)
-	pcall(protect_gui, fov_circle)
-	vstorage.circle = fov_circle
+	local circle_gui = Instance.new('ScreenGui')
+	stuff.rawrbxset(circle_gui, 'Name', 'aim_circle')
+	stuff.rawrbxset(circle_gui, 'IgnoreGuiInset', true)
+	stuff.rawrbxset(circle_gui, 'ResetOnSpawn', false)
+	pcall(protect_gui, circle_gui)
+	vstorage.circle = circle_gui
 
 	local circle = Instance.new('ImageLabel')
 	stuff.rawrbxset(circle, 'Image', 'rbxassetid://10131954007')
-	stuff.rawrbxset(circle, 'Size', UDim2.new(0, fov, 0, fov))
+	stuff.rawrbxset(circle, 'Size', UDim2.new(0, radius * 2, 0, radius * 2))
 	stuff.rawrbxset(circle, 'Position', UDim2.new(0.5, 0, 0.5, 0))
 	stuff.rawrbxset(circle, 'BackgroundTransparency', 1)
-	stuff.rawrbxset(circle, 'ImageColor3', color and color or Color3.fromRGB(176, 126, 215))
+	stuff.rawrbxset(circle, 'ImageColor3', color or Color3.fromRGB(176, 126, 215))
 	stuff.rawrbxset(circle, 'ImageTransparency', 0)
 	stuff.rawrbxset(circle, 'AnchorPoint', Vector2.new(0.5, 0.5))
-	stuff.rawrbxset(circle, 'Parent', fov_circle)
+	stuff.rawrbxset(circle, 'Parent', circle_gui)
+
+	stuff.rawrbxset(circle_gui, 'Parent', services.core_gui)
 end)
 
-cmd_library.add({'hidefov'}, 'hides fov circle', {}, function(vstorage)
+cmd_library.add({'hidefov', 'hidecircle'}, 'hides aim circle', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('showfov')
 
 	if not vstorage.enabled then
-		return notify('showfov', 'fov circle not enabled', 2)
+		return notify('showfov', 'aim circle not enabled', 2)
 	end
 
 	vstorage.enabled = false
-	notify('showfov', 'fov circle disabled', 1)
+	notify('showfov', 'aim circle disabled', 1)
 
-	local fov_circle = vstorage.circle
-	if fov_circle then
-		stuff.destroy(fov_circle)
+	local circle_gui = vstorage.circle
+	if circle_gui then
+		stuff.destroy(circle_gui)
 		vstorage.circle = nil
 	end
 end)
@@ -7655,7 +9763,7 @@ cmd_library.add({'trail'}, 'adds trail to character', {
 		cmd_library.execute('untrail')
 		return
 	end
-	
+
 	notify('trail', 'trail added', 1)
 
 	local parsed = color or Color3.fromRGB(255, 255, 255)
@@ -7688,6 +9796,331 @@ end)
 
 -- c7: player
 
+cmd_library.add({'antideath', 'antikill', 'autodeath'}, 'teleports away from danger when health is low', {
+	{'min_health', 'number'},
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, min_health, bypass, et)
+	if et and vstorage.enabled then
+		cmd_library.execute('unantideath')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('antideath', 'anti-death already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.min_health = min_health or 20
+	vstorage.bypass = bypass
+	notify('antideath', `anti-death enabled | threshold: {vstorage.min_health} HP{bypass and ' (bypass)' or ''}`, 1)
+
+	local function setup_antideath()
+		local humanoid = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+		if not humanoid then return end
+
+		vstorage.last_health = stuff.rawrbxget(humanoid, 'Health')
+		vstorage.safe_position = stuff.owner_char:GetPivot()
+		vstorage.damage_source = nil
+		vstorage.teleport_count = 0
+		vstorage.last_damage_tick = 0
+		vstorage.is_escaping = false
+		vstorage.last_teleport_time = 0
+
+		if bypass then
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				hook_lib.create_hook('antideath_bypass', {
+					newindex = function(self, key, value)
+						if vstorage.is_escaping then
+							if self == hrp and (key == 'CFrame' or key == 'Position') then
+								return false
+							end
+							if self:IsA('BasePart') and self:IsDescendantOf(stuff.owner_char) then
+								if key == 'Velocity' or key == 'AssemblyLinearVelocity' or key == 'AssemblyAngularVelocity' or key == 'RotVelocity' then
+									return false
+								end
+							end
+						end
+					end,
+
+					index = function(self, key)
+						if vstorage.is_escaping and self == humanoid then
+							if key == 'Health' then
+								return vstorage.last_health
+							end
+						end
+					end
+				})
+			end
+		end
+
+		local function find_damage_source()
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not hrp then return nil end
+
+			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+			local sources = {}
+
+			for _, plr in pairs(services.players:GetPlayers()) do
+				if plr ~= stuff.owner and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
+					local plr_hrp = plr.Character.HumanoidRootPart
+					local plr_pos = stuff.rawrbxget(plr_hrp, 'Position')
+					local distance = (hrp_pos - plr_pos).Magnitude
+
+					if distance < 30 then
+						local has_tool = plr.Character:FindFirstChildOfClass('Tool')
+						table.insert(sources, {
+							type = 'player',
+							source = plr,
+							name = plr.Name,
+							distance = distance,
+							priority = has_tool and 1 or 2
+						})
+					end
+				end
+			end
+
+			for _, obj in pairs(workspace:GetDescendants()) do
+				if obj:IsA('BasePart') and obj.Parent ~= stuff.owner_char then
+					local obj_pos = stuff.rawrbxget(obj, 'Position')
+					local distance = (hrp_pos - obj_pos).Magnitude
+					local obj_name = obj.Name:lower()
+
+					if (obj_name:find('kill') or obj_name:find('damage') or obj_name:find('lava') or obj_name:find('death') or obj_name:find('fire') or obj_name:find('trap')) and distance < 25 then
+						table.insert(sources, {
+							type = 'hazard',
+							source = obj,
+							name = obj.Name,
+							distance = distance,
+							priority = 2
+						})
+					end
+
+					local velocity = stuff.rawrbxget(obj, 'AssemblyLinearVelocity')
+					if velocity.Magnitude > 60 and distance < 15 then
+						table.insert(sources, {
+							type = 'projectile',
+							source = obj,
+							name = obj.Name,
+							distance = distance,
+							priority = 1
+						})
+					end
+				end
+			end
+
+			table.sort(sources, function(a, b)
+				if a.priority == b.priority then
+					return a.distance < b.distance
+				end
+				return a.priority < b.priority
+			end)
+
+			return sources[1]
+		end
+
+		local function teleport_to_safety()
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not hrp then return end
+
+			if tick() - vstorage.last_teleport_time < 0.15 then return end
+			vstorage.last_teleport_time = tick()
+
+			vstorage.teleport_count = vstorage.teleport_count + 1
+			vstorage.is_escaping = true
+
+			local escape_pos
+			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+
+			if vstorage.damage_source then
+				local source_pos
+
+				if vstorage.damage_source.type == 'player' and vstorage.damage_source.source.Character and vstorage.damage_source.source.Character:FindFirstChild('HumanoidRootPart') then
+					source_pos = stuff.rawrbxget(vstorage.damage_source.source.Character.HumanoidRootPart, 'Position')
+					notify('antideath', `escaping from {vstorage.damage_source.name}`, 1)
+				elseif vstorage.damage_source.source and vstorage.damage_source.source:IsA('BasePart') then
+					source_pos = stuff.rawrbxget(vstorage.damage_source.source, 'Position')
+					notify('antideath', `escaping from {vstorage.damage_source.type}`, 1)
+				end
+
+				if source_pos then
+					local escape_direction = (hrp_pos - source_pos).Unit
+					local escape_distance = vstorage.damage_source.type == 'player' and 70 or 50
+					escape_pos = hrp_pos + (escape_direction * escape_distance) + Vector3.new(0, 20, 0)
+				else
+					escape_pos = vstorage.safe_position.Position + Vector3.new(0, 10, 0)
+				end
+			else
+				if (vstorage.safe_position.Position - hrp_pos).Magnitude > 200 then
+					local random_offset = Vector3.new(
+						math.random(-80, 80),
+						math.random(20, 50),
+						math.random(-80, 80)
+					)
+					escape_pos = hrp_pos + random_offset
+					notify('antideath', 'escaping to random position', 1)
+				else
+					escape_pos = vstorage.safe_position.Position + Vector3.new(0, 15, 0)
+					notify('antideath', 'returning to safe position', 1)
+				end
+			end
+
+			for i = 1, 3 do
+				pcall(function()
+					stuff.owner_char:PivotTo(CFrame.new(escape_pos))
+
+					for _, part in pairs(stuff.owner_char:GetDescendants()) do
+						if part:IsA('BasePart') then
+							stuff.rawrbxset(part, 'Velocity', Vector3.zero)
+							stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+							stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
+							stuff.rawrbxset(part, 'RotVelocity', Vector3.zero)
+						end
+					end
+				end)
+
+				if i < 3 then
+					task.wait(0.05)
+				end
+			end
+
+			task.delay(0.8, function()
+				vstorage.is_escaping = false
+			end)
+		end
+
+		maid.add('antideath_health_monitor', humanoid:GetPropertyChangedSignal('Health'), function()
+			if not vstorage.enabled then
+				maid.remove('antideath_health_monitor')
+				maid.remove('antideath_heartbeat')
+				return
+			end
+
+			pcall(function()
+				local current_health = stuff.rawrbxget(humanoid, 'Health')
+
+				if current_health <= 0 then
+					maid.remove('antideath_health_monitor')
+					maid.remove('antideath_heartbeat')
+					return
+				end
+
+				if current_health < vstorage.last_health then
+					vstorage.last_damage_tick = tick()
+					vstorage.damage_source = find_damage_source()
+
+					if current_health <= vstorage.min_health then
+						teleport_to_safety()
+					end
+				end
+
+				vstorage.last_health = current_health
+			end)
+		end)
+
+		maid.add('antideath_heartbeat', services.run_service.Heartbeat, function()
+			if not vstorage.enabled then
+				maid.remove('antideath_health_monitor')
+				maid.remove('antideath_heartbeat')
+				return
+			end
+
+			pcall(function()
+				local current_health = stuff.rawrbxget(humanoid, 'Health')
+
+				if current_health <= 0 then
+					maid.remove('antideath_health_monitor')
+					maid.remove('antideath_heartbeat')
+					return
+				end
+
+				if current_health > vstorage.min_health + 40 and current_health >= vstorage.last_health and not vstorage.is_escaping then
+					local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+						if hrp_pos.Y > workspace.FallenPartsDestroyHeight + 50 then
+							vstorage.safe_position = stuff.owner_char:GetPivot()
+						end
+					end
+				end
+
+				if tick() - vstorage.last_damage_tick < 2 and current_health <= vstorage.min_health then
+					if not vstorage.is_escaping then
+						local health_before = current_health
+						task.wait(0.15)
+
+						if stuff.rawrbxget(humanoid, 'Health') < health_before and stuff.rawrbxget(humanoid, 'Health') > 0 then
+							vstorage.damage_source = find_damage_source()
+							teleport_to_safety()
+						end
+					end
+				end
+
+				if tick() - vstorage.last_damage_tick > 5 then
+					vstorage.teleport_count = 0
+				end
+
+				if vstorage.teleport_count >= 10 then
+					notify('antideath', 'excessive damage - returning to safe spawn', 3)
+					vstorage.teleport_count = 0
+
+					local spawn = workspace:FindFirstChild('SpawnLocation') or workspace:FindFirstChildOfClass('SpawnLocation')
+					if spawn then
+						local spawn_cf = stuff.rawrbxget(spawn, 'CFrame')
+						stuff.owner_char:PivotTo(spawn_cf + Vector3.new(0, 5, 0))
+					else
+						stuff.owner_char:PivotTo(CFrame.new(0, 100, 0))
+					end
+
+					for _, part in pairs(stuff.owner_char:GetDescendants()) do
+						if part:IsA('BasePart') then
+							stuff.rawrbxset(part, 'Velocity', Vector3.zero)
+							stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+							stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
+						end
+					end
+				end
+			end)
+		end)
+	end
+
+	setup_antideath()
+
+	maid.add('antideath_character_respawn', stuff.owner.CharacterAdded, function(character)
+		if not vstorage.enabled then
+			maid.remove('antideath_character_respawn')
+			return
+		end
+
+		task.wait(0.5)
+
+		if vstorage.enabled then
+			notify('antideath', 'reactivated after respawn', 1)
+			setup_antideath()
+		end
+	end)
+end)
+
+cmd_library.add({'unantideath', 'unantikill', 'stopantideath'}, 'disables anti-death', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('antideath')
+
+	if not vstorage.enabled then
+		return notify('antideath', 'anti-death not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	notify('antideath', 'anti-death disabled', 1)
+
+	maid.remove('antideath_health_monitor')
+	maid.remove('antideath_heartbeat')
+	maid.remove('antideath_character_respawn')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('antideath_bypass')
+	end
+end)
+
 cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your humanoid on client', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unstopdamage')
@@ -7704,97 +10137,45 @@ cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your 
 	end
 
 	vstorage.enabled = true
+	vstorage.humanoid = humanoid
 	vstorage.health = stuff.rawrbxget(humanoid, 'Health')
 	vstorage.max_health = stuff.rawrbxget(humanoid, 'MaxHealth')
 
 	notify('stopdamage', 'damage prevention enabled', 1)
 
-	vstorage.old_newindex = hookmetamethod(game, '__newindex', function(self, key, value)
-		if vstorage.enabled and checkcaller and not checkcaller() then
-			if self == humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
+	hook_lib.create_hook('stopdamage', {
+		newindex = function(self, key, value)
+			if self == vstorage.humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
 				if key == 'Health' then
 					if value > vstorage.health then
 						vstorage.health = value
-						return vstorage.old_newindex(self, key, value)
+						return false
 					else
-						return
+						return true
 					end
 				elseif key == 'MaxHealth' then
 					vstorage.max_health = value
 					vstorage.health = value
-					return vstorage.old_newindex(self, key, value)
+					return false
 				end
 			end
-		end
+		end,
 
-		return vstorage.old_newindex(self, key, value)
-	end)
+		namecall = function(self, ...)
+			local args = {...}
+			local method = getnamecallmethod()
 
-	vstorage.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-		local args = {...}
-		local method = getnamecallmethod()
-
-		if vstorage.enabled and checkcaller and not checkcaller() then
-			if self == humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
-				if method:lower() == 'takedamage' then
-					return
-				elseif method:lower() == 'changestate' then
+			if self == vstorage.humanoid or (self:IsA('Humanoid') and self == stuff.owner_char:FindFirstChildOfClass('Humanoid')) then
+				if method == 'TakeDamage' then
+					return true
+				elseif method == 'ChangeState' then
 					if args[1] == Enum.HumanoidStateType.Dead then
-						return
+						return true
 					end
 				end
 			end
 		end
-
-		return vstorage.old_namecall(self, ...)
-	end)
-
-	if hookfunction then
-		if getfenv then
-			local old_getfenv = getfenv
-			vstorage.getfenv_hook = hookfunction(getfenv, function(level)
-				if checkcaller and not checkcaller() then
-					local env = old_getfenv(level)
-					if type(env) == 'table' then
-						local clean_env = {}
-						for k, v in pairs(env) do
-							if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
-								clean_env[k] = v
-							end
-						end
-						return clean_env
-					end
-				end
-				return old_getfenv(level)
-			end)
-		end
-
-		if debug and debug.info then
-			local old_debug_info = debug.info
-			local original_newindex = getrawmetatable(game).__newindex
-			local original_namecall = getrawmetatable(game).__namecall
-
-			vstorage.debug_hook_stopdamage = hookfunction(debug.info, function(level, options)
-				local result = old_debug_info(level, options)
-				if options == "f" then
-					if result == vstorage.old_newindex then
-						return original_newindex
-					elseif result == vstorage.old_namecall then
-						return original_namecall
-					end
-					if level == 2 or level == 3 then
-						local caller = old_debug_info(2, "f")
-						if caller == vstorage.old_newindex then
-							return original_newindex
-						elseif caller == vstorage.old_namecall then
-							return original_namecall
-						end
-					end
-				end
-				return result
-			end)
-		end
-	end
+	})
 end)
 
 cmd_library.add({'unstopdamage', 'unstopd'}, 'disables damage prevention', {}, function(vstorage)
@@ -7805,53 +10186,134 @@ cmd_library.add({'unstopdamage', 'unstopd'}, 'disables damage prevention', {}, f
 	end
 
 	vstorage.enabled = false
+	hook_lib.destroy_hook('stopdamage')
 	notify('stopdamage', 'damage prevention disabled', 1)
 end)
 
-cmd_library.add({'clientgodmode', 'cgodmode'}, 'sets your health to NaN', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+cmd_library.add({'clientgodmode', 'cgodmode', 'cgod', 'god'}, 'sets your health to NaN', {
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unclientgodmode')
 		return
 	end
-	
+
 	if vstorage.enabled then
-		return notify('clientgodmode', 'godmode already enabled', 1)
+		return notify('clientgodmode', 'godmode already enabled', 2)
 	end
-	
+
 	local humanoid = stuff.owner_char:FindFirstChildOfClass('Humanoid')
 	if not humanoid then
-		notify('clientgodmode', 'your character doesnt have a humanoid', 2)
+		return notify('clientgodmode', 'your character doesnt have a humanoid', 2)
 	end
-	
-	maid.add('godmode_hum', humanoid.Died, function()
-		local new_char = stuff.owner.CharacterAdded:Wait()
-		humanoid = new_char:WaitForChild('Humanoid')
-	end)
-	
+
 	vstorage.enabled = true
-	
+	vstorage.bypass = bypass
+	vstorage.humanoid = humanoid
+
+	notify('clientgodmode', `godmode enabled{bypass and ' (bypass)' or ''}`, 1)
+
+	if bypass then
+		hook_lib.create_hook('godmode_bypass', {
+			index = function(self, key)
+				if self == vstorage.humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
+					if key == 'Health' or key == 'MaxHealth' then
+						return 0/0
+					end
+				end
+			end,
+
+			newindex = function(self, key, value)
+				if self == vstorage.humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
+					if key == 'Health' or key == 'MaxHealth' then
+						if value == value then
+							return false
+						end
+					end
+				end
+			end,
+
+			namecall = function(self, ...)
+				local method = getnamecallmethod()
+				local args = {...}
+
+				if self == vstorage.humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
+					if method == 'TakeDamage' then
+						return nil
+					elseif method == 'ChangeState' then
+						if args[1] == Enum.HumanoidStateType.Dead then
+							return nil
+						end
+					elseif method == 'GetPropertyChangedSignal' then
+						if args[1] == 'Health' or args[1] == 'MaxHealth' then
+							return Instance.new('BindableEvent').Event
+						end
+					end
+				end
+			end
+		})
+	end
+
 	stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
 	stuff.rawrbxset(humanoid, 'Health', 0/0)
+
 	maid.add('godmode', humanoid:GetPropertyChangedSignal('Health'), function()
-		if stuff.rawrbxget(humanoid, 'Health') ~= 0/0 or stuff.rawrbxget(humanoid, 'MaxHealth') ~= 0/0 then
+		local current_health = stuff.rawrbxget(humanoid, 'Health')
+		local current_max = stuff.rawrbxget(humanoid, 'MaxHealth')
+
+		if current_health == current_health or current_max == current_max then
 			stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
 			stuff.rawrbxset(humanoid, 'Health', 0/0)
 		end
 	end)
-	
-	notify('clientgodmode', 'godmode enabled', 1)
+
+	maid.add('godmode_hum', humanoid.Died, function()
+		local new_char = stuff.owner.CharacterAdded:Wait()
+		humanoid = new_char:WaitForChild('Humanoid')
+		vstorage.humanoid = humanoid
+
+		if vstorage.enabled then
+			stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
+			stuff.rawrbxset(humanoid, 'Health', 0/0)
+
+			maid.remove('godmode')
+			maid.add('godmode', humanoid:GetPropertyChangedSignal('Health'), function()
+				local current_health = stuff.rawrbxget(humanoid, 'Health')
+				local current_max = stuff.rawrbxget(humanoid, 'MaxHealth')
+
+				if current_health == current_health or current_max == current_max then
+					stuff.rawrbxset(humanoid, 'MaxHealth', 0/0)
+					stuff.rawrbxset(humanoid, 'Health', 0/0)
+				end
+			end)
+		end
+	end)
 end)
 
-cmd_library.add({'unclientgodmode', 'uncgodmode'}, 'disables client godmode', {}, function(_)
+cmd_library.add({'unclientgodmode', 'uncgodmode', 'uncgod', 'ungod'}, 'disables client godmode', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('clientgodmode')
-	
-	if vstorage.enabled then
-		vstorage.enabled = false
-		maid.remove('godmode')
-		maid.remove('godmode_hum')
-	else
-		notify('clientgodmode', 'godmode already disabled', 1)
+
+	if not vstorage.enabled then
+		return notify('clientgodmode', 'godmode not enabled', 2)
 	end
+
+	vstorage.enabled = false
+	maid.remove('godmode')
+	maid.remove('godmode_hum')
+
+	if vstorage.bypass then
+		hook_lib.destroy_hook('godmode_bypass')
+	end
+
+	if vstorage.humanoid then
+		pcall(function()
+			stuff.rawrbxset(vstorage.humanoid, 'MaxHealth', 100)
+			stuff.rawrbxset(vstorage.humanoid, 'Health', 100)
+		end)
+	end
+
+	notify('clientgodmode', 'godmode disabled', 1)
 end)
 
 cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
@@ -7860,7 +10322,7 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	if not firetouchinterest then
 		return notify('seatbring', 'firetouchinterest not found', 2)
 	end
-	
+
 	if not targets or #targets == 0 then
 		return notify('seatbring', 'player not found', 2)
 	end
@@ -7935,7 +10397,6 @@ local ui_cmdlist_template = ui_cmdlist_commandlist.template
 
 local ui_notifications_main_container = ui_notifications.main_container
 local ui_notifications_template = ui_notifications_main_container.template
-ui_notifications_template.Size = UDim2.new(0, 0, 0, 25)
 
 ui_cmdlist_template.Parent = nil
 ui_notifications_template.Parent = nil
