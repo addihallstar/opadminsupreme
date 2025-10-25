@@ -61,8 +61,8 @@ local stuff = {
 	owner = services.players.LocalPlayer,
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
-	open_keybind = nil,
-	chat_prefix = nil,
+	open_keybind = nil
+
 	
 	rawrbxget = nil,
 	rawrbxset = nil,
@@ -1173,7 +1173,6 @@ hook_lib.presets.freegamepass = function()
 	return hooks
 end
 
-stuff.chat_prefix = config.get('chat_prefix') or "!"
 
 
 -- c1: movement
@@ -2849,18 +2848,6 @@ cmd_library.add({'settings'}, 'manage settings', {
 	end
 end)
 
-cmd_library.add({'prefix', 'changeprefix', 'setprefix'}, 'changes the chat command prefix', {
-	{'new_prefix', 'string'}
-}, function(vstorage, new_prefix)
-	if not new_prefix or new_prefix == '' then
-		return notify('prefix', `current prefix: '{stuff.chat_prefix or '!'}'`, 4)
-	end
-
-	stuff.chat_prefix = new_prefix
-
-	config.set('chat_prefix', stuff.chat_prefix)
-	notify('prefix', `chat prefix changed to '{stuff.chat_prefix}'`, 1)
-end)
 
 cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybind', {
 	{'key', 'string'}
