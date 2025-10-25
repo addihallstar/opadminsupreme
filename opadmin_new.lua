@@ -10401,17 +10401,6 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	end
 end)
 
---chat cmds
-
-services.players.LocalPlayer.Chatted:Connect(function(msg)
-	if msg:sub(1, #(stuff.chat_prefix)) == stuff.chat_prefix then
-		local args = msg:sub(#(stuff.chat_prefix) + 1):split(" ")
-		local cmd = table.remove(args, 1)
-		if cmd then
-			cmd_library.execute(cmd, unpack(args))
-		end
-	end
-end)
 
 
 -- ui
