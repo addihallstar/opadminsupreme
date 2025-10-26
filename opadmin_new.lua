@@ -61,8 +61,8 @@ local stuff = {
 	owner = services.players.LocalPlayer,
 	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
-	open_keybind = nil
-
+	open_keybind = nil,
+	chat_prefix = nil,
 	
 	rawrbxget = nil,
 	rawrbxset = nil,
@@ -505,16 +505,20 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	-- doesnt work on some executors
-	-- xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
-	-- xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
-	
-	stuff.rawrbxset = function(obj, key, value)
-		obj[key] = value
+	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
+	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+		
+	local test_instance = Instance.new('StringValue')
+	stuff.rawrbxset(test_instance, 'Value', 'test')
+	if test_instance.Value ~= 'test' then
+		stuff.rawrbxset = function(obj, key, value)
+			obj[key] = value
+		end
+		stuff.rawrbxget = function(obj, key)
+			return obj[key]
+		end
 	end
-	stuff.rawrbxget = function(obj, key)
-		return obj[key]
-	end
+	pcall(stuff.destroy, test_instance)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
@@ -1169,6 +1173,7 @@ hook_lib.presets.freegamepass = function()
 	return hooks
 end
 
+stuff.chat_prefix = config.get('chat_prefix') or "!"
 
 
 -- c1: movement
@@ -2235,12 +2240,12 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 	vstorage.bypass = bypass
 	notify('cframespeed', `cframe speed enabled with speed {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
 
-	pcall(function()
-		maid.remove('cframe_speed')
-	end)
+	pcall(maid.remove, 'cframe_speed')
+	
+	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local hrp_cframe = stuff.rawrbxget(hrp, 'CFrame')
 
 	if bypass then
-		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 		if hrp then
 			hook_lib.create_hook('cframespeed_bypass', {
 				newindex = function(self, key, value)
@@ -2861,6 +2866,18 @@ cmd_library.add({'settings'}, 'manage settings', {
 	end
 end)
 
+cmd_library.add({'prefix', 'changeprefix', 'setprefix'}, 'changes the chat command prefix', {
+	{'new_prefix', 'string'}
+}, function(vstorage, new_prefix)
+	if not new_prefix or new_prefix == '' then
+		return notify('prefix', `current prefix: '{stuff.chat_prefix or '!'}'`, 4)
+	end
+
+	stuff.chat_prefix = new_prefix
+
+	config.set('chat_prefix', stuff.chat_prefix)
+	notify('prefix', `chat prefix changed to '{stuff.chat_prefix}'`, 1)
+end)
 
 cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybind', {
 	{'key', 'string'}
@@ -3047,23 +3064,23 @@ cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
 	if bypass then
 		hook_lib.create_hook('tptool_bypass', {
 			newindex = function(self, key, value)
-					if is_teleporting then
-						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-						if self == hrp and (key == 'CFrame' or key == 'Position') then
-							return false
-						end
-					end
-				end,
-				index = function(self, key)
-					if is_teleporting then
-						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-						if self == hrp and key == 'CFrame' then
-							return ccframe or hrp.CFrame
-						elseif self == hrp and key == 'Position' then
-							return ccframe.Position or hrp.CFrame.Position
-						end
+				if is_teleporting then
+					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					if self == hrp and (key == 'CFrame' or key == 'Position') then
+						return false
 					end
 				end
+			end,
+			index = function(self, key)
+				if is_teleporting then
+					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					if self == hrp and key == 'CFrame' then
+						return ccframe or hrp.CFrame
+					elseif self == hrp and key == 'Position' then
+						return ccframe.Position or hrp.CFrame.Position
+					end
+				end
+			end
 		})
 	end
 
@@ -3406,7 +3423,8 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 }, function(vstorage, bypass)
 	local savepos_vstorage = cmd_library.get_variable_storage('savepos')
 	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-	hrp_cframe = hrp.CFrame
+	local hrp_cframe = hrp.CFrame
+	
 	if savepos_vstorage.pos then
 		if bypass then
 			if hrp then
@@ -10445,7 +10463,17 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	end
 end)
 
+-- chat cmds
 
+maid.add('owner_chatted', stuff.owner.Chatted, function(msg)
+	if msg:sub(1, #(stuff.chat_prefix)) == stuff.chat_prefix then
+		local args = msg:sub(#(stuff.chat_prefix) + 1):split(' ')
+		local cmd = table.remove(args, 1)
+		if cmd then
+			cmd_library.execute(cmd, unpack(args))
+		end
+	end
+end, true)
 
 -- ui
 
