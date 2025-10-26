@@ -1557,7 +1557,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 		return notify('bfly', 'disable normal fly first', 2)
 	end
 
-	if vstorage.enabled and vstorage.speed == speed then
+	if vstorage.enabled then
 		return notify('bfly', 'bypass flight already enabled', 2)
 	end
 
