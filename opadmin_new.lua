@@ -1182,7 +1182,7 @@ cmd_library.add({'speed', 'walkspeed', 'ws'}, 'sets your walkspeed to [speed]', 
 
 	if bypass then
 		local humanoid = stuff.owner_char.Humanoid
-		hook_lib.create_hook('walkspeed_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = speed}))
+		hook_lib.create_hook('walkspeed_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = humanoid.WalkSpeed}))
 	end
 
 	stuff.rawrbxset(stuff.owner_char.Humanoid, 'WalkSpeed', speed)
@@ -1199,7 +1199,8 @@ cmd_library.add({'jumppower', 'jp'}, 'sets your jumppower to [power]', {
 
 	if bypass then
 		hook_lib.create_hook('jumppower_bypass', hook_lib.presets.property_spoof(humanoid, {
-			JumpPower = power,
+			JumpPower = humanoid.UseJumpPower and humanoid.JumpPower or 50,
+			JumpHeight = not humanoid.UseJumpPower and humanoid.JumpHeight or 7.2,
 			UseJumpPower = true
 		}))
 	end
@@ -1227,7 +1228,8 @@ cmd_library.add({'loopjumppower', 'loopjp'}, 'sets your jumppower to [power] in 
 	if bypass then
 		local humanoid = stuff.owner_char.Humanoid
 		hook_lib.create_hook('loopjp_bypass', hook_lib.presets.property_spoof(humanoid, {
-			JumpPower = power,
+			JumpPower = humanoid.UseJumpPower and humanoid.JumpPower or 50,
+			JumpHeight = not humanoid.UseJumpPower and humanoid.JumpHeight or 7.2,
 			UseJumpPower = true
 		}))
 	end
@@ -1272,7 +1274,7 @@ cmd_library.add({'loopwalkspeed', 'loopws'}, 'sets your walkspeed to [speed] in 
 
 	if bypass then
 		local humanoid = stuff.owner_char.Humanoid
-		hook_lib.create_hook('loopws_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = speed}))
+		hook_lib.create_hook('loopws_bypass', hook_lib.presets.property_spoof(humanoid, {WalkSpeed = vstorage.old_speed}))
 	end
 
 	maid.add('loopws', services.run_service.Heartbeat, function()
@@ -1866,6 +1868,7 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', {
 		if bypass then
 			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 			if hrp then
+				local hrp_cframe = hrp.CFrame
 				local target_hrp = stuff.rawrbxget(target_char, 'HumanoidRootPart')
 				local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
 
@@ -1873,6 +1876,13 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', {
 					newindex = function(self, key, value)
 						if self == hrp and (key == 'CFrame' or key == 'Position') then
 							return false
+						end
+					end,
+					index = function(self, key)
+						if self == hrp and key == 'CFrame' then
+							return hrp_cframe
+						elseif self == hrp and key == 'Position' then
+							return hrp_cframe.Position
 						end
 					end
 				})
@@ -2236,6 +2246,13 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 				newindex = function(self, key, value)
 					if self == hrp and (key == 'CFrame' or key == 'Position') then
 						return false
+					end
+				end,
+				index = function(self, key)
+					if self == hrp and key == 'CFrame' then
+						return hrp_cframe
+					elseif self == hrp and key == 'Position' then
+						return hrp_cframe.Position
 					end
 				end
 			})
@@ -2954,6 +2971,16 @@ cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press 
 							return false
 						end
 					end
+				end,
+				index = function(self, key)
+					if vstorage.is_teleporting then
+						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+						if self == hrp and key == 'CFrame' then
+							return vstorage.ccframe or hrp.CFrame
+						elseif self == hrp and key == 'Position' then
+							return vstorage.ccframe.Position or hrp.CFrame.Position
+						end
+					end
 				end
 			})
 		end
@@ -2971,6 +2998,7 @@ cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press 
 
 					if hrp then
 						vstorage.is_teleporting = true
+						vstorage.ccframe = hrp.CFrame
 						stuff.rawrbxset(hrp, 'CFrame', target + Vector3.new(0, 4, 0))
 						task.wait(0.1)
 						vstorage.is_teleporting = false
@@ -3014,17 +3042,28 @@ cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
 
 	local last_use = 0
 	local is_teleporting = false
+	local ccframe = stuff.owner_char:GetPivot()
 
 	if bypass then
 		hook_lib.create_hook('tptool_bypass', {
 			newindex = function(self, key, value)
-				if is_teleporting then
-					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-					if self == hrp and (key == 'CFrame' or key == 'Position') then
-						return false
+					if is_teleporting then
+						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+						if self == hrp and (key == 'CFrame' or key == 'Position') then
+							return false
+						end
+					end
+				end,
+				index = function(self, key)
+					if is_teleporting then
+						local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+						if self == hrp and key == 'CFrame' then
+							return ccframe or hrp.CFrame
+						elseif self == hrp and key == 'Position' then
+							return ccframe.Position or hrp.CFrame.Position
+						end
 					end
 				end
-			end
 		})
 	end
 
@@ -3104,6 +3143,7 @@ cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
 		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 		if hrp then
 			is_teleporting = true
+			ccframe = hrp.CFrame
 			stuff.rawrbxset(hrp, 'CFrame', CFrame.new(pos))
 			last_use = current_time
 
@@ -3365,14 +3405,22 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 	{'bypass_mode', 'boolean'}
 }, function(vstorage, bypass)
 	local savepos_vstorage = cmd_library.get_variable_storage('savepos')
+	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	hrp_cframe = hrp.CFrame
 	if savepos_vstorage.pos then
 		if bypass then
-			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 			if hrp then
 				hook_lib.create_hook('loadpos_bypass', {
 					newindex = function(self, key, value)
 						if self == hrp and (key == 'CFrame' or key == 'Position') then
 							return false
+						end
+					end,
+					index = function(self, key)
+						if self == hrp and key == 'CFrame' then
+							return hrp_cframe
+						elseif self == hrp and key == 'Position' then
+							return hrp_cframe.Position
 						end
 					end
 				})
@@ -3424,11 +3472,19 @@ cmd_library.add({'illusion', 'deathrespawn', 'drespawn', 'dr'}, 'makes you respa
 			elseif has_died and health > 0 then
 				if vstorage.bypass then
 					local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+					local hrp_cframe = hrp.CFrame
 					if hrp then
 						hook_lib.create_hook('deathrespawn_bypass', {
 							newindex = function(self, key, value)
 								if self == hrp and (key == 'CFrame' or key == 'Position') then
 									return false
+								end
+							end,
+							index = function(self, key)
+								if self == hrp and key == 'CFrame' then
+									return hrp_cframe
+								elseif self == hrp and key == 'Position' then
+									return hrp_cframe.Position
 								end
 							end
 						})
@@ -5657,16 +5713,18 @@ cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 	if bypass then
 		hook_lib.create_hook('rocket_bypass', {
 			newindex = function(self, key, value)
-				if self == bv and (key == 'Velocity' or key == 'MaxForce') then
+				if self == bv and (key == 'Velocity' or key == 'MaxForce' or key == 'Parent') then
 					return false
 				end
 			end,
 			index = function(self, key)
 				if self == bv then
 					if key == 'Velocity' then
-						return Vector3.new(0, power, 0)
+						return Vector3.zero
 					elseif key == 'MaxForce' then
-						return Vector3.new(math.huge, math.huge, math.huge)
+						return Vector3.zero
+					elseif key == 'Parent' then
+						return nil
 					end
 				end
 			end
@@ -6113,16 +6171,18 @@ cmd_library.add({'spin'}, 'spins your character', {
 	if bypass then
 		hook_lib.create_hook('spin_bypass', {
 			newindex = function(self, key, value)
-				if self == spin_part and (key == 'AngularVelocity' or key == 'MaxTorque') then
+				if self == spin_part and (key == 'AngularVelocity' or key == 'MaxTorque' or key == 'Parent') then
 					return false
 				end
 			end,
 			index = function(self, key)
 				if self == spin_part then
 					if key == 'AngularVelocity' then
-						return Vector3.new(0, vstorage.speed, 0)
+						return Vector3.zero
 					elseif key == 'MaxTorque' then
-						return Vector3.new(0, math.huge, 0)
+						return Vector3.zero
+					elseif key == 'Parent' then
+						return nil
 					end
 				end
 			end
@@ -6465,7 +6525,7 @@ cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appe
 					return Vector3.zero
 				elseif key == 'CFrame' or key == 'cframe' then
 					return vstorage.normal_cframe
-				elseif key == 'Position' or key == 'position' then
+				elseif key == 'Position' or key == 'position' or key == 'p' then
 					return vstorage.normal_cframe.Position
 				elseif key == 'Orientation' then
 					local x, y, z = vstorage.normal_cframe:ToOrientation()
@@ -6506,7 +6566,7 @@ cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appe
 
 		newindex = function(self, key, value)
 			if self:IsA('BodyMover') and self:IsDescendantOf(stuff.owner_char) then
-				if key == 'Velocity' or key == 'MaxForce' or key == 'AngularVelocity' or key == 'MaxTorque' then
+				if key == 'Velocity' or key == 'MaxForce' or key == 'AngularVelocity' or key == 'MaxTorque' or key == 'Parent' then
 					return false
 				end
 			end
@@ -6521,7 +6581,7 @@ cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appe
 					local actual_state = stuff.rawrbxget(self, 'MoveDirection').Magnitude > 0 and Enum.HumanoidStateType.Running or Enum.HumanoidStateType.Idle
 					return actual_state
 				elseif method == 'GetPropertyChangedSignal' then
-					if args[1] == 'WalkSpeed' or args[1] == 'JumpPower' or args[1] == 'Health' then
+					if args[1] == 'WalkSpeed' or args[1] == 'JumpPower' or args[1] == 'Health' or args[1] == 'MaxHealth' then
 						return Instance.new('BindableEvent').Event
 					end
 				end
@@ -10219,11 +10279,14 @@ cmd_library.add({'clientgodmode', 'cgodmode', 'cgod', 'god'}, 'sets your health 
 	notify('clientgodmode', `godmode enabled{bypass and ' (bypass)' or ''}`, 1)
 
 	if bypass then
+		local health, maxhealth = humanoid.Health, humanoid.MaxHealth
 		hook_lib.create_hook('godmode_bypass', {
 			index = function(self, key)
 				if self == vstorage.humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
-					if key == 'Health' or key == 'MaxHealth' then
-						return 0/0
+					if key == 'Health' then
+						return health
+					elseif key == 'MaxHealth' then
+						return maxhealth
 					end
 				end
 			end,
@@ -10231,9 +10294,7 @@ cmd_library.add({'clientgodmode', 'cgodmode', 'cgod', 'god'}, 'sets your health 
 			newindex = function(self, key, value)
 				if self == vstorage.humanoid or (self:IsA('Humanoid') and self:IsDescendantOf(stuff.owner_char)) then
 					if key == 'Health' or key == 'MaxHealth' then
-						if value == value then
-							return false
-						end
+						return false
 					end
 				end
 			end,
