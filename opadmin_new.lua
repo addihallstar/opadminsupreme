@@ -896,7 +896,7 @@ hook_lib.create_hook = function(name, hooks)
 			pcall(function()
 				local old_func = func
 				hook_data.hooks.function_hooks[func] = hookfunction(func, function(...)
-					if hook_data.enabled then
+					if hook_data.enabled and checkcaller()==false then
 						local result = handler(...)
 						if result ~= nil then
 							return result
@@ -1121,7 +1121,7 @@ hook_lib.presets.antikick = function(player)
 			return
 		end
 	end
-	
+
 	return hooks
 end
 
