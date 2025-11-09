@@ -1,4 +1,4 @@
-if rawequal(game:IsLoaded(), false) then
+if game:IsLoaded()==false then
 	game.Loaded:Wait()
 end
 
@@ -1121,14 +1121,7 @@ hook_lib.presets.antikick = function(player)
 			return
 		end
 	end
-
-	if game.Shutdown then
-		hooks.functions[game.Shutdown] = function(...)
-			notify('antikick', 'blocked shutdown attempt', 3)
-			return
-		end
-	end
-
+	
 	return hooks
 end
 
