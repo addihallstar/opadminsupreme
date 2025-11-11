@@ -505,20 +505,12 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
-	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
-		
-	local test_instance = Instance.new('StringValue')
-	stuff.rawrbxset(test_instance, 'Value', 'test')
-	if test_instance.Value ~= 'test' then
-		stuff.rawrbxset = function(obj, key, value)
+	stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
 		stuff.rawrbxget = function(obj, key)
 			return obj[key]
 		end
-	end
-	pcall(stuff.destroy, test_instance)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
