@@ -1,4 +1,4 @@
-if rawequal(game:IsLoaded(), false) then
+if game:IsLoaded()==false then
 	game.Loaded:Wait()
 end
 
@@ -12,7 +12,7 @@ hookmetamethod = hookmetamethod or function() end
 getloadedmodules = getloadedmodules or nil
 decompile = decompile or function() return '' end
 getnamecallmethod = getnamecallmethod or function() return '' end
-checkcaller = checkcaller or nil
+checkcaller = checkcaller or function()return false end
 syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
 set_hidden_property = sethiddenproperty or function() end
@@ -505,12 +505,17 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	stuff.rawrbxset = function(obj, key, value)
+	xpcall(function()
+		stuff.rawrbxget=getrawmetatable(game).__index
+		stuff.rawrbxset=getrawmetatable(game).__newindex
+	end,function()
+		stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
 		stuff.rawrbxget = function(obj, key)
 			return obj[key]
 		end
+	end)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
@@ -848,7 +853,7 @@ hook_lib.create_hook = function(name, hooks)
 
 	if hooks.namecall then
 		hook_data.hooks.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-			if hook_data.enabled and checkcaller and not checkcaller() then
+			if hook_data.enabled and not checkcaller() then
 				local result = hooks.namecall(self, ...)
 				if result ~= nil then
 					return result
@@ -860,7 +865,7 @@ hook_lib.create_hook = function(name, hooks)
 
 	if hooks.index then
 		hook_data.hooks.old_index = hookmetamethod(game, '__index', function(self, key)
-			if hook_data.enabled and checkcaller and not checkcaller() then
+			if hook_data.enabled and not checkcaller() then
 				local result = hooks.index(self, key)
 				if result ~= nil then
 					return result
@@ -872,7 +877,7 @@ hook_lib.create_hook = function(name, hooks)
 
 	if hooks.newindex then
 		hook_data.hooks.old_newindex = hookmetamethod(game, '__newindex', function(self, key, value)
-			if hook_data.enabled and checkcaller and not checkcaller() then
+			if hook_data.enabled and not checkcaller() then
 				local result = hooks.newindex(self, key, value)
 				if result ~= false then
 					return
@@ -888,7 +893,7 @@ hook_lib.create_hook = function(name, hooks)
 			pcall(function()
 				local old_func = func
 				hook_data.hooks.function_hooks[func] = hookfunction(func, function(...)
-					if hook_data.enabled then
+					if hook_data.enabled and checkcaller()==false then
 						local result = handler(...)
 						if result ~= nil then
 							return result
@@ -904,7 +909,7 @@ hook_lib.create_hook = function(name, hooks)
 		if getfenv then
 			local old_getfenv = getfenv
 			hook_data.hooks.getfenv_hook = hookfunction(getfenv, function(level)
-				if checkcaller and not checkcaller() then
+				if not checkcaller() then
 					local env = old_getfenv(level)
 					if type(env) == 'table' then
 						local clean_env = {}
@@ -1110,13 +1115,6 @@ hook_lib.presets.antikick = function(player)
 	if services.teleport_service.TeleportAsync then
 		hooks.functions[services.teleport_service.TeleportAsync] = function(...)
 			notify('antikick', 'blocked function teleport async attempt', 3)
-			return
-		end
-	end
-
-	if game.Shutdown then
-		hooks.functions[game.Shutdown] = function(...)
-			notify('antikick', 'blocked shutdown attempt', 3)
 			return
 		end
 	end
