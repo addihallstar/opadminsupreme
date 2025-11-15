@@ -505,12 +505,17 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	stuff.rawrbxset = function(obj, key, value)
+	xpcall(function()
+		stuff.rawrbxget=getrawmetatable(game).__index
+		stuff.rawrbxset=getrawmetatable(game).__newindex
+	end,function()
+		stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
 		stuff.rawrbxget = function(obj, key)
 			return obj[key]
 		end
+	end)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
