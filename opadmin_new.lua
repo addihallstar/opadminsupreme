@@ -1,4 +1,4 @@
-if rawequal(game:IsLoaded(), false) then
+if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
@@ -63,7 +63,7 @@ local stuff = {
 	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
 	open_keybind = nil,
 	chat_prefix = nil,
-	
+
 	rawrbxget = nil,
 	rawrbxset = nil,
 
@@ -505,12 +505,20 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	stuff.rawrbxset = function(obj, key, value)
+	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
+	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+
+	local test_instance = Instance.new('StringValue')
+	stuff.rawrbxset(test_instance, 'Value', 'test')
+	if test_instance.Value ~= 'test' then
+		stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
 		stuff.rawrbxget = function(obj, key)
 			return obj[key]
 		end
+	end
+	pcall(stuff.destroy, test_instance)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
@@ -2233,7 +2241,7 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 	notify('cframespeed', `cframe speed enabled with speed {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
 
 	pcall(maid.remove, 'cframe_speed')
-	
+
 	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local hrp_cframe = stuff.rawrbxget(hrp, 'CFrame')
 
@@ -2362,22 +2370,16 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 	end
 end)
 
-cmd_library.add({'leave', 'l'}, 'leaves the server', {}, function()
-	game:Shutdown()
+cmd_library.add({'leave'}, 'leaves the server', {}, function()
+	pcall(function()
+		game:Shutdown()
+	end)
+	game:GetService("Players").LocalPlayer:Destroy()
 end)
 
 cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
-	if mouse1click then
-		mouse1click()
-	elseif services.virtual_user then
-		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
-	elseif services.virt_input then
-		services.virt_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-		task.wait()
-		services.virt_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-	end
+	services.virt_user:ClickButton1(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
 end)
-
 cmd_library.add({'aliases', 'listalias', 'showaliases'}, 'lists all aliases', {}, function(vstorage)
 	local aliases = config.get('aliases') or {}
 
@@ -2561,7 +2563,52 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 
 	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
 end)
+cmd_library.add({"respawnpoint","setrespawn"},'sets your respawn point to your current location',{
+	{"lasts_one_respawn","boolean"}
+}
+,function(vstorage,lasts1respawn)
+	if vstorage.enabled ~= true then
+		vstorage.enabled = true
+		local cframe_set = stuff.owner_char:GetPivot()
+		notify("respawnpoint","respawn point has been set",1)
+		maid.add('set_respawn_point', services.run_service.Heartbeat, function()
+			if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == "Dead" or stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == Enum.HumanoidStateType.Dead then
+				if vstorage.currently_respawning ~= true then
+				else
+					return
+				end
+				vstorage.currently_respawning = true
+				if lasts1respawn then
+					pcall(function()
+						maid.add("gay_respawn",game:GetService("RunService").Heartbeat,function()
+							stuff.owner_char:PivotTo(cframe_set)
+						end)
+						task.delay(game:GetService("Players").RespawnTime+0.3,function()
+							maid.remove("gay_respawn")
+							vstorage.currently_respawning = false
+						end)
+					end)
+					maid.remove("set_respawn_point")
+				else
 
+					maid.add("gay_respawn",game:GetService("RunService").Heartbeat,function()
+						stuff.owner_char:PivotTo(cframe_set)
+					end)
+					task.delay(game:GetService("Players").RespawnTime+0.3,function()
+						maid.remove("gay_respawn")
+						vstorage.currently_respawning = false
+					end)
+				end
+			end
+		end)
+	else
+		pcall(function()
+			maid.remove("set_respawn_point")
+		end)
+		vstorage.enabled = false
+		notify("respawnpoint","respawn point has been removed",nil)
+	end
+end)
 cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	{'key', 'string'}
 }, function(vstorage, key)
@@ -3416,7 +3463,7 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 	local savepos_vstorage = cmd_library.get_variable_storage('savepos')
 	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local hrp_cframe = hrp.CFrame
-	
+
 	if savepos_vstorage.pos then
 		if bypass then
 			if hrp then
@@ -3761,7 +3808,7 @@ cmd_library.add({'gravity', 'grav'}, 'sets workspace gravity value', {
 	stuff.rawrbxset(workspace, 'Gravity', gravity)
 end)
 
-cmd_library.add({'serverhop', 'rejoin', 'hop'}, 'teleports you to another server', {}, function(vstorage)
+cmd_library.add({'serverhop', 'hop'}, 'teleports you to another server', {}, function(vstorage)
 	notify('serverhop', 'searching for new server...', 3)
 
 	local servers = {}
@@ -4421,7 +4468,7 @@ cmd_library.add({'zerovelocity', 'zerovel', 'novel'}, 'stops all velocity on you
 	notify('zerovelocity', 'velocity stopped', 1)
 
 	for _, part in pairs(stuff.owner_char:GetDescendants()) do
-		if part:IsA('BasePart') then
+		if part:IsA('Part') or part:IsA("MeshPart") then
 			stuff.rawrbxset(part, 'Velocity', Vector3.zero)
 			stuff.rawrbxset(part, 'RotVelocity', Vector3.zero)
 			stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
@@ -6947,15 +6994,7 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically clicks when aiming at ene
 	end
 
 	local function click_mouse()
-		if mouse1click then
-			mouse1click()
-		elseif services.virtual_user then
-			services.virtual_user:ClickButton1(Vector2.new(0, 0))
-		elseif services.virtual_input then
-			services.virtual_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-			task.wait()
-			services.virtual_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-		end
+		services.virt_user:ClickButton1(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
 	end
 
 	if not stuff.is_mobile then
@@ -10561,7 +10600,7 @@ do
 
 	maid.add('cmdlist_search', ui_cmdlist_search:GetPropertyChangedSignal('Text'), function()
 		local search_text = ui_cmdlist_search.Text:lower()
-
+		ui_cmdlist_commandlist.CanvasPosition = Vector2.zero
 		for _, label in pairs(ui_cmdlist_commandlist:GetChildren()) do
 			if label:IsA('TextLabel') and label ~= stuff.ui_cmdlist_template then
 				if search_text == '' then
