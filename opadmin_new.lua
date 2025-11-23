@@ -2347,8 +2347,8 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
 
 			for _, item in pairs(workspace:GetDescendants()) do
-				if item:IsA('BasePart') and (item:FindFirstChildOfClass('TouchTransmitter') or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem')) then
-					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) then
+				if item:IsA('Part') or item:IsA("BasePart") or item:IsA("MeshPart") or item:IsA("UnionOperation") or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem') then
+					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) or filter:lower() == "tool" and item.Parent.ClassName == "Tool" and item.Parent.Parent == workspace then
 						local item_pos = stuff.rawrbxget(item, 'Position')
 						if (hrp_pos - item_pos).Magnitude <= vstorage.range then
 							if firetouchinterest then
@@ -2572,33 +2572,29 @@ cmd_library.add({"respawnpoint","setrespawn"},'sets your respawn point to your c
 		local cframe_set = stuff.owner_char:GetPivot()
 		notify("respawnpoint","respawn point has been set",1)
 		maid.add('set_respawn_point', services.run_service.Heartbeat, function()
-			if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == "Dead" or stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == Enum.HumanoidStateType.Dead then
+			if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == Enum.HumanoidStateType.Dead then
 				if vstorage.currently_respawning ~= true then
 				else
 					return
 				end
 				vstorage.currently_respawning = true
-				if lasts1respawn then
-					pcall(function()
-						maid.add("gay_respawn",game:GetService("RunService").Heartbeat,function()
+				maid.add("currently_respawning",services.run_service.Heartbeat,function()
+					if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Dead and stuff.owner_char:FindFirstChild("Head") then
+						maid.remove("currently_respawning")
+						if lasts1respawn == true then
+							maid.remove("set_respawn_point")
+							vstorage.enabled = false
+						end
+						stuff.owner_char:PivotTo(cframe_set)
+						maid.add("currently_respawning",services.run_service.Heartbeat, function()
 							stuff.owner_char:PivotTo(cframe_set)
 						end)
-						task.delay(game:GetService("Players").RespawnTime+0.3,function()
-							maid.remove("gay_respawn")
+						task.delay(0.15,function()
+							maid.remove("currently_respawning")
 							vstorage.currently_respawning = false
 						end)
-					end)
-					maid.remove("set_respawn_point")
-				else
-
-					maid.add("gay_respawn",game:GetService("RunService").Heartbeat,function()
-						stuff.owner_char:PivotTo(cframe_set)
-					end)
-					task.delay(game:GetService("Players").RespawnTime+0.3,function()
-						maid.remove("gay_respawn")
-						vstorage.currently_respawning = false
-					end)
-				end
+					end
+				end)
 			end
 		end)
 	else
@@ -2606,7 +2602,7 @@ cmd_library.add({"respawnpoint","setrespawn"},'sets your respawn point to your c
 			maid.remove("set_respawn_point")
 		end)
 		vstorage.enabled = false
-		notify("respawnpoint","respawn point has been removed",nil)
+		notify("respawnpoint","respawn point has been removed",1)
 	end
 end)
 cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
@@ -4677,8 +4673,6 @@ cmd_library.add({'spam'}, 'spams a command', {
 	local args = {...}
 	local cmd_name = args[1]
 	table.remove(args, 1)
-
-	print(...)
 
 	notify('spam', `spamming command '{cmd_name}' {times} times`, 1)
 
