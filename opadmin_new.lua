@@ -5747,6 +5747,36 @@ cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position', 
 	stuff.rawrbxset(explosion, 'DestroyJointRadiusPercent', 0)
 	stuff.rawrbxset(explosion, 'Parent', workspace)
 end)
+cmd_library.add({"wait"},"waits a specified number of seconds before running a command",{
+	{"seconds","number"},
+	{"command","string"},
+	{['...'] = 'table'}
+},function(vstorage,s,c,...)
+	local arg1,arg2,arg3,arg4 = nil,nil,nil,nil
+	for _, v in pairs(table.pack(...)) do
+		if typeof(v) == "table" then
+			if arg1 == nil then
+				arg1 = v[1]
+				continue
+			end
+			if arg2 == nil then
+				arg2 = v[1]
+				continue
+			end
+			if arg3 == nil then
+				arg3 = v[1]
+				continue
+			end
+			if arg4 == nil then
+				arg4 = v[1]
+				continue
+			end
+		end
+	end
+	task.delay(s,function()
+		cmd_library.execute(c,arg1,arg2,arg3,arg4)
+	end)
+end)
 
 cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 	{'power', 'number'},
@@ -5791,6 +5821,57 @@ cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 	end)
 
 	services.debris:AddItem(bv, 0.5)
+end)
+
+cmd_library.add({'push', 'dash'}, 'pushes you forward', {
+	{'power', 'number'},
+	{"time_lasted", 'number'},
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, power, timelasted, bypass)
+	power = power or 100
+	notify('push', `pushing forward with power {power}{bypass and ' (bypass)' or ''}`, 1)
+
+	local bv = Instance.new('BodyVelocity')
+	stuff.rawrbxset(bv, 'MaxForce', Vector3.new(math.huge, math.huge, math.huge))
+	stuff.rawrbxset(bv, 'Velocity', stuff.owner_char:FindFirstChild("HumanoidRootPart").CFrame.LookVector*power)
+
+	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+
+	if bypass then
+		hook_lib.create_hook('push_bypass', {
+			newindex = function(self, key, value)
+				if self == bv and (key == 'Velocity' or key == 'MaxForce' or key == 'Parent') then
+					return false
+				end
+			end,
+			index = function(self, key)
+				if self == bv then
+					if key == 'Velocity' then
+						return Vector3.zero
+					elseif key == 'MaxForce' then
+						return Vector3.zero
+					elseif key == 'Parent' then
+						return nil
+					end
+				end
+			end
+		})
+	end
+
+	stuff.rawrbxset(bv, 'Parent', hrp)
+
+	task.delay(0.5, function()
+		if bypass then
+			hook_lib.destroy_hook('push_bypass')
+		end
+	end)
+	print(type(timelasted))
+	print(type(power))
+	if timelasted == nil then
+		services.debris:AddItem(bv, 0.5)
+	else
+		services.debris:AddItem(bv,timelasted)
+	end
 end)
 
 -- c4: character
