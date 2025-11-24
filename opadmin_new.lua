@@ -4206,7 +4206,7 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 	notify('stopreplag', 'incoming replication lag set to -1', 1)
 end)
 
-cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', { -- rez you nitwit stop breaking freecam
+cmd_library.add({'freecam', 'fcam'}, 'frees your camera from your character', { -- rez you nitwit stop breaking freecam
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
