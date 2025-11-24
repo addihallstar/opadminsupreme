@@ -150,14 +150,21 @@ local protect_gui = function(gui)
 end
 
 local predict_movement = function(player, future)
-	local char = player.Character
+	local char
+	if player.ClassName == "Model" then
+		char = player
+	elseif player.ClassName == "Player" then
+		char = player.Character
+	elseif player.ClassName == "Humanoid" then
+		char = player.Parent
+	end
 	if not char then return end
 	if future == nil  then
 		future  = ((char:FindFirstChildOfClass("Humanoid").WalkSpeed * 68.75) / 100)
 	end
 
 	local hrp = char:FindFirstChild('HumanoidRootPart')
-	local humanoid = char:FindFirstChild('Humanoid')
+	local humanoid = char:FindFirstChildOfClass('Humanoid')
 	if not (hrp and humanoid) then return end
 
 	local move_dir = humanoid.MoveDirection
@@ -3371,9 +3378,10 @@ cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorag
 				stuff.rawrbxset(label, 'Visible', true)
 				stuff.rawrbxset(label, 'Text', tostring(message.TextSource) .. ': ' .. tostring(message.Text))
 				stuff.rawrbxset(label, 'Parent', sframe)
-
-				task.wait()
-				stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
+				if #chatlog.main_container.chatlogs:GetChildren() > 3 then
+					task.wait()
+					stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
+				end
 			end
 		end
 	end
@@ -5837,8 +5845,6 @@ cmd_library.add({'push', 'dash'}, 'pushes you forward', {
 			hook_lib.destroy_hook('push_bypass')
 		end
 	end)
-	print(type(timelasted))
-	print(type(power))
 	if timelasted == nil then
 		services.debris:AddItem(bv, 0.5)
 	else
@@ -8514,7 +8520,11 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			stuff.rawrbxset(part, 'Anchored', false)
 			stuff.rawrbxset(part, 'CanCollide', false)
 			stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.new(0, velocity, 0))
-			stuff.rawrbxset(part, 'CFrame', stuff.rawrbxget(target_hrp, 'CFrame'))
+			local character_of_target = target.Character
+			local predicted_cf = predict_movement(character_of_target)
+			if predicted_cf then
+				stuff.rawrbxset(part, 'CFrame', predicted_cf)
+			end
 		end)
 	end
 
