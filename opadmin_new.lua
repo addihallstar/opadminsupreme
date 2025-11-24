@@ -4206,7 +4206,7 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 	notify('stopreplag', 'incoming replication lag set to -1', 1)
 end)
 
-cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
+cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', { -- rez you nitwit stop breaking freecam
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
@@ -4214,108 +4214,80 @@ cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
 		cmd_library.execute('unfreecam')
 		return
 	end
-
-	vstorage.enabled = not vstorage.enabled
-
 	if vstorage.enabled then
-		vstorage.speed = speed or 1
-		notify('freecam', `freecam enabled | speed: {vstorage.speed} | E/Q: up/down | Shift: faster`, 1)
-
-		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		vstorage.camera_cframe = stuff.rawrbxget(camera, 'CFrame')
-		vstorage.old_camera_type = stuff.rawrbxget(camera, 'CameraType')
-		vstorage.old_camera_subject = stuff.rawrbxget(camera, 'CameraSubject')
-		vstorage.old_mouse_behavior = stuff.rawrbxget(services.user_input_service, 'MouseBehavior')
-		vstorage.old_mouse_icon_enabled = stuff.rawrbxget(services.user_input_service, 'MouseIconEnabled')
-
-		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Scriptable)
-
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', Enum.MouseBehavior.LockCenter)
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', false)
-
-		maid.add('freecam', services.run_service.RenderStepped, function()
-			pcall(function()
-				local move_vector = get_move_vector(vstorage.speed)
-				local speed_multiplier = services.user_input_service:IsKeyDown(Enum.KeyCode.LeftShift) and 2 or 1
-
-				local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-				local camera_cframe = vstorage.camera_cframe or stuff.rawrbxget(camera, 'CFrame')
-
-				local vertical_input = 0
-				if services.user_input_service:IsKeyDown(Enum.KeyCode.E) then
-					vertical_input = vstorage.speed * speed_multiplier
-				elseif services.user_input_service:IsKeyDown(Enum.KeyCode.Q) then
-					vertical_input = -vstorage.speed * speed_multiplier
-				end
-
-				local new_cframe = camera_cframe * CFrame.new(
-					move_vector.X * speed_multiplier,
-					vertical_input,
-					move_vector.Z * speed_multiplier
-				)
-
-				local mouse_delta = services.user_input_service:GetMouseDelta()
-				new_cframe = new_cframe * CFrame.Angles(-math.rad(mouse_delta.Y * 0.4), -math.rad(mouse_delta.X * 0.4), 0)
-
-				vstorage.camera_cframe = new_cframe
-				stuff.rawrbxset(camera, 'CFrame', new_cframe)
-			end)
-		end)
-
-		maid.add('freecam_died', stuff.owner_char.Humanoid.Died, function()
-			cmd_library.execute('unfreecam')
-		end)
-
-		maid.add('freecam_char_added', stuff.owner.CharacterAdded, function()
-			if vstorage.enabled then
-				cmd_library.execute('unfreecam')
-			end
-		end)
-	else
-		notify('freecam', 'freecam disabled', 1)
-		maid.remove('freecam')
-		maid.remove('freecam_died')
-		maid.remove('freecam_char_added')
-
-		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
-
-		if vstorage.old_camera_subject then
-			pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
-		end
-
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
-
-		vstorage.camera_cframe = nil
+		return notify('freecam','freecam already enabled',1)
 	end
+
+	vstorage.enabled = true
+	if tonumber(speed) then
+		vstorage.speed = tonumber(speed)
+	else
+		vstorage.speed = 1
+	end
+	notify('freecam','freecam enabled',1)
+
+	local cam = workspace.CurrentCamera
+	vstorage.old_subject = cam.CameraSubject
+	vstorage.old_parent = stuff.owner_char.Parent
+	vstorage.old_speed = stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+	stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed = 0
+	flight_part.CFrame = stuff.owner_char:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 1
+	flight_part.CanCollide = false
+	workspace.CurrentCamera.CameraSubject = flight_part
+	stuff.owner_char.Parent = nil
+	local control_module = require(stuff.owner.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+	maid.add('freecam', services.run_service.Heartbeat, function()
+		pcall(function()
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+			stuff.owner_char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+
+			if services.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * vstorage.speed,
+				direction.Y * vstorage.speed,
+				direction.Z * vstorage.speed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
+		end)
+	end)
 end)
 
-cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', {}, function(vstorage)
+cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', {}, function(vstorage) -- rez stop breaking fakechar you nitwit
 	local vstorage = cmd_library.get_variable_storage('freecam')
 
 	if not vstorage.enabled then
-		return notify('freecam', 'freecam not enabled', 2)
+		return notify('freecam','freecam not enabled','1')
 	end
-
 	vstorage.enabled = false
-	notify('freecam', 'freecam disabled', 1)
+	notify('freecam','freecam disabled',1)
 
 	maid.remove('freecam')
-	maid.remove('freecam_died')
-	maid.remove('freecam_char_added')
-
-	local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-	stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
-
-	if vstorage.old_camera_subject then
-		pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
-	end
-
-	pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
-	pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
-
-	vstorage.camera_cframe = nil
+	stuff.owner_char.Parent = vstorage.old_parent
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or stuff.default_ws
+	workspace.CurrentCamera.CameraSubject = vstorage.old_subject or stuff.owner_char:FindFirstChildOfClass('Humanoid')
+	pcall(function()
+		stuff.destroy(vstorage.part)
+	end)
 end)
 
 cmd_library.add({'maxzoom'}, 'sets max camera zoom distance', {
