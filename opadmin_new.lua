@@ -25,7 +25,7 @@ isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
 getgenv = getgenv or function() return {} end
 
-local env = getgenv and getgenv() or shared or _G
+local env = {}
 
 env['\0opadmin'] = env['\0opadmin'] or {}
 if env['\0opadmin'].i then return end
@@ -735,7 +735,7 @@ local config = {
 	file_name = 'opadmin_settings.json',
 	current_game_id = tostring(game.PlaceId),
 	default_settings = {
-		open_keybind = env['\0opadmin'].opadmin_open_keybind and env['\0opadmin'].opadmin_open_keybind.Name or 'Quote',
+		open_keybind = env['\0opadmin'].opadmin_open_keybind and env['\0opadmin'].opadmin_open_keybind.Name or "Quote",
 		aliases = {},
 		binds = {},
 	},
@@ -814,6 +814,9 @@ config.apply = function()
 	local settings = config.current_settings
 
 	if settings.open_keybind then
+		if settings.open_keybind and settings.open_keybind:len() == 1 then
+			settings.open_keybind = settings.open_keybind:upper()
+		end
 		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.Quote
 	end
 
@@ -1797,7 +1800,7 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
 	notify('airwalk', 'enabled airwalk | Q/E: down/up', 1)
 
 	local air_walk_part = Instance.new('Part', workspace)
-	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 0.5, 3))
+	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 2, 3))
 	stuff.rawrbxset(air_walk_part, 'Transparency', 1)
 	stuff.rawrbxset(air_walk_part, 'Anchored', true)
 	stuff.rawrbxset(air_walk_part, 'CanCollide', true)
@@ -1813,8 +1816,7 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
 			vstorage.height_offset = vstorage.height_offset - 0.5
 		end
 	end)
-
-	maid.add('air_walk', services.run_service.Heartbeat, function()
+	maid.add('air_walk', services.run_service.Stepped, function()
 		if vstorage.enabled and air_walk_part and stuff.rawrbxget(air_walk_part, 'Parent') then
 			pcall(function()
 				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
@@ -1986,12 +1988,18 @@ cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', {{'enable_toggling
 		local hum = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
 		cooldown = true
 
-		task.delay(0, function()
+		task.delay(0.3, function()
 			cooldown = false
 		end)
 
 		if stuff.rawrbxget(hum, 'FloorMaterial') == Enum.Material.Air then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			maid.add("current_spam_running_state",game:GetService("RunService").Heartbeat,function()
+				hum:ChangeState(Enum.HumanoidStateType.Running)
+			end)
+			task.delay(0.025,function()
+				maid.remove("current_spam_running_state")
+				hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			end)
 		end
 	end)
 end)
@@ -2891,8 +2899,15 @@ cmd_library.add({'settings'}, 'manage settings', {
 				parsed_value = false
 			elseif tonumber(value) then
 				parsed_value = tonumber(value)
+			elseif key == 'open_keybind' then
+				parsed_value = tostring(value):upper()
+				if Enum.KeyCode[parsed_value] then
+				stuff.open_keybind = Enum.KeyCode[parsed_value]
+				else
+					notify("settings","invalid value",1)
+					return
+				end
 			end
-
 			config.set(key, parsed_value)
 			notify('settings', `set {key} to {tostring(parsed_value)}`, 1)
 		else
@@ -4790,84 +4805,53 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 	stuff.real_char = nil
 end)
 
-cmd_library.add({'revive'}, 'attempts to stop oneshots', {}, function(vstorage)
-	if vstorage.enabled then
-		return notify('revive', 'revive already enabled', 2)
-	end
-
-	notify('revive', 'activated revive', 1)
-	vstorage.enabled = true
-
-	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	local old_health = stuff.rawrbxget(humanoid, 'Health')
-
-	local invalid_states = {
-		[Enum.HumanoidStateType.FallingDown] = true,
-		[Enum.HumanoidStateType.Swimming] = true,
-		[Enum.HumanoidStateType.Seated] = true,
-		[Enum.HumanoidStateType.Jumping] = true,
-		[Enum.HumanoidStateType.Freefall] = true
-	}
-
-	maid.add('revive_state', services.run_service.Heartbeat, function()
-		if not vstorage.enabled then
-			maid.remove('revive_state')
-			return
-		end
-		pcall(function()
-			if not invalid_states[humanoid:GetState()] then
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
-			end
-		end)
+cmd_library.add({"revive"},'attempts to stop oneshots',{},function(vstorage)
+	notify("revive","activated revive",1)
+	local pc = game:GetService("Players").LocalPlayer.Character
+	local Older;Older=pc:FindFirstChildOfClass("Humanoid").Health
+	local reload = true
+	task.spawn(function()
+		repeat
+			game:GetService("RunService").RenderStepped:Wait()
+			pcall(function()
+				if pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.FallingDown and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Swimming and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Seated and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Jumping and  pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Freefall then
+					pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+				end
+			end)
+		until rawequal(reload,false)
 	end)
-
-	maid.add('revive_health_update', services.run_service.Heartbeat, function()
-		if vstorage.enabled then
-			local health = stuff.rawrbxget(humanoid, 'Health')
-			if health > 0 then
-				old_health = health
-			end
-		end
+	task.spawn(function()
+		repeat
+			task.wait(0.13)
+			pcall(function()
+				if rawequal(reload,true) then
+					Older=pc:FindFirstChildOfClass("Humanoid").Health
+				end
+			end)
+		until pc:FindFirstChildOfClass("Humanoid").Health <= 0
 	end)
-
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-	stuff.rawrbxset(humanoid, 'RequiresNeck', false)
-	stuff.rawrbxset(humanoid, 'BreakJointsOnDeath', false)
-
-	maid.add('revive', humanoid:GetPropertyChangedSignal('Health'), function()
-		if not vstorage.enabled then
-			maid.remove('revive')
-			return
-		end
-
-		local current_health = stuff.rawrbxget(humanoid, 'Health')
-		humanoid:ChangeState(Enum.HumanoidStateType.Running)
-
-		if old_health > current_health then
-			humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-			stuff.rawrbxset(humanoid, 'Parent', services.replicated_storage)
-			local stored_humanoid = services.replicated_storage:FindFirstChild('Humanoid')
-			if stored_humanoid then
-				stuff.rawrbxset(stored_humanoid, 'Parent', stuff.owner_char)
+	local idk
+	pc:FindFirstChildOfClass("Humanoid"):SetStateEnabled(Enum.HumanoidStateType.Dead,false)
+	pc:FindFirstChildOfClass("Humanoid").RequiresNeck = false
+	pc:FindFirstChildOfClass("Humanoid").BreakJointsOnDeath = false
+	idk = pc:FindFirstChildOfClass("Humanoid"):GetPropertyChangedSignal("Health"):Connect(function()
+		local r;r = pc:FindFirstChildOfClass("Humanoid").Health
+		pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+		if tonumber(Older)>tonumber(r) then
+			pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+			pc:FindFirstChildOfClass("Humanoid"):SetStateEnabled(Enum.HumanoidStateType.Dead,false)
+			pc:FindFirstChildOfClass("Humanoid").Parent = game:GetService("ReplicatedStorage")
+			game:GetService("ReplicatedStorage"):FindFirstChild("Humanoid").Parent = pc
+			if r<=5 then
+				idk:Disconnect()
+				delay(0.02,function()
+					reload = false
+				end)
 			end
 		else
-			old_health = current_health
+			Older = r
 		end
 	end)
-end)
-
-cmd_library.add({'unrevive'}, 'disables revive', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('revive')
-
-	if not vstorage.enabled then
-		return notify('revive', 'revive not enabled', 2)
-	end
-
-	vstorage.enabled = false
-	maid.remove('revive')
-	maid.remove('revive_state')
-	maid.remove('revive_health_update')
-	notify('revive', 'revive disabled', 1)
 end)
 
 cmd_library.add({'discord', 'invite'}, 'copies the discord invite', {}, function(vstorage)
