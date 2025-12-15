@@ -1811,16 +1811,16 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
 		if processed then return end
 
 		if input.KeyCode == Enum.KeyCode.E then
-			vstorage.height_offset = vstorage.height_offset + 0.25
+			vstorage.height_offset = vstorage.height_offset + 0.125
 		elseif input.KeyCode == Enum.KeyCode.Q then
-			vstorage.height_offset = vstorage.height_offset - 0.25
+			vstorage.height_offset = vstorage.height_offset - 0.125
 		elseif input.KeyCode == Enum.KeyCode.R then
 			vstorage.height_offset = 0
 		end
 	end)
 	task.spawn(function()
 		repeat
-			task.wait(1/60)
+			task.wait(1/120)
 			pcall(function()
 				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 				local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
