@@ -512,20 +512,28 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
-	xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
+	-- xpcall(function() return game[''] end, function() stuff.rawrbxget = debug.info(2, 'f') end)
+	-- xpcall(function() game[''] = nil end, function() stuff.rawrbxset = debug.info(2, 'f') end)
 
-	local test_instance = Instance.new('StringValue')
-	stuff.rawrbxset(test_instance, 'Value', 'test')
-	if test_instance.Value ~= 'test' then
-		stuff.rawrbxset = function(obj, key, value)
+	-- local test_instance = Instance.new('StringValue')
+	-- stuff.rawrbxset(test_instance, 'Value', 'test')
+	-- if test_instance.Value ~= 'test' then
+	-- 	stuff.rawrbxset = function(obj, key, value)
+	-- 		obj[key] = value
+	-- 	end
+	-- 	stuff.rawrbxget = function(obj, key)
+	-- 		return obj[key]
+	-- 	end
+	-- end
+	-- pcall(stuff.destroy, test_instance)
+
+	--dont mind this slop. plz. it cuz the METHOD doesnt work on low unc executors for some fucking reason???????
+	stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
-		stuff.rawrbxget = function(obj, key)
-			return obj[key]
-		end
+	stuff.rawrbxget = function(obj, key)
+		return obj[key]
 	end
-	pcall(stuff.destroy, test_instance)
 
 	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
 	pcall(function()
