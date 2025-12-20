@@ -11335,7 +11335,7 @@ cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', {}, functio
 	stuff.rawrbxset(services.lighting, 'ClockTime', 14)
 end)
 
-cmd_library.add({'showfov', 'showcircle', 'fov'}, 'shows aim circle following mouse', {
+cmd_library.add({'showfov', 'showcircle'}, 'shows aim circle following mouse', {
 	{'fov', 'number'},
 	{'color', 'color'},
 	{'thickness', 'number'},
@@ -11376,11 +11376,13 @@ cmd_library.add({'showfov', 'showcircle', 'fov'}, 'shows aim circle following mo
 	vstorage.drawings.circle.Radius = radius
 	vstorage.drawings.circle.Visible = true
 
+	local gui_inset = services.gui_service:GetGuiInset()
+
 	maid.add('fov_circle', services.run_service.RenderStepped, function()
 		if not vstorage.enabled then return end
 
-		local mouse = stuff.owner:GetMouse()
-		local pos = Vector2.new(mouse.X, mouse.Y)
+		local mouse_location = services.user_input_service:GetMouseLocation()
+		local pos = Vector2.new(mouse_location.X, mouse_location.Y - gui_inset.Y)
 
 		if vstorage.drawings.outline then
 			vstorage.drawings.outline.Position = pos
@@ -11391,7 +11393,7 @@ cmd_library.add({'showfov', 'showcircle', 'fov'}, 'shows aim circle following mo
 	notify('showfov', `fov circle enabled | fov: {vstorage.fov}° | radius: {math.floor(radius)}px`, 1)
 end)
 
-cmd_library.add({'hidefov', 'hidecircle', 'unfov'}, 'hides aim circle', {}, function()
+cmd_library.add({'hidefov', 'hidecircle'}, 'hides aim circle', {}, function()
 	local vs = cmd_library.get_variable_storage('showfov')
 
 	if not vs.enabled then
