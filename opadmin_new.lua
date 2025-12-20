@@ -1,4 +1,4 @@
-if game:IsLoaded()==false then
+if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
@@ -24,71 +24,96 @@ writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
 getgenv = getgenv or function() return {} end
+cloneref = cloneref or function(v) return v end
+gethui = gethui or function() return cloneref(game:GetService('CoreGui')) end
+setreadonly = setreadonly or function() end
+newcclosure = newcclosure or function(f) return f end
+Drawing = Drawing or {}
 
-local env = getgenv and getgenv() or shared or _G
+local env = getgenv() or shared or _G
 
-env['\0opadmin'] = env['\0opadmin'] or {}
-if env['\0opadmin'].i then return end
-env['\0opadmin'].i = true
+env['opadmin'] = env['opadmin'] or {}
+if env['opadmin'].i then return end
+env['opadmin'].i = true
 
 local services = {
-	core_gui = game:GetService('CoreGui'),
-	debris = game:GetService('Debris'),
-	tween_service = game:GetService('TweenService'),
-	players = game:GetService('Players'),
-	run_service = game:GetService('RunService'),
-	starter_player = game:GetService('StarterPlayer'),
-	teleport_service = game:GetService('TeleportService'),
-	text_chat_service = game:GetService('TextChatService'),
-	lighting = game:GetService('Lighting'),
-	user_input_service = game:GetService('UserInputService'),
-	replicated_storage = game:GetService('ReplicatedStorage'),
-	http = game:GetService('HttpService'),
-	gui_service = game:GetService('GuiService'),
-	virt_user = game:GetService('VirtualUser'),
-	marketplace_service = game:GetService('MarketplaceService'),
-	network_client = game:GetService('NetworkClient'),
-	virt_input = game:GetService('VirtualInputManager'),
+	core_gui = gethui(),
+	debris = cloneref(game:GetService('Debris')),
+	tween_service = cloneref(game:GetService('TweenService')),
+	players = cloneref(game:GetService('Players')),
+	run_service = cloneref(game:GetService('RunService')),
+	starter_player = cloneref(game:GetService('StarterPlayer')),
+	teleport_service = cloneref(game:GetService('TeleportService')),
+	text_chat_service = cloneref(game:GetService('TextChatService')),
+	lighting = cloneref(game:GetService('Lighting')),
+	user_input_service = cloneref(game:GetService('UserInputService')),
+	replicated_storage = cloneref(game:GetService('ReplicatedStorage')),
+	http = cloneref(game:GetService('HttpService')),
+	gui_service = cloneref(game:GetService('GuiService')),
+	marketplace_service = cloneref(game:GetService('MarketplaceService')),
+	network_client = cloneref(game:GetService('NetworkClient')),
+	sound_service = cloneref(game:GetService('SoundService')),
+	workspace = cloneref(game:GetService('Workspace')),
+	stats = cloneref(game:GetService('Stats'))
 }
 
 local stuff = {
-	empty_function = function() end,
+	ver = 'dudu-is-gay',
 
+	empty_function = function() end,
 	destroy = game.Destroy,
 	clone = game.Clone,
 	connect = game.Changed.Connect,
 	disconnect = nil,
+
 	owner = services.players.LocalPlayer,
-	owner_char = services.players.LocalPlayer.Character or services.players.LocalPlayer.CharacterAdded:Wait(),
-	ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1]):Clone(),
+	owner_char = nil,
+
+	ui = nil,
 	open_keybind = nil,
 	chat_prefix = nil,
-	
+
 	rawrbxget = nil,
 	rawrbxset = nil,
 
-	default_ws = nil, default_jp = nil,
+	default_ws = 16,
+	default_jp = 50,
 
 	is_mobile = services.user_input_service.TouchEnabled and not services.user_input_service.KeyboardEnabled,
+	is_console = services.gui_service:IsTenFootInterface(),
 
 	highlights = {},
 	target = nil,
 	active_notifications = {},
 	max_notifications = 10,
+	velocity_history = {},
+	ping_samples = {},
+
 	ui_notifications_template = nil,
 	ui_notifications_main_container = nil,
 	ui_cmdlist = nil,
 	ui_cmdlist_template = nil,
 	ui_cmdlist_commandlist = nil,
 	update_keybinds = nil,
+
+	frame_times = {},
+	last_frame_time = 0,
+	avg_fps = 60,
+	avg_ping = 0
 }
-if not stuff.ui then
-	return warn('opadmin ui failed to load')
+
+stuff.owner_char = stuff.owner.Character or stuff.owner.CharacterAdded:Wait()
+
+stuff.ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1])
+if stuff.ui then
+	stuff.ui = stuff.ui:Clone()
+else
+	return warn('[opadmin] ui failed to load')
 end
 
-local get_plrs = function(exclude)
+local function get_plrs(exclude)
 	local plrs = {}
-	for _, plr in next, services.players:GetPlayers() do
+	for _, plr in services.players:GetPlayers() do
 		if plr ~= exclude then
 			table.insert(plrs, plr)
 		end
@@ -96,35 +121,98 @@ local get_plrs = function(exclude)
 	return plrs
 end
 
-local get_plr = function(name)
-	if not name then
-		return {}
-	end
+local function get_plr(name)
+	if not name then return {} end
 
 	local lower_name = name:lower()
 	local all_plrs = get_plrs()
 
-	if lower_name == '@random' or lower_name == '@rand' or lower_name == '@r' then
-		return {all_plrs[math.random(#all_plrs)]}
-	elseif lower_name == '@self' or lower_name == '@me' or lower_name == '@s' or lower_name == '@m' then
-		return {stuff.owner}
-	elseif lower_name == '@everyone' or lower_name == '@all' or lower_name == '@e' or lower_name == '@a' then
-		return all_plrs		
-	elseif lower_name == '@others' or lower_name == '@other' or lower_name == '@o' then
-		local others = {}
-		for _, plr in next, all_plrs do
-			if plr ~= stuff.owner then
-				table.insert(others, plr)
+	local special_selectors;special_selectors = {
+		['@random'] = function() return {all_plrs[math.random(#all_plrs)]} end,
+		['@rand'] = function() return {all_plrs[math.random(#all_plrs)]} end,
+		['@r'] = function() return {all_plrs[math.random(#all_plrs)]} end,
+		['@self'] = function() return {stuff.owner} end,
+		['@me'] = function() return {stuff.owner} end,
+		['@s'] = function() return {stuff.owner} end,
+		['@m'] = function() return {stuff.owner} end,
+		['@everyone'] = function() return all_plrs end,
+		['@all'] = function() return all_plrs end,
+		['@e'] = function() return all_plrs end,
+		['@a'] = function() return all_plrs end,
+		['@others'] = function()
+			local others = {}
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner then
+					table.insert(others, plr)
+				end
 			end
+			return others
+		end,
+		['@other'] = function() return special_selectors['@others']() end,
+		['@o'] = function() return special_selectors['@others']() end,
+		['@view'] = function()
+			local subject = workspace.CurrentCamera.CameraSubject
+			if subject and subject.Parent then
+				return {services.players:GetPlayerFromCharacter(subject.Parent)}
+			end
+			return {}
+		end,
+		['@v'] = function() return special_selectors['@view']() end,
+		['@nearest'] = function()
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not owner_hrp then return {} end
+
+			local nearest, nearest_dist = nil, math.huge
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner and plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local dist = (owner_hrp.Position - hrp.Position).Magnitude
+						if dist < nearest_dist then
+							nearest_dist = dist
+							nearest = plr
+						end
+					end
+				end
+			end
+			return nearest and {nearest} or {}
+		end,
+		['@n'] = function() return special_selectors['@nearest']() end,
+		['@enemies'] = function()
+			local enemies = {}
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner then
+					if not plr.Team or plr.Team ~= stuff.owner.Team then
+						table.insert(enemies, plr)
+					end
+				end
+			end
+			return enemies
+		end,
+		['@team'] = function()
+			local teammates = {}
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner and plr.Team and plr.Team == stuff.owner.Team then
+					table.insert(teammates, plr)
+				end
+			end
+			return teammates
 		end
-		return others
-	elseif lower_name == '@view' or lower_name == '@v' then
-		return {services.players:GetPlayerFromCharacter(workspace.CurrentCamera.CameraSubject.Parent)}
+	}
+
+	if special_selectors[lower_name] then
+		return special_selectors[lower_name]()
 	end
 
 	lower_name = lower_name:gsub('%s', '')
-	for _, plr in next, all_plrs do
-		if plr.Name:lower():match(lower_name) or plr.DisplayName:lower():match('^' .. lower_name) then
+	for _, plr in all_plrs do
+		if plr.Name:lower():match('^' .. lower_name) or plr.DisplayName:lower():match('^' .. lower_name) then
+			return {plr}
+		end
+	end
+
+	for _, plr in all_plrs do
+		if plr.Name:lower():find(lower_name, 1, true) or plr.DisplayName:lower():find(lower_name, 1, true) then
 			return {plr}
 		end
 	end
@@ -132,13 +220,11 @@ local get_plr = function(name)
 	return nil
 end
 
-local hwait = function(sig)
+local function hwait(sig)
 	return services.run_service[sig and tostring(sig) or 'Heartbeat']:Wait()
 end
 
-
-
-local protect_gui = function(gui)
+local function protect_gui(gui)
 	if syn and syn.protect_gui then
 		syn.protect_gui(gui)
 		stuff.rawrbxset(gui, 'Parent', services.core_gui)
@@ -149,7 +235,56 @@ local protect_gui = function(gui)
 	end
 end
 
-local predict_movement = function(player, future)
+local function lerp_color(c1, c2, t)
+	return Color3.new(
+		math.lerp(c1.R, c2.R, t),
+		math.lerp(c1.G, c2.G, t),
+		math.lerp(c1.B, c2.B, t))
+end
+
+local function get_rainbow(speed, saturation, value)
+	return Color3.fromHSV((tick() * (speed or 1)) % 1, saturation or 1, value or 1)
+end
+
+local function deep_copy(t)
+	if type(t) ~= 'table' then return t end
+	local copy = {}
+	for k, v in pairs(t) do
+		copy[deep_copy(k)] = deep_copy(v)
+	end
+	return copy
+end
+
+local function update_performance_stats()
+	local now = tick()
+	local dt = now - stuff.last_frame_time
+	stuff.last_frame_time = now
+
+	table.insert(stuff.frame_times, dt)
+	if #stuff.frame_times > 60 then
+		table.remove(stuff.frame_times, 1)
+	end
+
+	local sum = 0
+	for _, t in stuff.frame_times do
+		sum = sum + t
+	end
+	stuff.avg_fps = #stuff.frame_times / sum
+
+	local ping = stuff.owner:GetNetworkPing()
+	table.insert(stuff.ping_samples, ping)
+	if #stuff.ping_samples > 30 then
+		table.remove(stuff.ping_samples, 1)
+	end
+
+	local ping_sum = 0
+	for _, p in stuff.ping_samples do
+		ping_sum = ping_sum + p
+	end
+	stuff.avg_ping = (ping_sum / #stuff.ping_samples) * 1000
+end
+
+local function quick_predict_position(player, future)
 	local char = player.Character
 	if not char then return end
 	if future == nil  then
@@ -168,17 +303,178 @@ local predict_movement = function(player, future)
 	return hrp.CFrame + move_dir * future
 end
 
-local network_check = function(part)
+local function predict_position(target, options)
+	options = options or {}
+
+	local base_time = options.time or 0.1
+	local use_velocity = options.velocity ~= false
+	local use_movedir = options.movedir ~= false
+	local use_ping = options.ping ~= false
+	local use_acceleration = options.acceleration or false
+	local fallback_speed = options.fallback_speed or 16
+
+	local character, part
+
+	if typeof(target) == 'Instance' then
+		if target:IsA('Model') then
+			character = target
+			part = target:FindFirstChild('HumanoidRootPart') or target:FindFirstChild('Head')
+		elseif target:IsA('BasePart') then
+			part = target
+			character = target:FindFirstAncestorOfClass('Model')
+		end
+	end
+
+	if not part then return nil end
+
+	local base_position = part.Position
+	local prediction_time = base_time
+
+	if use_ping then
+		prediction_time = prediction_time + stuff.owner:GetNetworkPing()
+	end
+
+	if prediction_time <= 0 then return base_position end
+
+	local velocity = Vector3.zero
+	local weight_total = 0
+
+	if use_velocity and character then
+		local hrp = character:FindFirstChild('HumanoidRootPart')
+		if hrp then
+			local assembly_vel = hrp.AssemblyLinearVelocity
+			local horizontal_vel = Vector3.new(assembly_vel.X, 0, assembly_vel.Z)
+
+			if horizontal_vel.Magnitude > 0.5 then
+				velocity = velocity + horizontal_vel * 2
+				weight_total = weight_total + 2
+			end
+		end
+	end
+
+	if use_movedir and character then
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+		if humanoid then
+			local move_dir = humanoid.MoveDirection
+			if move_dir.Magnitude > 0.1 then
+				local walk_speed = humanoid.WalkSpeed or fallback_speed
+				velocity = velocity + move_dir.Unit * walk_speed
+				weight_total = weight_total + 1
+			end
+		end
+	end
+
+	if use_acceleration and character then
+		local hrp = character:FindFirstChild('HumanoidRootPart')
+		if hrp then
+			local storage_key = tostring(character:GetDebugId())
+			local history = stuff.velocity_history[storage_key] or {}
+
+			local current_vel = hrp.AssemblyLinearVelocity
+			local current_time = tick()
+
+			table.insert(history, {vel = current_vel, time = current_time})
+
+			while #history > 10 do
+				table.remove(history, 1)
+			end
+
+			stuff.velocity_history[storage_key] = history
+
+			if #history >= 3 then
+				local oldest = history[1]
+				local newest = history[#history]
+				local dt = newest.time - oldest.time
+
+				if dt > 0.05 then
+					local acceleration = (newest.vel - oldest.vel) / dt
+					local accel_horizontal = Vector3.new(acceleration.X, 0, acceleration.Z)
+
+					if accel_horizontal.Magnitude < 100 then
+						velocity = velocity + accel_horizontal * prediction_time * 0.5
+						weight_total = weight_total + 0.5
+					end
+				end
+			end
+		end
+	end
+
+	if weight_total > 0 then
+		velocity = velocity / weight_total
+	end
+
+	local predicted = base_position + velocity * prediction_time
+
+	local max_prediction_distance = options.max_offset or (fallback_speed * prediction_time * 2)
+	local offset = predicted - base_position
+	if offset.Magnitude > max_prediction_distance then
+		predicted = base_position + offset.Unit * max_prediction_distance
+	end
+
+	return predicted, velocity, prediction_time
+end
+
+local function get_target_part(character, part_name)
+	if not character then return nil end
+
+	local part_lookup = {
+		head = {'Head'},
+		torso = {'UpperTorso', 'Torso', 'LowerTorso'},
+		hrp = {'HumanoidRootPart'},
+		chest = {'UpperTorso', 'Torso'},
+		pelvis = {'LowerTorso', 'Torso'},
+		legs = {'LeftUpperLeg', 'RightUpperLeg', 'Left Leg', 'Right Leg'},
+		arms = {'LeftUpperArm', 'RightUpperArm', 'Left Arm', 'Right Arm'}
+	}
+
+	local names = part_lookup[part_name:lower()] or part_lookup.head
+	for _, name in names do
+		local part = character:FindFirstChild(name)
+		if part then return part end
+	end
+
+	return character:FindFirstChild('Head') or character:FindFirstChild('HumanoidRootPart')
+end
+
+local function is_valid_target(player, ignore_team)
+	if not player or player == stuff.owner then return false end
+	if not ignore_team and player.Team and player.Team == stuff.owner.Team then return false end
+
+	local char = player.Character
+	if not char then return false end
+
+	local hum = char:FindFirstChildOfClass('Humanoid')
+	if not hum or hum.Health <= 0 then return false end
+	if char:FindFirstChildOfClass('ForceField') then return false end
+
+	return true
+end
+
+local function has_line_of_sight(origin, target_pos, ignore_character)
+	local params = RaycastParams.new()
+	params.FilterDescendantsInstances = {stuff.owner_char, ignore_character}
+	params.FilterType = Enum.RaycastFilterType.Exclude
+
+	local result = workspace:Raycast(origin, target_pos - origin, params)
+	return result == nil
+end
+
+local function network_check(part)
 	return part.ReceiveAge == 0
 end
 
-local get_closest_part = function()
+local function get_closest_part()
 	local best_part, smallest_mag
-	local head_pos = stuff.owner_char.Head.Position
+	local head = stuff.owner_char and stuff.owner_char:FindFirstChild('Head')
+	if not head then return nil end
 
-	for _, v in pairs(workspace:GetDescendants()) do
+	local head_pos = head.Position
+
+	for _, v in workspace:GetDescendants() do
 		if v:IsA('BasePart') and not v.Anchored and #v:GetConnectedParts() < 2 then
-			if not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(stuff.owner_char) then
+			if not v.Parent:FindFirstChildOfClass('Humanoid') and 
+				not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and 
+				not v:IsDescendantOf(stuff.owner_char) then
 				local mag = (head_pos - v.Position).Magnitude
 				if not smallest_mag or mag < smallest_mag then
 					smallest_mag, best_part = mag, v
@@ -190,10 +486,48 @@ local get_closest_part = function()
 	return best_part
 end
 
-local remove_notification = function(notification_data)
-	if notification_data.removing then
-		return
+local function fov_to_radius(fov)
+	local viewport_size = workspace.CurrentCamera.ViewportSize
+	return math.tan(math.rad(fov / 2)) * (viewport_size.Y / 2)
+end
+
+local function get_move_vector(speed)
+	speed = speed or 1
+
+	if stuff.is_mobile then
+		local success, control_module = pcall(function()
+			return require(stuff.owner.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+		end)
+		if success and control_module then
+			local direction = control_module:GetMoveVector()
+			return direction * speed
+		end
+		return Vector3.zero
+	else
+		if services.user_input_service:GetFocusedTextBox() ~= nil then
+			return Vector3.zero
+		end
+
+		local direction = Vector3.zero
+		if services.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+			direction = direction + Vector3.new(0, 0, -1)
+		end
+		if services.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+			direction = direction + Vector3.new(-1, 0, 0)
+		end
+		if services.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+			direction = direction + Vector3.new(0, 0, 1)
+		end
+		if services.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+			direction = direction + Vector3.new(1, 0, 0)
+		end
+
+		return direction * speed
 	end
+end
+
+local function remove_notification(notification_data)
+	if notification_data.removing then return end
 	notification_data.removing = true
 
 	for i, notif in ipairs(stuff.active_notifications) do
@@ -203,10 +537,11 @@ local remove_notification = function(notification_data)
 		end
 	end
 
-	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local tween_info = TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 	local tween = services.tween_service:Create(notification_data.label, tween_info, {
 		BackgroundTransparency = 1,
-		TextTransparency = 1
+		TextTransparency = 1,
+		Position = notification_data.label.Position + UDim2.new(0.1, 0, 0, 0)
 	})
 
 	tween:Play()
@@ -215,36 +550,39 @@ local remove_notification = function(notification_data)
 	end)
 end
 
-local notify = function(log, text, log_type)
+local function notify(log, text, log_type)
 	if #stuff.active_notifications >= stuff.max_notifications then
 		remove_notification(stuff.active_notifications[1])
 	end
 
 	local text_label = stuff.ui_notifications_template:Clone()
-	local tween_info = TweenInfo.new(.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
+	local tween_info = TweenInfo.new(0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
 
 	text_label.Parent = stuff.ui_notifications_main_container
 	text_label.Visible = true
-	text_label.TextColor3 =
-		log_type == 1 and text_label.TextColor3 or
-		log_type == 2 and Color3.fromRGB(227, 112, 144) or
-		log_type == 3 and Color3.fromRGB(227, 212, 144) or
-		log_type == 4 and Color3.fromRGB(127, 212, 244) or
-		text_label.TextColor3
 
+	local colors = {
+		[1] = Color3.fromRGB(239, 225, 255), -- success
+		[2] = Color3.fromRGB(227, 112, 144), -- error
+		[3] = Color3.fromRGB(227, 212, 144), -- warning
+		[4] = Color3.fromRGB(127, 212, 244), -- info
+	}
+
+	text_label.TextColor3 = colors[log_type] or colors[1]
 	text_label.Text = ` [{tostring(log) or '?'}] {text} `
 	text_label.BackgroundTransparency = 1
 	text_label.TextTransparency = 1
+	text_label.Position = text_label.Position - UDim2.new(0.1, 0, 0, 0)
 
 	services.tween_service:Create(text_label, tween_info, {
-		BackgroundTransparency = .1,
-		TextTransparency = 0
+		BackgroundTransparency = 0.1,
+		TextTransparency = 0,
+		Position = text_label.Position + UDim2.new(0.1, 0, 0, 0)
 	}):Play()
 
 	local notification_data = {
 		label = text_label,
 		created_at = tick(),
-		timer = nil,
 		removing = false
 	}
 
@@ -255,250 +593,221 @@ local notify = function(log, text, log_type)
 	end)
 end
 
-local fov_to_radius = function(fov)
-	local viewport_size = stuff.rawrbxget(workspace.CurrentCamera, 'ViewportSize')
-	return math.tan(math.rad(fov / 2)) * (viewport_size.Y / 2)
-end
+local function str_to_type(str, t)
+	if not t then return str end
 
-local str_to_type = function(str, t)
-	if not t then
-		return str
+	local converters;converters = {
+		number = function(s) return tonumber(s) end,
+
+		boolean = function(s)
+			local lower = s:lower()
+			if lower == 'true' or lower == '1' or lower == 'yes' or lower == 'on' then
+				return true
+			elseif lower == 'false' or lower == '0' or lower == 'no' or lower == 'off' then
+				return false
+			end
+			return nil
+		end,
+
+		bool = function(s) return converters.boolean(s) end,
+
+		string = function(s) return tostring(s) end,
+
+		player = function(s) return get_plr(s) end,
+
+		vector3 = function(s)
+			local parts = {}
+			for num in s:gmatch('[^,]+') do
+				local n = tonumber(num:match('^%s*(.-)%s*$'))
+				if n then table.insert(parts, n) end
+			end
+			if #parts == 3 then
+				return Vector3.new(parts[1], parts[2], parts[3])
+			end
+			return nil
+		end,
+
+		vec3 = function(s) return converters.vector3(s) end,
+
+		color3 = function(s)
+			if s == 'team' then return 'team' end
+			if s == 'rainbow' then return 'rainbow' end
+
+			local hex = s:match('^#?(%x+)$')
+			if hex then
+				if #hex == 3 then
+					local r = tonumber(hex:sub(1, 1):rep(2), 16)
+					local g = tonumber(hex:sub(2, 2):rep(2), 16)
+					local b = tonumber(hex:sub(3, 3):rep(2), 16)
+					return Color3.fromRGB(r, g, b)
+				elseif #hex == 6 then
+					local r = tonumber(hex:sub(1, 2), 16)
+					local g = tonumber(hex:sub(3, 4), 16)
+					local b = tonumber(hex:sub(5, 6), 16)
+					return Color3.fromRGB(r, g, b)
+				end
+			end
+
+			local parts = {}
+			for num in s:gmatch('[^,]+') do
+				local n = tonumber(num:match('^%s*(.-)%s*$'))
+				if n then table.insert(parts, n) end
+			end
+			if #parts == 3 then
+				if parts[1] <= 1 and parts[2] <= 1 and parts[3] <= 1 then
+					return Color3.new(parts[1], parts[2], parts[3])
+				else
+					return Color3.fromRGB(parts[1], parts[2], parts[3])
+				end
+			end
+
+			return nil
+		end,
+
+		color = function(s) return converters.color3(s) end,
+
+		cframe = function(s)
+			local parts = {}
+			for num in s:gmatch('[^,]+') do
+				local n = tonumber(num:match('^%s*(.-)%s*$'))
+				if n then table.insert(parts, n) end
+			end
+			if #parts >= 3 then
+				return CFrame.new(parts[1], parts[2], parts[3])
+			end
+			return nil
+		end,
+
+		table = function(s)
+			local result = {}
+			for item in s:gmatch('[^,]+') do
+				table.insert(result, item:match('^%s*(.-)%s*$'))
+			end
+			return result
+		end,
+
+		array = function(s) return converters.table(s) end
+	}
+
+	if converters[t] then
+		return converters[t](str)
 	end
 
-	if t == 'number' then
-		return tonumber(str)
-	elseif t == 'boolean' or t == 'bool' then
-		local lower = str:lower()
-		if lower == 'true' or lower == '1' or lower == 'yes' or lower == 'on' then
-			return true
-		elseif lower == 'false' or lower == '0' or lower == 'no' or lower == 'off' then
-			return false
-		end
-		return nil
-	elseif t == 'string' then
-		return tostring(str)
-	elseif t == 'player' then
-		return get_plr(str)
-	elseif t == 'vector3' or t == 'vec3' then
-		local parts = {}
-		for num in str:gmatch('[^,]+') do
-			local n = tonumber(num:match('^%s*(.-)%s*$'))
-			if n then
-				table.insert(parts, n)
-			end
-		end
-		if #parts == 3 then
-			return Vector3.new(parts[1], parts[2], parts[3])
-		end
-		return nil
-	elseif t == 'color3' or t == 'color' then
-		if str == 'team' then
-			return 'team'
-		end
-
-		local hex = str:match('^#?(%x+)$')
-		if hex then
-			if #hex == 3 then
-				local r = tonumber(hex:sub(1, 1):rep(2), 16)
-				local g = tonumber(hex:sub(2, 2):rep(2), 16)
-				local b = tonumber(hex:sub(3, 3):rep(2), 16)
-				return Color3.fromRGB(r, g, b)
-			elseif #hex == 6 then
-				local r = tonumber(hex:sub(1, 2), 16)
-				local g = tonumber(hex:sub(3, 4), 16)
-				local b = tonumber(hex:sub(5, 6), 16)
-				return Color3.fromRGB(r, g, b)
-			end
-		end
-
-		local parts = {}
-		for num in str:gmatch('[^,]+') do
-			local n = tonumber(num:match('^%s*(.-)%s*$'))
-			if n then
-				table.insert(parts, n)
-			end
-		end
-		if #parts == 3 then
-			if parts[1] <= 1 and parts[2] <= 1 and parts[3] <= 1 then
-				return Color3.new(parts[1], parts[2], parts[3])
-			else
-				return Color3.fromRGB(parts[1], parts[2], parts[3])
-			end
-		end
-
-		return nil
-	elseif t == 'cframe' then
-		local parts = {}
-		for num in str:gmatch('[^,]+') do
-			local n = tonumber(num:match('^%s*(.-)%s*$'))
-			if n then
-				table.insert(parts, n)
-			end
-		end
-		if #parts >= 3 then
-			return CFrame.new(parts[1], parts[2], parts[3])
-		end
-		return nil
-	elseif t == 'table' or t == 'array' then
-		local result = {}
-		for item in str:gmatch('[^,]+') do
-			table.insert(result, item:match('^%s*(.-)%s*$'))
-		end
-		return result
-	end
-
-	notify('args', `invalid type '{t}' for string '{str}' - replacing with nil`, 2)
+	notify('args', `invalid type '{t}' for string '{str}'`, 2)
 	return nil
 end
 
-local get_move_vector = function(speed)
-	speed = speed or 1
+local maid = {
+	_tasks = {},
+	_protected = {},
+	_cleaner = nil
+}
 
-	if stuff.is_mobile then
-		local control_module = require(stuff.owner.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
-		local direction = control_module:GetMoveVector()
-		return Vector3.new(
-			direction.X * speed,
-			direction.Y * speed,
-			direction.Z * speed
-		)
+function maid.add(name, task_or_signal, fn, important)
+	if maid._tasks[name] then
+		maid.remove(name)
+	elseif maid._protected[name] then
+		if important then
+			maid.remove_protected(name)
+		else
+			warn(`[maid] tried to overwrite protected task {name}`)
+			return
+		end
+	end
+
+	local task_obj, task_type
+
+	if typeof(task_or_signal) == 'RBXScriptSignal' and fn then
+		task_obj = stuff.connect(task_or_signal, fn)
+		task_type = 'connection'
+	elseif typeof(task_or_signal) == 'RBXScriptConnection' then
+		task_obj = task_or_signal
+		task_type = 'connection'
+	elseif typeof(task_or_signal) == 'Instance' then
+		task_obj = task_or_signal
+		task_type = 'instance'
+	elseif typeof(task_or_signal) == 'thread' then
+		task_obj = task_or_signal
+		task_type = 'thread'
+	elseif typeof(task_or_signal) == 'function' then
+		task_obj = task_or_signal
+		task_type = 'function'
 	else
-		if services.user_input_service:GetFocusedTextBox() ~= nil then 
-			return Vector3.zero 
-		end
+		warn(`[maid] unknown task type: {typeof(task_or_signal)}`)
+		return
+	end
 
-		local direction = Vector3.new(0, 0, 0)
-		if services.user_input_service:IsKeyDown(Enum.KeyCode.W) then
-			direction += Vector3.new(0, 0, -1)
-		end
-		if services.user_input_service:IsKeyDown(Enum.KeyCode.A) then
-			direction += Vector3.new(-1, 0, 0)
-		end
-		if services.user_input_service:IsKeyDown(Enum.KeyCode.S) then
-			direction += Vector3.new(0, 0, 1)
-		end
-		if services.user_input_service:IsKeyDown(Enum.KeyCode.D) then
-			direction += Vector3.new(1, 0, 0)
-		end
+	local storage = important == 1 and maid._protected or maid._tasks
+	storage[name] = {task = task_obj, type = task_type}
+end
 
-		return Vector3.new(
-			direction.X * speed,
-			direction.Y * speed,
-			direction.Z * speed
-		)
+function maid.remove(name)
+	local task_data = maid._tasks[name]
+	if task_data then
+		maid._cleanup_task(task_data)
+		maid._tasks[name] = nil
+		return true
+	end
+	return false
+end
+
+function maid.remove_protected(name)
+	local task_data = maid._protected[name]
+	if task_data then
+		maid._cleanup_task(task_data)
+		maid._protected[name] = nil
+		return true
+	end
+	return false
+end
+
+function maid._cleanup_task(task_data)
+	if not task_data then return end
+
+	pcall(function()
+		if task_data.type == 'connection' then
+			local conn = task_data.task
+			if typeof(conn) == 'RBXScriptConnection' and conn.Connected then
+				stuff.disconnect(conn)
+			end
+		elseif task_data.type == 'instance' then
+			local inst = task_data.task
+			if typeof(inst) == 'Instance' and inst.Parent then
+				pcall(stuff.destroy, inst)
+			end
+		elseif task_data.type == 'thread' then
+			local thread = task_data.task
+			if coroutine.status(thread) ~= 'dead' then
+				task.cancel(thread)
+			end
+		elseif task_data.type == 'function' then
+			pcall(task_data.task)
+		end
+	end)
+end
+
+function maid.clean(keep_protected)
+	for name, task_data in pairs(maid._tasks) do
+		maid._cleanup_task(task_data)
+	end
+	table.clear(maid._tasks)
+
+	if not keep_protected then
+		for name, task_data in pairs(maid._protected) do
+			maid._cleanup_task(task_data)
+		end
+		table.clear(maid._protected)
 	end
 end
 
-local maid;maid = {
-	_tasks = {},
-	_protected = {},
-	_cleaner = nil,
+function maid.get(name)
+	local task_data = maid._tasks[name] or maid._protected[name]
+	return task_data and task_data.task or nil
+end
 
-	add = function(name, task_or_signal, fn, important)
-		if maid._tasks[name] then
-			maid.remove(name)
-		elseif maid._protected[name] and important then
-			maid.remove_protected(name)
-		elseif maid._protected[name] then
-			warn(`[maid] tried to overwrite protected task {name} with new task`)
-		end
-
-		local task
-		local task_type
-
-		if typeof(task_or_signal) == 'RBXScriptSignal' and fn then
-			task = stuff.connect(task_or_signal, fn)
-			task_type = 'connection'
-		elseif typeof(task_or_signal) == 'RBXScriptConnection' then
-			task = task_or_signal
-			task_type = 'connection'
-		elseif typeof(task_or_signal) == 'Instance' then
-			task = task_or_signal
-			task_type = 'instance'
-		elseif typeof(task_or_signal) == 'thread' then
-			task = task_or_signal
-			task_type = 'thread'
-		else
-			warn(`[maid] unknown task type: {typeof(task_or_signal)}`)
-			return
-		end
-
-		if important == 1 then
-			maid._protected[name] = {task = task, type = task_type}
-		else
-			maid._tasks[name] = {task = task, type = task_type}
-		end
-	end,
-
-	remove = function(name)
-		local task_data = maid._tasks[name]
-
-		if task_data then
-			maid._cleanup_task(task_data)
-			maid._tasks[name] = nil
-			return true
-		end
-
-		return false
-	end,
-
-	remove_protected = function(name)
-		local task_data = maid._protected[name]
-
-		if task_data then
-			maid._cleanup_task(task_data)
-			maid._protected[name] = nil
-			return true
-		end
-
-		return false
-	end,
-
-	_cleanup_task = function(task_data)
-		if not task_data then return end
-
-		pcall(function()
-			if task_data.type == 'connection' then
-				local conn = task_data.task
-				if typeof(conn) == 'RBXScriptConnection' and conn.Connected then
-					stuff.disconnect(conn)
-				end
-			elseif task_data.type == 'instance' then
-				local inst = task_data.task
-				if typeof(inst) == 'Instance' and inst.Parent then
-					pcall(stuff.destroy, inst)
-				end
-			elseif task_data.type == 'thread' then
-				local thread = task_data.task
-				if coroutine.status(thread) ~= 'dead' then
-					task.cancel(thread)
-				end
-			end
-		end)
-	end,
-
-	clean = function(keep_protected)
-		for name, task_data in pairs(maid._tasks) do
-			maid._cleanup_task(task_data)
-		end
-
-		table.clear(maid._tasks)
-		maid._tasks = {}
-
-		if not keep_protected then
-			for name, task_data in pairs(maid._protected) do
-				maid._cleanup_task(task_data)
-			end
-			table.clear(maid._protected)
-			maid._protected = {}
-		end
-	end,
-
-	get = function(name)
-		local task_data = maid._tasks[name] or maid._protected[name]
-		return task_data and task_data.task or nil
-	end
-}
+function maid.exists(name)
+	return maid._tasks[name] ~= nil or maid._protected[name] ~= nil
+end
 
 do
 	local con = stuff.connect(game.Changed, stuff.empty_function)
@@ -506,23 +815,29 @@ do
 	pcall(stuff.disconnect, con)
 
 	xpcall(function()
-		stuff.rawrbxget=getrawmetatable(game).__index
-		stuff.rawrbxset=getrawmetatable(game).__newindex
-	end,function()
+		stuff.rawrbxget = getrawmetatable(game).__index
+		stuff.rawrbxset = getrawmetatable(game).__newindex
+	end, function()
 		stuff.rawrbxset = function(obj, key, value)
 			obj[key] = value
 		end
+        
 		stuff.rawrbxget = function(obj, key)
 			return obj[key]
 		end
 	end)
 
-	stuff.default_ws = stuff.owner_char:WaitForChild('Humanoid').WalkSpeed or services.starter_player.CharacterWalkSpeed
-	pcall(function()
-		stuff.default_jp = stuff.owner_char:WaitForChild('Humanoid').JumpPower or services.starter_player.CharacterJumpPower
-	end)
+	local hum = stuff.owner_char:WaitForChild('Humanoid', 10)
+	if hum then
+		stuff.default_ws = hum.WalkSpeed or services.starter_player.CharacterWalkSpeed
+		pcall(function()
+			stuff.default_jp = hum.JumpPower or services.starter_player.CharacterJumpPower
+		end)
+	end
 
 	maid._cleaner = stuff.connect(services.run_service.Heartbeat, function()
+		update_performance_stats()
+
 		for name, task_data in pairs(maid._tasks) do
 			if task_data.type == 'connection' then
 				local conn = task_data.task
@@ -540,199 +855,312 @@ do
 
 	maid.add('local_character_added', stuff.owner.CharacterAdded, function(character)
 		stuff.owner_char = character
-	end, true)
+
+		local hum = character:WaitForChild('Humanoid', 10)
+		if hum then
+			stuff.default_ws = hum.WalkSpeed
+			pcall(function()
+				stuff.default_jp = hum.JumpPower
+			end)
+		end
+	end, 1)
 
 	maid.add('clean_highlights', services.run_service.Stepped, function()
-		for _, plr in pairs(get_plrs()) do
-			local highlight = stuff.highlights[plr]
+		for plr, highlight in pairs(stuff.highlights) do
 			if highlight and not (highlight.Adornee and highlight.Adornee:IsDescendantOf(workspace)) then
 				pcall(stuff.destroy, highlight)
 				stuff.highlights[plr] = nil
 			end
 		end
-	end, true)
+	end, 1)
 end
 
-local cmd_library;cmd_library = {
+local cmd_library = {
 	_commands = {},
 	_command_map = {},
+	_plugins = {}
+}
 
-	add = function(names, description, args, fn)
-		local cmd_data = {
-			names = names,
-			description = description,
-			args = args,
-			fn = fn,
-			variable_storage = {}
-		}
+function cmd_library.parse_command(input)
+	if type(input) ~= 'string' then return {} end
 
-		if cmd_library._command_map[names[1]:lower()] then
-			warn(`command '{names[1]}' already exists`)
-		end
-
-		table.insert(cmd_library._commands, cmd_data)
-
-		for _, name in ipairs(names) do
-			cmd_library._command_map[name:lower()] = cmd_data
-		end
-
-		return cmd_data
-	end,
-
-	find = function(name)
-		return cmd_library._command_map[name:lower()]
-	end,
-
-	remove = function(name)
-		local cmd_data = cmd_library._command_map[name:lower()]
-		if not cmd_data then
-			return false
-		end
-
-		for _, cmd_name in ipairs(cmd_data.names) do
-			cmd_library._command_map[cmd_name:lower()] = nil
-		end
-
-		for i, cmd in ipairs(cmd_library._commands) do
-			if cmd == cmd_data then
-				table.remove(cmd_library._commands, i)
-				break
+	local commands = {}
+	for raw_cmd in input:gmatch('[^;]+') do
+		raw_cmd = raw_cmd:match('^%s*(.-)%s*$')
+		if raw_cmd ~= '' then
+			local parts = {}
+			for part in raw_cmd:gmatch('%S+') do
+				parts[#parts + 1] = part
 			end
-		end
-
-		return true
-	end,
-
-	get_variable_storage = function(name)
-		local cmd_data = cmd_library._command_map[name:lower()]
-		return cmd_data and cmd_data.variable_storage
-	end,
-
-	find_similar = function(name)
-		local similar = {}
-		local search = name:lower()
-
-		for cmd_name in pairs(cmd_library._command_map) do
-			if cmd_name:sub(1, #search) == search then
-				table.insert(similar, cmd_name)
+			if #parts > 0 then
+				local cmd = parts[1]
+				table.remove(parts, 1)
+				commands[#commands + 1] = {cmd = cmd, args = parts}
 			end
-		end
-
-		return similar
-	end,
-
-	execute = function(name, ...) 
-		if not name or name == '' then
-			notify('cmd', 'no command specified', 2)
-			return false
-		end
-
-		local cmd_data = cmd_library._command_map[name:lower()]
-
-		if not cmd_data then
-			local similar = cmd_library.find_similar(name)
-			if #similar > 0 then
-				notify('cmd', `couldn't find '{name}'. did you mean: {table.concat(similar, ', ')}?`, 2)
-			else
-				notify('cmd', `couldn't find command '{name}'`, 2)
-			end
-			return false
-		end
-
-		local vargs = {...}
-		local fvargs = {}
-
-		local has_varargs = false
-		local vararg_type = nil
-		local vararg_start_idx = 1
-
-		for i, arg_def in ipairs(cmd_data.args) do
-			if type(arg_def) == 'table' and arg_def['...'] then
-				has_varargs = true
-				vararg_type = arg_def['...']
-				vararg_start_idx = i
-				break
-			end
-		end
-
-		if has_varargs then
-			for i = 1, vararg_start_idx - 1 do
-				if vargs[i] then
-					local arg_type = cmd_data.args[i] and cmd_data.args[i][2] or nil
-					local converted = str_to_type(vargs[i], arg_type)
-					table.insert(fvargs, converted)
-				end
-			end
-
-			for i = vararg_start_idx, #vargs do
-				local converted = str_to_type(vargs[i], vararg_type)
-				table.insert(fvargs, converted)
-			end
-		else
-			for i, arg in ipairs(vargs) do
-				local arg_type = cmd_data.args[i] and cmd_data.args[i][2] or nil
-				local converted = str_to_type(arg, arg_type)
-				table.insert(fvargs, converted)
-			end
-		end
-
-		task.spawn(function()
-			local success, err = xpcall(function()
-				cmd_data.fn(cmd_data.variable_storage, unpack(fvargs))
-			end, function(msg)
-				return debug.traceback(msg, 2)
-			end)
-
-			if not success then
-				notify('cmd', `error in '{name}': {tostring(err):match("[^\n]*")}`, 2)
-				warn(`command '{name}' failed:`, err)
-			end
-		end)
-
-		return true
-	end,
-
-	clear = function()
-		cmd_library._commands = {}
-		cmd_library._command_map = {}
-	end,
-
-	help = function(name)
-		if name then
-			local cmd_data = cmd_library._command_map[name:lower()]
-			if cmd_data then
-				return {
-					names = cmd_data.names,
-					description = cmd_data.description,
-					args = cmd_data.args
-				}
-			end
-		else
-			local help_list = {}
-			for _, cmd in ipairs(cmd_library._commands) do
-				table.insert(help_list, {
-					names = cmd.names,
-					description = cmd.description,
-					args = cmd.args
-				})
-			end
-			return help_list
 		end
 	end
-}
+
+	return commands
+end
+
+function cmd_library.add(names, description, args, fn)
+	local primary_name = names[1]:lower()
+
+	if cmd_library._command_map[primary_name] then
+		return error(`command '{names[1]}' already exists`, 0)
+	end
+
+	local cmd_data = {
+		names = names,
+		description = description,
+		args = args,
+		fn = fn,
+		variable_storage = {},
+		plugin = nil,
+		created_at = tick()
+	}
+
+	table.insert(cmd_library._commands, cmd_data)
+
+	for _, name in names do
+		cmd_library._command_map[name:lower()] = cmd_data
+	end
+
+	return cmd_data
+end
+
+function cmd_library.register_plugin(plugin_name, plugin_data)
+	if cmd_library._plugins[plugin_name:lower()] then
+		return nil, 'plugin already registered'
+	end
+
+	cmd_library._plugins[plugin_name:lower()] = {
+		name = plugin_name,
+		version = plugin_data.version or '1.0.0',
+		author = plugin_data.author or 'unknown',
+		description = plugin_data.description or '',
+		commands = {},
+		loaded = true,
+		data = plugin_data.data or {}
+	}
+
+	notify('plugin', `plugin '{plugin_name}' registered`, 1)
+	return cmd_library._plugins[plugin_name:lower()]
+end
+
+function cmd_library.add_plugin_command(plugin_name, names, description, args, fn)
+	local plugin = cmd_library._plugins[plugin_name:lower()]
+	if not plugin then
+		return nil, 'plugin not found'
+	end
+
+	local cmd_data = cmd_library.add(names, description, args, fn)
+	if cmd_data then
+		cmd_data.plugin = plugin_name
+		table.insert(plugin.commands, {
+			names = names,
+			description = description,
+			args = args
+		})
+	end
+
+	return cmd_data
+end
+
+function cmd_library.get_plugins()
+	local plugins = {}
+	for name, plugin in pairs(cmd_library._plugins) do
+		table.insert(plugins, {
+			name = plugin.name,
+			version = plugin.version,
+			author = plugin.author,
+			description = plugin.description,
+			command_count = #plugin.commands,
+			loaded = plugin.loaded
+		})
+	end
+	return plugins
+end
+
+function cmd_library.remove_plugin(plugin_name)
+	local plugin = cmd_library._plugins[plugin_name:lower()]
+	if not plugin then
+		return false, 'plugin not found'
+	end
+
+	for i = #cmd_library._commands, 1, -1 do
+		local cmd = cmd_library._commands[i]
+		if cmd.plugin and cmd.plugin:lower() == plugin_name:lower() then
+			for _, name in ipairs(cmd.names) do
+				cmd_library._command_map[name:lower()] = nil
+			end
+			table.remove(cmd_library._commands, i)
+		end
+	end
+
+	cmd_library._plugins[plugin_name:lower()] = nil
+	notify('plugin', `plugin '{plugin_name}' removed`, 1)
+	return true
+end
+
+function cmd_library.find(name)
+	return cmd_library._command_map[name:lower()]
+end
+
+function cmd_library.remove(name)
+	local cmd_data = cmd_library._command_map[name:lower()]
+	if not cmd_data then return false end
+
+	for _, cmd_name in cmd_data.names do
+		cmd_library._command_map[cmd_name:lower()] = nil
+	end
+
+	for i, cmd in cmd_library._commands do
+		if cmd == cmd_data then
+			table.remove(cmd_library._commands, i)
+			break
+		end
+	end
+
+	return true
+end
+
+function cmd_library.get_variable_storage(name)
+	local cmd_data = cmd_library._command_map[name:lower()]
+	return cmd_data and cmd_data.variable_storage
+end
+
+function cmd_library.find_similar(name)
+	local similar = {}
+	local search = name:lower()
+
+	for cmd_name in cmd_library._command_map do
+		if cmd_name:sub(1, #search) == search then
+			table.insert(similar, cmd_name)
+		elseif cmd_name:find(search, 1, true) then
+			table.insert(similar, cmd_name)
+		end
+	end
+
+	return similar
+end
+
+function cmd_library.execute(name, ...)
+	if not name or name == '' then
+		notify('cmd', 'no command specified', 2)
+		return false
+	end
+
+	local cmd_data = cmd_library._command_map[name:lower()]
+
+	if not cmd_data then
+		local similar = cmd_library.find_similar(name)
+		if #similar > 0 then
+			notify('cmd', `couldn't find '{name}'. did you mean: {table.concat(similar, ', ')}?`, 2)
+		else
+			notify('cmd', `couldn't find command '{name}'`, 2)
+		end
+		return false
+	end
+
+	local vargs = {...}
+	local fvargs = {}
+
+	local has_varargs = false
+	local vararg_type = nil
+	local vararg_start_idx = 1
+
+	for i, arg_def in cmd_data.args do
+		if type(arg_def) == 'table' and arg_def['...'] then
+			has_varargs = true
+			vararg_type = arg_def['...']
+			vararg_start_idx = i
+			break
+		end
+	end
+
+	if has_varargs then
+		for i = 1, vararg_start_idx - 1 do
+			if vargs[i] then
+				local arg_type = cmd_data.args[i] and cmd_data.args[i][2] or nil
+				local converted = str_to_type(vargs[i], arg_type)
+				table.insert(fvargs, converted)
+			end
+		end
+
+		for i = vararg_start_idx, #vargs do
+			local converted = str_to_type(vargs[i], vararg_type)
+			table.insert(fvargs, converted)
+		end
+	else
+		for i, arg in ipairs(vargs) do
+			local arg_type = cmd_data.args[i] and cmd_data.args[i][2] or nil
+			local converted = str_to_type(arg, arg_type)
+			table.insert(fvargs, converted)
+		end
+	end
+
+	task.spawn(function()
+		local success, err = xpcall(function()
+			cmd_data.fn(cmd_data.variable_storage, unpack(fvargs))
+		end, function(msg)
+			return debug.traceback(msg, 2)
+		end)
+
+		if not success then
+			notify('cmd', `error in '{name}': {tostring(err):match("[^\n]*")}`, 2)
+			warn(`command '{name}' failed:`, err)
+		end
+	end)
+
+	return true
+end
+
+function cmd_library.clear()
+	cmd_library._commands = {}
+	cmd_library._command_map = {}
+	cmd_library._plugins = {}
+end
+
+function cmd_library.help(name)
+	if name then
+		local cmd_data = cmd_library._command_map[name:lower()]
+		if cmd_data then
+			return {
+				names = cmd_data.names,
+				description = cmd_data.description,
+				args = cmd_data.args,
+				plugin = cmd_data.plugin
+			}
+		end
+	else
+		local help_list = {}
+		for _, cmd in cmd_library._commands do
+			table.insert(help_list, {
+				names = cmd.names,
+				description = cmd.description,
+				args = cmd.args,
+				plugin = cmd.plugin
+			})
+		end
+		return help_list
+	end
+end
 
 local config = {
 	file_name = 'opadmin_settings.json',
 	current_game_id = tostring(game.PlaceId),
 	default_settings = {
-		open_keybind = env['\0opadmin'].opadmin_open_keybind and env['\0opadmin'].opadmin_open_keybind.Name or 'Quote',
+		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or "KeypadZero",
+		chat_prefix = "!",
 		aliases = {},
 		binds = {},
+		auto_plugins = {}
 	},
 	current_settings = {}
 }
 
-config.load = function()
+function config.load()
 	if readfile and isfile then
 		if isfile(config.file_name) then
 			local success, result = pcall(function()
@@ -753,11 +1181,11 @@ config.load = function()
 		end
 	end
 
-	config.current_settings = table.clone(config.default_settings)
+	config.current_settings = deep_copy(config.default_settings)
 	return false
 end
 
-config.save = function()
+function config.save()
 	if writefile then
 		local success = pcall(function()
 			writefile(config.file_name, services.http:JSONEncode(config.current_settings))
@@ -767,25 +1195,25 @@ config.save = function()
 	return false
 end
 
-config.get = function(key)
+function config.get(key)
 	return config.current_settings[key]
 end
 
-config.set = function(key, value)
+function config.set(key, value)
 	config.current_settings[key] = value
 	return config.save()
 end
 
-config.reset = function(key)
+function config.reset(key)
 	if key then
 		config.current_settings[key] = config.default_settings[key]
 	else
-		config.current_settings = table.clone(config.default_settings)
+		config.current_settings = deep_copy(config.default_settings)
 	end
 	return config.save()
 end
 
-config.get_game_binds = function()
+function config.get_game_binds()
 	local binds = config.get('binds') or {}
 	if not binds[config.current_game_id] then
 		binds[config.current_game_id] = {}
@@ -794,17 +1222,24 @@ config.get_game_binds = function()
 	return binds[config.current_game_id]
 end
 
-config.set_game_binds = function(game_binds)
+function config.set_game_binds(game_binds)
 	local binds = config.get('binds') or {}
 	binds[config.current_game_id] = game_binds
 	return config.set('binds', binds)
 end
 
-config.apply = function()
+function config.apply()
 	local settings = config.current_settings
 
 	if settings.open_keybind then
+		if settings.open_keybind:len() == 1 then
+			settings.open_keybind = settings.open_keybind:upper()
+		end
 		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.Quote
+	end
+
+	if settings.chat_prefix then
+		stuff.chat_prefix = settings.chat_prefix
 	end
 
 	if settings.aliases then
@@ -835,114 +1270,78 @@ end
 config.load()
 config.apply()
 
-
 local hook_lib = {
 	active_hooks = {},
 	presets = {}
 }
 
-hook_lib.create_hook = function(name, hooks)
+function hook_lib.create_hook(name, hooks)
 	if hook_lib.active_hooks[name] then
 		hook_lib.destroy_hook(name)
 	end
 
 	local hook_data = {
 		hooks = {},
+		function_hooks = {},
 		enabled = true
 	}
 
-	if hooks.namecall then
-		hook_data.hooks.old_namecall = hookmetamethod(game, '__namecall', function(self, ...)
-			if hook_data.enabled and not checkcaller() then
-				local result = hooks.namecall(self, ...)
-				if result ~= nil then
-					return result
+	if hooks.namecall and hookmetamethod then
+		pcall(function()
+			hook_data.hooks.old_namecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
+				if hook_data.enabled and checkcaller and not checkcaller() then
+					local result = hooks.namecall(self, ...)
+					if result ~= nil then
+						return result
+					end
 				end
-			end
-			return hook_data.hooks.old_namecall(self, ...)
+				return hook_data.hooks.old_namecall(self, ...)
+			end))
 		end)
 	end
 
-	if hooks.index then
-		hook_data.hooks.old_index = hookmetamethod(game, '__index', function(self, key)
-			if hook_data.enabled and not checkcaller() then
-				local result = hooks.index(self, key)
-				if result ~= nil then
-					return result
+	if hooks.index and hookmetamethod then
+		pcall(function()
+			hook_data.hooks.old_index = hookmetamethod(game, '__index', newcclosure(function(self, key)
+				if hook_data.enabled and checkcaller and not checkcaller() then
+					local result = hooks.index(self, key)
+					if result ~= nil then
+						return result
+					end
 				end
-			end
-			return hook_data.hooks.old_index(self, key)
+				return hook_data.hooks.old_index(self, key)
+			end))
 		end)
 	end
 
-	if hooks.newindex then
-		hook_data.hooks.old_newindex = hookmetamethod(game, '__newindex', function(self, key, value)
-			if hook_data.enabled and not checkcaller() then
-				local result = hooks.newindex(self, key, value)
-				if result ~= false then
-					return
+	if hooks.newindex and hookmetamethod then
+		pcall(function()
+			hook_data.hooks.old_newindex = hookmetamethod(game, '__newindex', newcclosure(function(self, key, value)
+				if hook_data.enabled and checkcaller and not checkcaller() then
+					local result = hooks.newindex(self, key, value)
+					if result == false then
+						return
+					end
 				end
-			end
-			return hook_data.hooks.old_newindex(self, key, value)
+				return hook_data.hooks.old_newindex(self, key, value)
+			end))
 		end)
 	end
 
 	if hooks.functions and hookfunction then
-		hook_data.hooks.function_hooks = {}
-		for func, handler in pairs(hooks.functions) do
+		for original_func, handler in pairs(hooks.functions) do
 			pcall(function()
-				local old_func = func
-				hook_data.hooks.function_hooks[func] = hookfunction(func, function(...)
-					if hook_data.enabled and checkcaller()==false then
-						local result = handler(...)
+				local old_func
+				old_func = hookfunction(original_func, newcclosure(function(...)
+					if hook_data.enabled then
+						local result = handler(old_func, ...)
 						if result ~= nil then
 							return result
 						end
 					end
 					return old_func(...)
-				end)
-			end)
-		end
-	end
-
-	if hookfunction then
-		if getfenv then
-			local old_getfenv = getfenv
-			hook_data.hooks.getfenv_hook = hookfunction(getfenv, function(level)
-				if not checkcaller() then
-					local env = old_getfenv(level)
-					if type(env) == 'table' then
-						local clean_env = {}
-						for k, v in pairs(env) do
-							if k ~= 'getgenv' and k ~= 'hookmetamethod' and k ~= 'hookfunction' and k ~= 'checkcaller' then
-								clean_env[k] = v
-							end
-						end
-						return clean_env
-					end
-				end
-				return old_getfenv(level)
-			end)
-		end
-
-		if debug and debug.info then
-			local old_debug_info = debug.info
-			local original_namecall = getrawmetatable(game).__namecall
-			local original_index = getrawmetatable(game).__index
-			local original_newindex = getrawmetatable(game).__newindex
-
-			hook_data.hooks.debug_hook = hookfunction(debug.info, function(level, options)
-				local result = old_debug_info(level, options)
-				if options == 'f' then
-					if result == hook_data.hooks.old_namecall then
-						return original_namecall
-					elseif result == hook_data.hooks.old_index then
-						return original_index
-					elseif result == hook_data.hooks.old_newindex then
-						return original_newindex
-					end
-				end
-				return result
+				end))
+				hook_data.function_hooks[original_func] = old_func
 			end)
 		end
 	end
@@ -951,219 +1350,146 @@ hook_lib.create_hook = function(name, hooks)
 	return hook_data
 end
 
-hook_lib.destroy_hook = function(name)
+function hook_lib.destroy_hook(name)
 	local hook_data = hook_lib.active_hooks[name]
 	if hook_data then
 		hook_data.enabled = false
+		
+		if hookfunction then
+			for original_func, old_func in pairs(hook_data.function_hooks) do
+				pcall(function()
+					hookfunction(original_func, old_func)
+				end)
+			end
+		end
+		
 		hook_lib.active_hooks[name] = nil
 	end
 end
 
-hook_lib.presets.property_spoof = function(object, properties)
-	local hooks = {}
-	local fake_itemchanged_event = Instance.new('BindableEvent')
-
-	hooks.index = function(self, key)
-		if self == object then
-			if properties[key] ~= nil then
-				return properties[key]
-			end
-
-			if key == 'Changed' then
-				return Instance.new('BindableEvent').Event
-			end
-		end
-
-		if self == game and key == 'ItemChanged' then
-			return fake_itemchanged_event.Event
-		end
+function hook_lib.toggle_hook(name, enabled)
+	local hook_data = hook_lib.active_hooks[name]
+	if hook_data then
+		hook_data.enabled = enabled
 	end
-
-	hooks.newindex = function(self, key, value)
-		if self == object and properties[key] ~= nil then
-			if value ~= properties[key] then
-				return false
-			end
-		end
-	end
-
-	hooks.namecall = function(self, ...)
-		local method = getnamecallmethod()
-		local args = {...}
-
-		if self == object then
-			if method == 'GetPropertyChangedSignal' then
-				for prop, _ in pairs(properties) do
-					if args[1] == prop then
-						return Instance.new('BindableEvent').Event
-					end
-				end
-			end
-		end
-	end
-
-	if hookfunction then
-		local original_itemchanged = game.ItemChanged
-		hooks.functions = {}
-
-		local fake_connection_mt = {}
-		fake_connection_mt.__index = fake_connection_mt
-
-		function fake_connection_mt:Connect(callback)
-			return original_itemchanged:Connect(function(instance, property)
-				if instance == object and properties[property] ~= nil then
-					return
-				end
-				callback(instance, property)
-			end)
-		end
-
-		local fake_itemchanged = setmetatable({}, fake_connection_mt)
-
-		hooks.index_itemchanged = function(self, key)
-			if self == game and key == 'ItemChanged' then
-				return fake_itemchanged
-			end
-		end
-	end
-
-	return hooks
-end
-
-hook_lib.presets.method_block = function(object, methods)
-	local hooks = {}
-
-	hooks.namecall = function(self, ...)
-		local method = getnamecallmethod()
-		if self == object then
-			for _, blocked_method in ipairs(methods) do
-				if method == blocked_method then
-					return nil
-				end
-			end
-		end
-	end
-
-	return hooks
-end
-
-hook_lib.presets.state_spoof = function(humanoid, state)
-	local hooks = {}
-
-	hooks.namecall = function(self, ...)
-		local method = getnamecallmethod()
-		if self == humanoid then
-			if method == 'GetState' then
-				return state
-			elseif method == 'ChangeState' then
-				local args = {...}
-				if args[1] ~= state then
-					return nil
-				end
-			end
-		end
-	end
-
-	return hooks
 end
 
 hook_lib.presets.antikick = function(player)
-	local hooks = {}
+	local functions = {}
 
-	hooks.namecall = function(self, ...)
-		local method = getnamecallmethod()
-		local args = {...}
-
-		if self == player and (method == 'Kick' or method == 'Destroy' or method == 'Remove' or method == 'ClearAllChildren') then
-			notify('antikick', `blocked {method} attempt`, 3)
-			return nil
-		end
-
-		if self == services.teleport_service and (method == 'Teleport' or method == 'TeleportAsync' or method == 'TeleportToPlaceInstance') then
-			notify('antikick', `blocked teleport attempt ({method})`, 3)
-			return nil
-		end
-	end
-
-	hooks.index = function(self, key)
-		if self == player and key == 'Parent' then
-			local parent = stuff.rawrbxget(self, 'Parent')
-			if not parent then
-				return services.players
+	pcall(function()
+		local teleport = services.teleport_service.Teleport
+		if teleport then
+			functions[teleport] = function(old, ...)
+				notify('antikick', 'blocked direct teleport call', 3)
+				return nil
 			end
 		end
-	end
+	end)
 
-	hooks.newindex = function(self, key, value)
-		if self == player and key == 'Parent' then
-			if value == nil or value ~= services.players then
-				notify('antikick', 'blocked parent change attempt', 3)
-				return false
+	pcall(function()
+		local teleport_async = services.teleport_service.TeleportAsync
+		if teleport_async then
+			functions[teleport_async] = function(old, ...)
+				notify('antikick', 'blocked direct teleport async call', 3)
+				return nil
 			end
 		end
-	end
+	end)
 
-	hooks.functions = {}
-
-	if services.teleport_service.Teleport then
-		hooks.functions[services.teleport_service.Teleport] = function(...)
-			notify('antikick', 'blocked function teleport attempt', 3)
-			return
+	pcall(function()
+		local teleport_place = services.teleport_service.TeleportToPlaceInstance
+		if teleport_place then
+			functions[teleport_place] = function(old, ...)
+				notify('antikick', 'blocked direct teleport to place call', 3)
+				return nil
+			end
 		end
-	end
+	end)
 
-	if services.teleport_service.TeleportAsync then
-		hooks.functions[services.teleport_service.TeleportAsync] = function(...)
-			notify('antikick', 'blocked function teleport async attempt', 3)
-			return
-		end
-	end
+	return {
+		namecall = function(self, ...)
+			local method = getnamecallmethod()
 
-	return hooks
+			if self == player and (method == 'Kick' or method == 'Destroy' or method == 'Remove') then
+				notify('antikick', `blocked {method} attempt`, 3)
+				return nil
+			end
+
+			if self == services.teleport_service and (method == 'Teleport' or method == 'TeleportAsync' or method == 'TeleportToPlaceInstance') then
+				notify('antikick', `blocked {method} attempt`, 3)
+				return nil
+			end
+		end,
+
+		functions = functions
+	}
 end
 
 hook_lib.presets.freegamepass = function()
-	local hooks = {}
+	local functions = {}
 
-	hooks.namecall = function(self, ...)
-		local args = {...}
-		local method = getnamecallmethod()
+	pcall(function()
+		local user_owns = services.marketplace_service.UserOwnsGamePassAsync
+		if user_owns then
+			functions[user_owns] = function(old, ...)
+				return true
+			end
+		end
+	end)
 
-		if self == services.marketplace_service then
-			if method == 'UserOwnsGamePassAsync' then
+	pcall(function()
+		local player_owns = services.marketplace_service.PlayerOwnsAsset
+		if player_owns then
+			functions[player_owns] = function(old, ...)
 				return true
-			elseif method == 'PlayerOwnsAsset' then
-				return true
-			elseif method == 'GetProductInfo' then
-				local result = hooks.old_namecall(self, ...)
-				if result then
-					result.IsOwned = true
+			end
+		end
+	end)
+
+	return {
+		namecall = function(self, ...)
+			local method = getnamecallmethod()
+
+			if self == services.marketplace_service then
+				if method == 'UserOwnsGamePassAsync' or method == 'PlayerOwnsAsset' or method == 'PlayerOwnsBundle' then
+					return true
+				elseif method == 'GetProductInfo' then
+					local success, result = pcall(function()
+						return self[method](self, ...)
+					end)
+					if success and result then
+						result.IsOwned = true
+						result.IsForSale = true
+						return result
+					end
 				end
-				return result
 			end
-		end
 
-		if self:IsA('Player') then
-			if method == 'IsInGroup' then
-				return true
-			elseif method == 'GetRankInGroup' then
-				return 255
+			if typeof(self) == 'Instance' and self:IsA('Player') then
+				if method == 'IsInGroup' then
+					return true
+				elseif method == 'GetRankInGroup' then
+					return 255
+				elseif method == 'GetRoleInGroup' then
+					return 'Owner'
+				end
 			end
-		end
-	end
+		end,
 
-	hooks.index = function(self, key)
-		if self:IsA('Player') then
-			if key == 'MembershipType' or key == 'Membership' then
-				return Enum.MembershipType.Premium
+		index = function(self, key)
+			if typeof(self) == 'Instance' and self:IsA('Player') then
+				if key == 'MembershipType' then
+					return Enum.MembershipType.Premium
+				end
 			end
-		end
-	end
+		end,
 
-	return hooks
+		functions = functions
+	}
 end
 
-stuff.chat_prefix = config.get('chat_prefix') or "!"
+stuff.chat_prefix = config.get('chat_prefix') or '!'
 
 
 -- c1: movement
@@ -1387,7 +1713,7 @@ cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, functi
 	end
 end)
 
-cmd_library.add({'vehiclecontrol', 'vcontrol', 'vctrl', 'carcontrol'}, 'gives you more control over vehicles', {
+cmd_library.add({'vehiclecontrol', 'vcontrol', 'vctrl', 'carcontrol'}, 'gives you more control over vehicles (modes = speed, flight)', {
 	{'mode', 'string'},
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -1673,7 +1999,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 				if vstorage.enabled and self == workspace then
 					local descendants = game.GetDescendants(self)
 					local filtered = {}
-					for _, descendant in ipairs(descendants) do
+					for _, descendant in descendants do
 						if descendant ~= flight_part then
 							table.insert(filtered, descendant)
 						end
@@ -1687,7 +2013,7 @@ cmd_library.add({'bfly', 'bypassfly'}, 'bypass flight', {
 				if vstorage.enabled and self == workspace then
 					local children = game.GetChildren(self)
 					local filtered = {}
-					for _, child in ipairs(children) do
+					for _, child in children do
 						if child ~= flight_part then
 							table.insert(filtered, child)
 						end
@@ -1777,10 +2103,10 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
 	vstorage.enabled = true
 	vstorage.height = height or -4
 	vstorage.height_offset = 0
-	notify('airwalk', 'enabled airwalk | Q/E: down/up', 1)
+	notify('airwalk', 'enabled airwalk | Q/E: down/up, R: reset offset', 1)
 
 	local air_walk_part = Instance.new('Part', workspace)
-	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 0.5, 3))
+	stuff.rawrbxset(air_walk_part, 'Size', Vector3.new(7, 2, 3))
 	stuff.rawrbxset(air_walk_part, 'Transparency', 1)
 	stuff.rawrbxset(air_walk_part, 'Anchored', true)
 	stuff.rawrbxset(air_walk_part, 'CanCollide', true)
@@ -1791,26 +2117,30 @@ cmd_library.add({'airwalk', 'airw', 'float'}, 'turns on airwalk', {
 		if processed then return end
 
 		if input.KeyCode == Enum.KeyCode.E then
-			vstorage.height_offset = vstorage.height_offset + 0.5
+			vstorage.height_offset = vstorage.height_offset + 0.125
 		elseif input.KeyCode == Enum.KeyCode.Q then
-			vstorage.height_offset = vstorage.height_offset - 0.5
+			vstorage.height_offset = vstorage.height_offset - 0.125
+		elseif input.KeyCode == Enum.KeyCode.R then
+			vstorage.height_offset = 0
 		end
 	end)
-
-	maid.add('air_walk', services.run_service.Heartbeat, function()
-		if vstorage.enabled and air_walk_part and stuff.rawrbxget(air_walk_part, 'Parent') then
+	task.spawn(function()
+		repeat
+			task.wait(1/120)
 			pcall(function()
 				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 				local hrp_cf = stuff.rawrbxget(hrp, 'CFrame')
 				stuff.rawrbxset(air_walk_part, 'CFrame', hrp_cf + Vector3.new(0, vstorage.height + vstorage.height_offset, 0))
 			end)
-		else
-			maid.remove('air_walk')
-			maid.remove('airwalk_input')
-			pcall(stuff.destroy, air_walk_part)
-			vstorage.air_walk_part = nil
-			vstorage.enabled = false
+		until vstorage.enabled == false or vstorage.air_walk_part == nil or vstorage.air_walk_part:IsDescendantOf(game) == false
+		if vstorage.air_walk_part == nil and vstorage.enabled == true or vstorage.air_walk_part:IsDescendantOf(game) == false and vstorage.enabled == true then
+			cmd_library.execute("unairwalk")
 		end
+		maid.remove('air_walk')
+		maid.remove('airwalk_input')
+		pcall(stuff.destroy, air_walk_part)
+		vstorage.air_walk_part = nil
+		vstorage.enabled = false
 	end)
 
 	maid.add('airwalk_died', stuff.owner_char.Humanoid.Died, function()
@@ -1832,7 +2162,6 @@ cmd_library.add({'unairwalk', 'unairw', 'unfloat'}, 'turns off airwalk', {}, fun
 	end
 
 	vstorage.enabled = false
-	maid.remove('air_walk')
 	maid.remove('airwalk_input')
 	maid.remove('airwalk_died')
 	maid.remove('airwalk_char_added')
@@ -1969,12 +2298,18 @@ cmd_library.add({'infjump', 'infinitejump'}, 'infinite jump', {{'enable_toggling
 		local hum = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
 		cooldown = true
 
-		task.delay(0, function()
+		task.delay(0.3, function()
 			cooldown = false
 		end)
 
 		if stuff.rawrbxget(hum, 'FloorMaterial') == Enum.Material.Air then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			maid.add("current_spam_running_state",game:GetService("RunService").Heartbeat,function()
+				hum:ChangeState(Enum.HumanoidStateType.Running)
+			end)
+			task.delay(0.025,function()
+				maid.remove("current_spam_running_state")
+				hum:ChangeState(Enum.HumanoidStateType.Jumping)
+			end)
 		end
 	end)
 end)
@@ -2231,7 +2566,7 @@ cmd_library.add({'cframespeed', 'cfspeed', 'cfws'}, 'speeds you up without chang
 	notify('cframespeed', `cframe speed enabled with speed {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
 
 	pcall(maid.remove, 'cframe_speed')
-	
+
 	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local hrp_cframe = stuff.rawrbxget(hrp, 'CFrame')
 
@@ -2287,6 +2622,141 @@ end)
 
 -- c2: utility
 
+cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
+	{'url', 'string'}
+}, function(vars, url)
+	local success, content = pcall(function()
+		return game:HttpGet(url, true)
+	end)
+
+	if not success then
+		notify('plugin', `failed to fetch plugin from url: {content}`, 2)
+		return
+	end
+
+	local success2, plugin_module = pcall(loadstring, content)
+	if not success2 then
+		notify('plugin', `failed to load plugin script: {plugin_module}`, 2)
+		return
+	end
+
+	local success3, plugin_data = pcall(plugin_module)
+	if not success3 then
+		notify('plugin', `plugin execution error: {plugin_data}`, 2)
+		return
+	end
+
+	if type(plugin_data) ~= 'table' then
+		notify('plugin', 'plugin must return a table', 2)
+		return
+	end
+
+	if not plugin_data.name then
+		notify('plugin', 'plugin missing name field', 2)
+		return
+	end
+
+	if not plugin_data.init or type(plugin_data.init) ~= 'function' then
+		notify('plugin', 'plugin missing init function', 2)
+		return
+	end
+
+	local plugin, err = cmd_library.register_plugin(plugin_data.name, {
+		version = plugin_data.version,
+		author = plugin_data.author,
+		description = plugin_data.description,
+		data = plugin_data
+	})
+
+	if not plugin then
+		notify('plugin', `failed to register plugin: {err}`, 2)
+		return
+	end
+
+	local success4, err2 = pcall(plugin_data.init, {
+		add_command = function(names, description, args, fn)
+			return cmd_library.add_plugin_command(plugin_data.name, names, description, args, fn)
+		end,
+		notify = notify,
+		get_maid = function() return maid end,
+		get_stuff = function() return stuff end,
+		get_cmd_library = function() return cmd_library end,
+		get_hook_library = function() return hook_lib end,
+		config = config
+	})
+
+	if not success4 then
+		cmd_library.remove_plugin(plugin_data.name)
+		notify('plugin', `plugin initialization failed: {err2}`, 2)
+		return
+	end
+
+	notify('plugin', `plugin '{plugin_data.name}' loaded successfully`, 1)
+
+	local auto_plugins = config.get('auto_plugins') or {}
+	auto_plugins[plugin_data.name] = url
+	config.set('auto_plugins', auto_plugins)
+end)
+
+cmd_library.add({'pluginunload', 'punload'}, 'unload a plugin', {
+	{'plugin_name', 'string'}
+}, function(vars, plugin_name)
+	local success, err = cmd_library.remove_plugin(plugin_name)
+	if success then
+		notify('plugin', `plugin '{plugin_name}' unloaded`, 1)
+
+		local auto_plugins = config.get('auto_plugins') or {}
+		auto_plugins[plugin_name] = nil
+		config.set('auto_plugins', auto_plugins)
+	else
+		notify('plugin', `failed to unload plugin: {err}`, 2)
+	end
+end)
+
+cmd_library.add({'pluginreload', 'preload'}, 'reload a plugin', {
+	{'plugin_name', 'string'}
+}, function(vars, plugin_name)
+	local plugin = cmd_library._plugins[plugin_name:lower()]
+	if not plugin then
+		notify('plugin', `plugin '{plugin_name}' not found`, 2)
+		return
+	end
+
+	local url = nil
+	local auto_plugins = config.get('auto_plugins') or {}
+	url = auto_plugins[plugin_name]
+
+	if not url then
+		notify('plugin', `no url saved for plugin '{plugin_name}'. use pluginload instead.`, 3)
+		return
+	end
+
+	cmd_library.remove_plugin(plugin_name)
+	cmd_library.execute('pluginload', url)
+end)
+
+cmd_library.add({'plugininfo', 'pinfo'}, 'show plugin information', {
+	{'plugin_name', 'string'}
+}, function(vars, plugin_name)
+	local plugin = cmd_library._plugins[plugin_name:lower()]
+	if not plugin then
+		notify('plugin', `plugin '{plugin_name}' not found`, 2)
+		return
+	end
+
+	notify('plugin', `{plugin.name} (v{plugin.version}, by {plugin.author}) loaded {#plugin.commands} commands`, 4)
+	if plugin.description and plugin.description ~= '' then
+		notify(plugin.name, plugin.description, 1)
+	end
+
+	if #plugin.commands > 0 then
+		notify('plugin', 'command list:', 4)
+		for _, cmd in plugin.commands do
+			notify('plugin', `{table.concat(cmd.names, ', ')} - {cmd.description}`, 1)
+		end
+	end
+end)
+
 cmd_library.add({'freemouse'}, 'unlocks your mouse cursor', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
 
@@ -2337,8 +2807,8 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
 
 			for _, item in pairs(workspace:GetDescendants()) do
-				if item:IsA('BasePart') and (item:FindFirstChildOfClass('TouchTransmitter') or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem')) then
-					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) then
+				if item:IsA('Part') or item:IsA("BasePart") or item:IsA("MeshPart") or item:IsA("UnionOperation") or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem') then
+					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) or filter:lower() == "tool" and item.Parent.ClassName == "Tool" and item.Parent.Parent == workspace then
 						local item_pos = stuff.rawrbxget(item, 'Position')
 						if (hrp_pos - item_pos).Magnitude <= vstorage.range then
 							if firetouchinterest then
@@ -2360,20 +2830,16 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 	end
 end)
 
-cmd_library.add({'leave', 'l'}, 'leaves the server', {}, function()
-	game:Shutdown()
+cmd_library.add({'leave'}, 'leaves the server', {}, function()
+	pcall(function()
+		game:Shutdown()
+	end)
+	game:GetService("Players").LocalPlayer:Destroy()
 end)
 
 cmd_library.add({'clickmouse', 'click'}, 'clicks your mouse', {}, function(vstorage)
-	if mouse1click then
-		mouse1click()
-	elseif services.virtual_user then
-		services.virt_user:ClickButton1(Vector2.new(stuff.owner:GetMouse().X,stuff.owner:GetMouse().Y),workspace.CurrentCamera.CFrame)
-	elseif services.virt_input then
-		services.virt_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-		task.wait()
-		services.virt_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-	end
+	--services.virt_user:ClickButton1(Vector2.new(0,0),workspace.CurrentCamera.CFrame)
+	mouse1click()
 end)
 
 cmd_library.add({'aliases', 'listalias', 'showaliases'}, 'lists all aliases', {}, function(vstorage)
@@ -2409,7 +2875,7 @@ cmd_library.add({'addalias', 'alias', 'setalias'}, 'creates a command alias', {
 
 	local similar = cmd_library.find_similar(command)
 	local matched = false
-	for _, cmd_name in ipairs(similar) do
+	for _, cmd_name in similar do
 		if cmd_name:lower() == command then
 			matched = true
 			break
@@ -2456,7 +2922,7 @@ cmd_library.add({'removealias', 'unalias', 'deletealias'}, 'removes a command al
 	local cmd_data = cmd_library._command_map[command]
 
 	if cmd_data then
-		for i, name in ipairs(cmd_data.names) do
+		for i, name in cmd_data.names do
 			if name == alias then
 				table.remove(cmd_data.names, i)
 				break
@@ -2482,7 +2948,7 @@ cmd_library.add({'clearaliases', 'removeallaliases'}, 'clears all aliases', {}, 
 	for alias, command in pairs(aliases) do
 		local cmd_data = cmd_library._command_map[command]
 		if cmd_data then
-			for i, name in ipairs(cmd_data.names) do
+			for i, name in cmd_data.names do
 				if name == alias then
 					table.remove(cmd_data.names, i)
 					break
@@ -2513,7 +2979,7 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 
 	local similar = cmd_library.find_similar(command:lower())
 	local matched = false
-	for _, cmd_name in ipairs(similar) do
+	for _, cmd_name in similar do
 		if cmd_name:lower() == command:lower() then
 			matched = true
 			break
@@ -2599,7 +3065,7 @@ cmd_library.add({'listbinds', 'binds', 'showbinds'}, 'lists all keybinds for cur
 	end
 
 	local bind_list = {}
-	for bind_id, bind_data in pairs(bind_vs.binds) do
+	for bind_id, bind_data in ipairs(bind_vs.binds) do
 		local args_str = #bind_data.args > 0 and ` {table.concat(bind_data.args, ' ')}` or ''
 		table.insert(bind_list, `{bind_data.key}: {bind_data.command}{args_str}`)
 	end
@@ -2615,7 +3081,7 @@ cmd_library.add({'clearbinds', 'unbindall'}, 'clears all keybinds for current ga
 	end
 
 	local count = 0
-	for bind_id, _ in pairs(bind_vs.binds) do
+	for bind_id, _ in ipairs(bind_vs.binds) do
 		maid.remove(bind_id)
 		count = count + 1
 	end
@@ -2642,7 +3108,7 @@ cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 		local tools = {}
 
 		if player.Character then
-			for _, item in ipairs(player.Character:GetChildren()) do
+			for _, item in player.Character:GetChildren() do
 				if item:IsA('BackpackItem') and item:FindFirstChild('Handle') then
 					table.insert(tools, item)
 				end
@@ -2650,7 +3116,7 @@ cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 		end
 
 		if player.Backpack then
-			for _, item in ipairs(player.Backpack:GetChildren()) do
+			for _, item in player.Backpack:GetChildren() do
 				if item:IsA('BackpackItem') and item:FindFirstChild('Handle') then
 					table.insert(tools, item)
 				end
@@ -2698,7 +3164,7 @@ cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 			break
 		end
 
-		for _, tool in ipairs(current_tools) do
+		for _, tool in current_tools do
 			task.spawn(function()
 				pcall(function()
 					for i = 1, 25 do
@@ -2752,7 +3218,7 @@ cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 			if not new_hrp then continue end
 
 			if firetouchinterest then
-				for _, handle in ipairs(collected_tools) do
+				for _, handle in collected_tools do
 					task.spawn(function()
 						pcall(function()
 							if handle and handle:IsDescendantOf(workspace) then
@@ -2766,7 +3232,7 @@ cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
 					end)
 				end
 			else
-				for _, handle in ipairs(collected_tools) do
+				for _, handle in collected_tools do
 					task.spawn(function()
 						pcall(function()
 							if handle and handle:IsDescendantOf(workspace) then
@@ -2839,8 +3305,15 @@ cmd_library.add({'settings'}, 'manage settings', {
 				parsed_value = false
 			elseif tonumber(value) then
 				parsed_value = tonumber(value)
+			elseif key == 'open_keybind' then
+				parsed_value = tostring(value):upper()
+				if Enum.KeyCode[parsed_value] then
+					stuff.open_keybind = Enum.KeyCode[parsed_value]
+				else
+					notify("settings","invalid value",1)
+					return
+				end
 			end
-
 			config.set(key, parsed_value)
 			notify('settings', `set {key} to {tostring(parsed_value)}`, 1)
 		else
@@ -3223,7 +3696,7 @@ cmd_library.add({'logmodules', 'getmodules', 'modules'}, 'logs all loaded module
 
 		if #source_ids > 0 then
 			entry ..= `   referenced assets: {table.concat(source_ids, ', ')}\n`
-			for _, id in ipairs(source_ids) do
+			for _, id in source_ids do
 				if not table.find(asset_ids, id) then
 					table.insert(asset_ids, id)
 				end
@@ -3326,9 +3799,10 @@ cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorag
 				stuff.rawrbxset(label, 'Visible', true)
 				stuff.rawrbxset(label, 'Text', tostring(message.TextSource) .. ': ' .. tostring(message.Text))
 				stuff.rawrbxset(label, 'Parent', sframe)
-
-				task.wait()
-				stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
+				if #chatlog.main_container.chatlogs:GetChildren() > 3 then
+					task.wait()
+					stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
+				end
 			end
 		end
 	end
@@ -3365,7 +3839,7 @@ cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {
 
 		local all_commands = cmd_library.help()
 
-		for _, cmd_info in ipairs(all_commands) do
+		for _, cmd_info in all_commands do
 			local newframe = stuff.clone(stuff.ui_cmdlist_template)
 			newframe.Visible = true
 			newframe.Parent = stuff.ui_cmdlist_commandlist
@@ -3377,7 +3851,7 @@ cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {
 			local args_str = ''
 			if cmd_info.args and #cmd_info.args > 0 then
 				local arg_parts = {}
-				for _, arg_data in ipairs(cmd_info.args) do
+				for _, arg_data in cmd_info.args do
 					if arg_data[3] == 'hidden' then
 						continue
 					end
@@ -3414,7 +3888,7 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 	local savepos_vstorage = cmd_library.get_variable_storage('savepos')
 	local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local hrp_cframe = hrp.CFrame
-	
+
 	if savepos_vstorage.pos then
 		if bypass then
 			if hrp then
@@ -3445,6 +3919,48 @@ cmd_library.add({'loadposition', 'loadpos'}, 'load the position saved with savep
 		notify('loadpos', 'loaded position', 1)
 	else
 		notify('loadpos', 'you haven\'t saved a position using saveposition', 2)
+	end
+end)
+
+cmd_library.add({"respawnpoint","setrespawn"},'sets your respawn point to your current location',{
+	{"lasts_one_respawn","boolean"}
+} ,function(vstorage,lasts1respawn)
+	if vstorage.enabled ~= true then
+		vstorage.enabled = true
+		local cframe_set = stuff.owner_char:GetPivot()
+		notify("respawnpoint","respawn point has been set",1)
+		maid.add('set_respawn_point', services.run_service.Heartbeat, function()
+			if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() == Enum.HumanoidStateType.Dead then
+				if vstorage.currently_respawning ~= true then
+				else
+					return
+				end
+				vstorage.currently_respawning = true
+				maid.add("currently_respawning",services.run_service.Heartbeat,function()
+					if stuff.owner_char:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Dead and stuff.owner_char:FindFirstChild("Head") then
+						maid.remove("currently_respawning")
+						if lasts1respawn == true then
+							maid.remove("set_respawn_point")
+							vstorage.enabled = false
+						end
+						stuff.owner_char:PivotTo(cframe_set)
+						maid.add("currently_respawning",services.run_service.Heartbeat, function()
+							stuff.owner_char:PivotTo(cframe_set)
+						end)
+						task.delay(0.15,function()
+							maid.remove("currently_respawning")
+							vstorage.currently_respawning = false
+						end)
+					end
+				end)
+			end
+		end)
+	else
+		pcall(function()
+			maid.remove("set_respawn_point")
+		end)
+		vstorage.enabled = false
+		notify("respawnpoint","respawn point has been removed",1)
 	end
 end)
 
@@ -3659,7 +4175,7 @@ end)
 cmd_library.add({'gettools', 'tools'}, 'attempts to steal tools from others', {}, function(vstorage)
 	local count = 0
 
-	for _, v in ipairs(workspace:GetDescendants()) do
+	for _, v in workspace:GetDescendants() do
 		if v:IsA('Tool') or v:IsA('BackpackItem') or v:IsA('HopperBin') then
 			count += 1
 			stuff.rawrbxset(v, 'Parent', stuff.owner.Backpack)
@@ -3717,7 +4233,7 @@ cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'ena
 			local destroy_height = stuff.rawrbxget(workspace, 'FallenPartsDestroyHeight')
 
 			if pivot_pos.Y <= destroy_height + 30 then
-				for _, v in ipairs(stuff.owner_char:GetChildren()) do
+				for _, v in stuff.owner_char:GetChildren() do
 					if v:IsA('BasePart') then
 						pcall(function()
 							stuff.rawrbxset(v, 'Velocity', Vector3.zero)
@@ -3759,7 +4275,7 @@ cmd_library.add({'gravity', 'grav'}, 'sets workspace gravity value', {
 	stuff.rawrbxset(workspace, 'Gravity', gravity)
 end)
 
-cmd_library.add({'serverhop', 'rejoin', 'hop'}, 'teleports you to another server', {}, function(vstorage)
+cmd_library.add({'serverhop', 'hop'}, 'teleports you to another server', {}, function(vstorage)
 	notify('serverhop', 'searching for new server...', 3)
 
 	local servers = {}
@@ -3820,7 +4336,7 @@ cmd_library.add({'disabletouchevent', 'disablete'}, 'disables the touched event 
 	vstorage.original_states = {}
 	notify('disablete', 'touch events disabled', 1)
 
-	for _, part in ipairs(workspace:GetDescendants()) do
+	for _, part in workspace:GetDescendants() do
 		if part:IsA('BasePart') then
 			pcall(function()
 				vstorage.original_states[part] = stuff.rawrbxget(part, 'CanTouch')
@@ -3889,27 +4405,27 @@ cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: I
 	end
 end)
 
-cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+cmd_library.add({'remotespy', 'rspy', 'ketamine'}, 'allows you to spy on remotes [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
 	notify('remotespy', 'loading remote spy', 1)
 	local success, err = pcall(function()
-		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Octo-Spy/refs/heads/main/Main.lua'))()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Ketamine/refs/heads/main/Ketamine.lua'))()
 	end)
 	if not success then
 		notify('remotespy', 'failed to load remote spy: ' .. tostring(err), 2)
 	end
 end)
 
-cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+cmd_library.add({'dex'}, 'dex (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
 	notify('remotespy', 'loading dex', 1)
 	local success, err = pcall(function()
-		loadstring(game:HttpGet('https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++'))()
+		loadstring(game:HttpGet('https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua'))()
 	end)
 	if not success then
 		notify('dex', 'failed to load dex: ' .. tostring(err), 2)
 	end
 end)
 
-cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox bigger', {
+cmd_library.add({'hitbox', 'headsize', 'expandhitbox'}, 'makes head hitbox bigger', {
 	{'size', 'number'},
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -3932,14 +4448,14 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 
 	notify('hitbox', `hitbox size set to {size}{bypass and ' (bypass)' or ''}`, 1)
 
-	local function store_original_properties(hrp)
-		local hrp_id = tostring(hrp)
-		if not vstorage.original_properties[hrp_id] then
-			vstorage.original_properties[hrp_id] = {
-				size = stuff.rawrbxget(hrp, 'Size'),
-				transparency = stuff.rawrbxget(hrp, 'Transparency'),
-				can_collide = stuff.rawrbxget(hrp, 'CanCollide'),
-				brick_color = stuff.rawrbxget(hrp, 'BrickColor')
+	local function store_original_properties(head)
+		local head_id = tostring(head)
+		if not vstorage.original_properties[head_id] then
+			vstorage.original_properties[head_id] = {
+				size = stuff.rawrbxget(head, 'Size'),
+				transparency = stuff.rawrbxget(head, 'Transparency'),
+				can_collide = stuff.rawrbxget(head, 'CanCollide'),
+				brick_color = stuff.rawrbxget(head, 'BrickColor')
 			}
 		end
 	end
@@ -3947,9 +4463,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 	if bypass then
 		hook_lib.create_hook('hitbox_bypass', {
 			index = function(self, key)
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
-					local original = vstorage.original_properties[hrp_id]
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
+					local original = vstorage.original_properties[head_id]
 
 					if original then
 						if key == 'Size' then
@@ -3966,12 +4482,12 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 			end,
 
 			newindex = function(self, key, value)
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
 
-					if vstorage.original_properties[hrp_id] then
+					if vstorage.original_properties[head_id] then
 						if key == 'Size' or key == 'Transparency' or key == 'CanCollide' or key == 'BrickColor' then
-							return false
+							return
 						end
 					end
 				end
@@ -3981,10 +4497,10 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 				local method = getnamecallmethod()
 				local args = {...}
 
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
 
-					if vstorage.original_properties[hrp_id] and method == 'GetPropertyChangedSignal' then
+					if vstorage.original_properties[head_id] and method == 'GetPropertyChangedSignal' then
 						if args[1] == 'Size' or args[1] == 'Transparency' or args[1] == 'CanCollide' or args[1] == 'BrickColor' then
 							return Instance.new('BindableEvent').Event
 						end
@@ -3997,14 +4513,14 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 	maid.add('hitbox_connection', services.run_service.Heartbeat, function()
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and plr.Character then
-				local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
-				if hrp then
-					store_original_properties(hrp)
+				local head = plr.Character:FindFirstChild('Head')
+				if head then
+					store_original_properties(head)
 
-					stuff.rawrbxset(hrp, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
-					stuff.rawrbxset(hrp, 'Transparency', 0.75)
-					stuff.rawrbxset(hrp, 'BrickColor', BrickColor.random())
-					stuff.rawrbxset(hrp, 'CanCollide', false)
+					stuff.rawrbxset(head, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
+					stuff.rawrbxset(head, 'Transparency', 0.75)
+					stuff.rawrbxset(head, 'BrickColor', BrickColor.random())
+					stuff.rawrbxset(head, 'CanCollide', false)
 				end
 			end
 		end
@@ -4018,9 +4534,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 			if player == stuff.owner then return end
 
 			task.wait(0.5)
-			local hrp = character:FindFirstChild('HumanoidRootPart')
-			if hrp then
-				store_original_properties(hrp)
+			local head = character:FindFirstChild('Head')
+			if head then
+				store_original_properties(head)
 			end
 		end)
 	end)
@@ -4031,9 +4547,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 				if not vstorage.enabled then return end
 
 				task.wait(0.5)
-				local hrp = character:FindFirstChild('HumanoidRootPart')
-				if hrp then
-					store_original_properties(hrp)
+				local head = character:FindFirstChild('Head')
+				if head then
+					store_original_properties(head)
 				end
 			end)
 		end
@@ -4054,15 +4570,15 @@ cmd_library.add({'unhitbox', 'untorsosize', 'unexpandhitbox'}, 'disables hitbox 
 		hook_lib.destroy_hook('hitbox_bypass')
 	end
 
-	for hrp_id, original in pairs(vstorage.original_properties) do
+	for head_id, original in pairs(vstorage.original_properties) do
 		for _, player in pairs(services.players:GetPlayers()) do
 			if player.Character then
-				local hrp = player.Character:FindFirstChild('HumanoidRootPart')
-				if hrp and tostring(hrp) == hrp_id then
-					pcall(stuff.rawrbxset, hrp, 'Size', original.size)
-					pcall(stuff.rawrbxset, hrp, 'Transparency', original.transparency)
-					pcall(stuff.rawrbxset, hrp, 'CanCollide', original.can_collide)
-					pcall(stuff.rawrbxset, hrp, 'BrickColor', original.brick_color)
+				local head = player.Character:FindFirstChild('Head')
+				if head and tostring(head) == head_id then
+					pcall(stuff.rawrbxset, head, 'Size', original.size)
+					pcall(stuff.rawrbxset, head, 'Transparency', original.transparency)
+					pcall(stuff.rawrbxset, head, 'CanCollide', original.can_collide)
+					pcall(stuff.rawrbxset, head, 'BrickColor', original.brick_color)
 				end
 			end
 		end
@@ -4131,8 +4647,9 @@ cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
 	end)
 
 	maid.add('anti_afk', stuff.owner.Idled, function()
-		services.virt_user:CaptureController()
-		services.virt_user:ClickButton2(Vector2.new())
+		--services.virt_user:CaptureController()
+		--services.virt_user:ClickButton2(Vector2.new())
+		mouse1click()
 	end)
 end)
 
@@ -4161,7 +4678,7 @@ cmd_library.add({'stopreplag', 'srl'}, 'sets IncomingReplicationLag to -1', {}, 
 	notify('stopreplag', 'incoming replication lag set to -1', 1)
 end)
 
-cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
+cmd_library.add({'freecam', 'fcam'}, 'frees your camera from your character', {
 	{'speed', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, speed, et)
@@ -4169,108 +4686,80 @@ cmd_library.add({'freecam', 'fc'}, 'frees your camera from your character', {
 		cmd_library.execute('unfreecam')
 		return
 	end
-
-	vstorage.enabled = not vstorage.enabled
-
 	if vstorage.enabled then
-		vstorage.speed = speed or 1
-		notify('freecam', `freecam enabled | speed: {vstorage.speed} | E/Q: up/down | Shift: faster`, 1)
-
-		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		vstorage.camera_cframe = stuff.rawrbxget(camera, 'CFrame')
-		vstorage.old_camera_type = stuff.rawrbxget(camera, 'CameraType')
-		vstorage.old_camera_subject = stuff.rawrbxget(camera, 'CameraSubject')
-		vstorage.old_mouse_behavior = stuff.rawrbxget(services.user_input_service, 'MouseBehavior')
-		vstorage.old_mouse_icon_enabled = stuff.rawrbxget(services.user_input_service, 'MouseIconEnabled')
-
-		stuff.rawrbxset(camera, 'CameraType', Enum.CameraType.Scriptable)
-
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', Enum.MouseBehavior.LockCenter)
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', false)
-
-		maid.add('freecam', services.run_service.RenderStepped, function()
-			pcall(function()
-				local move_vector = get_move_vector(vstorage.speed)
-				local speed_multiplier = services.user_input_service:IsKeyDown(Enum.KeyCode.LeftShift) and 2 or 1
-
-				local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-				local camera_cframe = vstorage.camera_cframe or stuff.rawrbxget(camera, 'CFrame')
-
-				local vertical_input = 0
-				if services.user_input_service:IsKeyDown(Enum.KeyCode.E) then
-					vertical_input = vstorage.speed * speed_multiplier
-				elseif services.user_input_service:IsKeyDown(Enum.KeyCode.Q) then
-					vertical_input = -vstorage.speed * speed_multiplier
-				end
-
-				local new_cframe = camera_cframe * CFrame.new(
-					move_vector.X * speed_multiplier,
-					vertical_input,
-					move_vector.Z * speed_multiplier
-				)
-
-				local mouse_delta = services.user_input_service:GetMouseDelta()
-				new_cframe = new_cframe * CFrame.Angles(-math.rad(mouse_delta.Y * 0.4), -math.rad(mouse_delta.X * 0.4), 0)
-
-				vstorage.camera_cframe = new_cframe
-				stuff.rawrbxset(camera, 'CFrame', new_cframe)
-			end)
-		end)
-
-		maid.add('freecam_died', stuff.owner_char.Humanoid.Died, function()
-			cmd_library.execute('unfreecam')
-		end)
-
-		maid.add('freecam_char_added', stuff.owner.CharacterAdded, function()
-			if vstorage.enabled then
-				cmd_library.execute('unfreecam')
-			end
-		end)
-	else
-		notify('freecam', 'freecam disabled', 1)
-		maid.remove('freecam')
-		maid.remove('freecam_died')
-		maid.remove('freecam_char_added')
-
-		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
-
-		if vstorage.old_camera_subject then
-			pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
-		end
-
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
-		pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
-
-		vstorage.camera_cframe = nil
+		return notify('freecam','freecam already enabled',1)
 	end
+
+	vstorage.enabled = true
+	if tonumber(speed) then
+		vstorage.speed = tonumber(speed)
+	else
+		vstorage.speed = 1
+	end
+	notify('freecam','freecam enabled',1)
+
+	local cam = workspace.CurrentCamera
+	vstorage.old_subject = cam.CameraSubject
+	vstorage.old_parent = stuff.owner_char.Parent
+	vstorage.old_speed = stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed
+	local flight_part = Instance.new('Part', workspace)
+	vstorage.part = flight_part
+	stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed = 0
+	flight_part.CFrame = stuff.owner_char:GetPivot()
+	flight_part.Anchored = true
+	flight_part.Transparency = 1
+	flight_part.CanCollide = false
+	workspace.CurrentCamera.CameraSubject = flight_part
+	stuff.owner_char.Parent = nil
+	local control_module = require(stuff.owner.PlayerScripts:WaitForChild('PlayerModule'):WaitForChild('ControlModule'))
+	maid.add('freecam', services.run_service.Heartbeat, function()
+		pcall(function()
+			local old_pos = flight_part.Position
+			flight_part.CFrame = CFrame.lookAt(old_pos, workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -250).Position)
+			stuff.owner_char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.zero
+
+			if services.user_input_service:GetFocusedTextBox() == nil then else return end
+			local direction = Vector3.new(0,0,0)
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.W) then
+				direction += Vector3.new(0,0,-1)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.A) then
+				direction += Vector3.new(-1,0,0)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.S) then
+				direction += Vector3.new(0,0,1)
+			end
+			if services.user_input_service:IsKeyDown(Enum.KeyCode.D) then
+				direction += Vector3.new(1,0,0)
+			end
+			local offset = Vector3.new(
+				direction.X * vstorage.speed,
+				direction.Y * vstorage.speed,
+				direction.Z * vstorage.speed
+			)
+
+			flight_part.CFrame *= CFrame.new(offset)
+		end)
+	end)
 end)
 
 cmd_library.add({'unfreecam', 'unfcam'}, 'reattach camera to character', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('freecam')
 
 	if not vstorage.enabled then
-		return notify('freecam', 'freecam not enabled', 2)
+		return notify('freecam','freecam not enabled','1')
 	end
-
 	vstorage.enabled = false
-	notify('freecam', 'freecam disabled', 1)
+	notify('freecam','freecam disabled',1)
 
 	maid.remove('freecam')
-	maid.remove('freecam_died')
-	maid.remove('freecam_char_added')
-
-	local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-	stuff.rawrbxset(camera, 'CameraType', vstorage.old_camera_type or Enum.CameraType.Custom)
-
-	if vstorage.old_camera_subject then
-		pcall(stuff.rawrbxset, camera, 'CameraSubject', vstorage.old_camera_subject)
-	end
-
-	pcall(stuff.rawrbxset, services.user_input_service, 'MouseBehavior', vstorage.old_mouse_behavior or Enum.MouseBehavior.Default)
-	pcall(stuff.rawrbxset, services.user_input_service, 'MouseIconEnabled', vstorage.old_mouse_icon_enabled ~= false)
-
-	vstorage.camera_cframe = nil
+	stuff.owner_char.Parent = vstorage.old_parent
+	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	stuff.owner_char:FindFirstChildOfClass('Humanoid').WalkSpeed = vstorage.old_speed or stuff.default_ws
+	workspace.CurrentCamera.CameraSubject = vstorage.old_subject or stuff.owner_char:FindFirstChildOfClass('Humanoid')
+	pcall(function()
+		stuff.destroy(vstorage.part)
+	end)
 end)
 
 cmd_library.add({'maxzoom'}, 'sets max camera zoom distance', {
@@ -4419,7 +4908,7 @@ cmd_library.add({'zerovelocity', 'zerovel', 'novel'}, 'stops all velocity on you
 	notify('zerovelocity', 'velocity stopped', 1)
 
 	for _, part in pairs(stuff.owner_char:GetDescendants()) do
-		if part:IsA('BasePart') then
+		if part:IsA('Part') or part:IsA("MeshPart") then
 			stuff.rawrbxset(part, 'Velocity', Vector3.zero)
 			stuff.rawrbxset(part, 'RotVelocity', Vector3.zero)
 			stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
@@ -4629,8 +5118,6 @@ cmd_library.add({'spam'}, 'spams a command', {
 	local cmd_name = args[1]
 	table.remove(args, 1)
 
-	print(...)
-
 	notify('spam', `spamming command '{cmd_name}' {times} times`, 1)
 
 	for i = 1, times do
@@ -4767,84 +5254,53 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 	stuff.real_char = nil
 end)
 
-cmd_library.add({'revive'}, 'attempts to stop oneshots', {}, function(vstorage)
-	if vstorage.enabled then
-		return notify('revive', 'revive already enabled', 2)
-	end
-
-	notify('revive', 'activated revive', 1)
-	vstorage.enabled = true
-
-	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	local old_health = stuff.rawrbxget(humanoid, 'Health')
-
-	local invalid_states = {
-		[Enum.HumanoidStateType.FallingDown] = true,
-		[Enum.HumanoidStateType.Swimming] = true,
-		[Enum.HumanoidStateType.Seated] = true,
-		[Enum.HumanoidStateType.Jumping] = true,
-		[Enum.HumanoidStateType.Freefall] = true
-	}
-
-	maid.add('revive_state', services.run_service.Heartbeat, function()
-		if not vstorage.enabled then
-			maid.remove('revive_state')
-			return
-		end
-		pcall(function()
-			if not invalid_states[humanoid:GetState()] then
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
-			end
-		end)
+cmd_library.add({"revive"},'attempts to stop oneshots',{},function(vstorage)
+	notify("revive","activated revive",1)
+	local pc = stuff.owner_char
+	local Older;Older=pc:FindFirstChildOfClass("Humanoid").Health
+	local reload = true
+	task.spawn(function()
+		repeat
+			game:GetService("RunService").RenderStepped:Wait()
+			pcall(function()
+				if pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.FallingDown and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Swimming and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Seated and pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Jumping and  pc:FindFirstChildOfClass("Humanoid"):GetState() ~= Enum.HumanoidStateType.Freefall then
+					pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+				end
+			end)
+		until rawequal(reload,false)
 	end)
-
-	maid.add('revive_health_update', services.run_service.Heartbeat, function()
-		if vstorage.enabled then
-			local health = stuff.rawrbxget(humanoid, 'Health')
-			if health > 0 then
-				old_health = health
-			end
-		end
+	task.spawn(function()
+		repeat
+			task.wait(0.13)
+			pcall(function()
+				if rawequal(reload,true) then
+					Older=pc:FindFirstChildOfClass("Humanoid").Health
+				end
+			end)
+		until pc:FindFirstChildOfClass("Humanoid").Health <= 0
 	end)
-
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-	stuff.rawrbxset(humanoid, 'RequiresNeck', false)
-	stuff.rawrbxset(humanoid, 'BreakJointsOnDeath', false)
-
-	maid.add('revive', humanoid:GetPropertyChangedSignal('Health'), function()
-		if not vstorage.enabled then
-			maid.remove('revive')
-			return
-		end
-
-		local current_health = stuff.rawrbxget(humanoid, 'Health')
-		humanoid:ChangeState(Enum.HumanoidStateType.Running)
-
-		if old_health > current_health then
-			humanoid:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-			stuff.rawrbxset(humanoid, 'Parent', services.replicated_storage)
-			local stored_humanoid = services.replicated_storage:FindFirstChild('Humanoid')
-			if stored_humanoid then
-				stuff.rawrbxset(stored_humanoid, 'Parent', stuff.owner_char)
+	local idk
+	pc:FindFirstChildOfClass("Humanoid"):SetStateEnabled(Enum.HumanoidStateType.Dead,false)
+	pc:FindFirstChildOfClass("Humanoid").RequiresNeck = false
+	pc:FindFirstChildOfClass("Humanoid").BreakJointsOnDeath = false
+	idk = pc:FindFirstChildOfClass("Humanoid"):GetPropertyChangedSignal("Health"):Connect(function()
+		local r;r = pc:FindFirstChildOfClass("Humanoid").Health
+		pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+		if tonumber(Older)>tonumber(r) then
+			pc:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Running)
+			pc:FindFirstChildOfClass("Humanoid"):SetStateEnabled(Enum.HumanoidStateType.Dead,false)
+			pc:FindFirstChildOfClass("Humanoid").Parent = game:GetService("ReplicatedStorage")
+			game:GetService("ReplicatedStorage"):FindFirstChild("Humanoid").Parent = pc
+			if r<=5 then
+				idk:Disconnect()
+				delay(0.02,function()
+					reload = false
+				end)
 			end
 		else
-			old_health = current_health
+			Older = r
 		end
 	end)
-end)
-
-cmd_library.add({'unrevive'}, 'disables revive', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('revive')
-
-	if not vstorage.enabled then
-		return notify('revive', 'revive not enabled', 2)
-	end
-
-	vstorage.enabled = false
-	maid.remove('revive')
-	maid.remove('revive_state')
-	maid.remove('revive_health_update')
-	notify('revive', 'revive disabled', 1)
 end)
 
 cmd_library.add({'discord', 'invite'}, 'copies the discord invite', {}, function(vstorage)
@@ -4873,6 +5329,306 @@ cmd_library.add({'btools', 'bt'}, 'gives client-sided btools', {}, function(vsto
 end)
 
 -- c3: fun/trolling
+
+cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
+	{'max_speed', 'number'},
+	{'acceleration', 'number'},
+	{'air_accel', 'number'},
+	{'auto_hop', 'boolean'},
+	{'auto_strafe', 'boolean'},
+	{'scroll_jump', 'boolean'},
+	{'show_speed', 'boolean'},
+	{'ground_friction', 'number'}
+}, function(vstorage, max_speed, acceleration, air_accel, auto_hop, auto_strafe, scroll_jump, show_speed, ground_friction)
+	if vstorage.enabled then
+		return notify('bhop', 'already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.max_speed = math.clamp(max_speed or 80, 16, 300)
+	vstorage.acceleration = math.clamp(acceleration or 12, 1, 100)
+	vstorage.air_accel = math.clamp(air_accel or 100, 1, 500)
+	vstorage.auto_hop = auto_hop ~= false
+	vstorage.auto_strafe = auto_strafe or false
+	vstorage.scroll_jump = scroll_jump ~= false
+	vstorage.show_speed = show_speed or false
+	vstorage.ground_friction = math.clamp(ground_friction or 4, 0, 20)
+
+	vstorage.holding_jump = false
+	vstorage.last_mouse_delta = 0
+	vstorage.was_grounded = true
+	vstorage.speed_label = nil
+	vstorage.last_scroll = 0
+	vstorage.scroll_queue = 0
+
+	notify('bhop', `enabled | max: {vstorage.max_speed} | accel: {vstorage.acceleration} | air: {vstorage.air_accel} | auto hop: {vstorage.auto_hop} | auto strafe: {vstorage.auto_strafe}`, 1)
+
+	if vstorage.show_speed then
+		local gui = Instance.new('ScreenGui')
+		gui.ResetOnSpawn = false
+		gui.IgnoreGuiInset = true
+
+		local label = Instance.new('TextLabel')
+		label.Name = 'speed'
+		label.Size = UDim2.new(0, 200, 0, 50)
+		label.Position = UDim2.new(0.5, -100, 0.85, 0)
+		label.BackgroundTransparency = 1
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeTransparency = 0.5
+		label.TextStrokeColor3 = Color3.new(0, 0, 0)
+		label.Font = Enum.Font.Code
+		label.TextSize = 24
+		label.Text = '0 u/s'
+		label.Parent = gui
+
+		protect_gui(gui)
+		vstorage.speed_label = label
+		vstorage.speed_gui = gui
+	end
+
+	local function is_grounded()
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return true end
+
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {stuff.owner_char}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+
+		local result = workspace:Raycast(hrp.Position, Vector3.new(0, -3.2, 0), params)
+		return result ~= nil
+	end
+
+	local function get_horizontal_speed(vel)
+		return Vector3.new(vel.X, 0, vel.Z).Magnitude
+	end
+
+	local function get_move_direction()
+		local camera = workspace.CurrentCamera
+		local look = camera.CFrame.LookVector
+		local right = camera.CFrame.RightVector
+
+		local forward = Vector3.new(look.X, 0, look.Z)
+		if forward.Magnitude > 0 then forward = forward.Unit end
+
+		local side = Vector3.new(right.X, 0, right.Z)
+		if side.Magnitude > 0 then side = side.Unit end
+
+		local dir = Vector3.zero
+		local uis = services.user_input_service
+
+		if uis:IsKeyDown(Enum.KeyCode.W) then dir += forward end
+		if uis:IsKeyDown(Enum.KeyCode.S) then dir -= forward end
+		if uis:IsKeyDown(Enum.KeyCode.D) then dir += side end
+		if uis:IsKeyDown(Enum.KeyCode.A) then dir -= side end
+
+		return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+	end
+
+	local function get_strafe_direction()
+		local camera = workspace.CurrentCamera
+		local right = camera.CFrame.RightVector
+		local side = Vector3.new(right.X, 0, right.Z)
+		if side.Magnitude > 0 then side = side.Unit end
+
+		local uis = services.user_input_service
+		local dir = Vector3.zero
+
+		if uis:IsKeyDown(Enum.KeyCode.D) then dir += side end
+		if uis:IsKeyDown(Enum.KeyCode.A) then dir -= side end
+
+		return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+	end
+
+	local function air_accelerate(velocity, wish_dir, wish_speed, dt)
+		if wish_dir.Magnitude == 0 then return velocity end
+
+		local current_speed = velocity:Dot(wish_dir)
+		local add_speed = wish_speed - current_speed
+
+		if add_speed <= 0 then return velocity end
+
+		local accel_speed = vstorage.air_accel * wish_speed * dt
+		if accel_speed > add_speed then
+			accel_speed = add_speed
+		end
+
+		return velocity + wish_dir * accel_speed
+	end
+
+	local function ground_accelerate(velocity, wish_dir, wish_speed, dt)
+		if wish_dir.Magnitude == 0 then
+			local speed = velocity.Magnitude
+			if speed < 0.1 then return Vector3.zero end
+
+			local drop = speed * vstorage.ground_friction * dt
+			local new_speed = math.max(speed - drop, 0)
+			return velocity.Unit * new_speed
+		end
+
+		local current_speed = velocity:Dot(wish_dir)
+		local add_speed = wish_speed - current_speed
+
+		if add_speed <= 0 then return velocity end
+
+		local accel_speed = vstorage.acceleration * wish_speed * dt
+		if accel_speed > add_speed then
+			accel_speed = add_speed
+		end
+
+		return velocity + wish_dir * accel_speed
+	end
+
+	maid.add('bhop_input', services.user_input_service.InputBegan, function(input, gpe)
+		if gpe then return end
+
+		if input.KeyCode == Enum.KeyCode.Space then
+			vstorage.holding_jump = true
+		end
+
+		if vstorage.scroll_jump and input.UserInputType == Enum.UserInputType.MouseWheel then
+			vstorage.scroll_queue += 1
+			vstorage.last_scroll = tick()
+		end
+	end)
+
+	maid.add('bhop_input_end', services.user_input_service.InputEnded, function(input)
+		if input.KeyCode == Enum.KeyCode.Space then
+			vstorage.holding_jump = false
+		end
+	end)
+
+	maid.add('bhop_mouse', services.user_input_service.InputChanged, function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement then
+			vstorage.last_mouse_delta = input.Delta.X
+		end
+	end)
+
+	maid.add('bhop', services.run_service.Heartbeat, function(dt)
+		if not vstorage.enabled or not stuff.owner_char then return end
+
+		local hum = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hum or not hrp then return end
+
+		local grounded = is_grounded()
+		local state = hum:GetState()
+		local in_air = state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping
+
+		local current_vel = hrp.AssemblyLinearVelocity
+		local horizontal_vel = Vector3.new(current_vel.X, 0, current_vel.Z)
+		local horizontal_speed = horizontal_vel.Magnitude
+
+		if vstorage.speed_label then
+			local color
+			if horizontal_speed > vstorage.max_speed * 0.8 then
+				color = Color3.fromRGB(255, 100, 100)
+			elseif horizontal_speed > vstorage.max_speed * 0.5 then
+				color = Color3.fromRGB(255, 255, 100)
+			else
+				color = Color3.fromRGB(100, 255, 100)
+			end
+			vstorage.speed_label.TextColor3 = color
+			vstorage.speed_label.Text = string.format('%.1f u/s', horizontal_speed)
+		end
+
+		local should_jump = false
+
+		if vstorage.auto_hop and vstorage.holding_jump then
+			should_jump = true
+		end
+
+		if vstorage.scroll_jump and vstorage.scroll_queue > 0 then
+			if tick() - vstorage.last_scroll < 0.3 then
+				should_jump = true
+				vstorage.scroll_queue -= 1
+			else
+				vstorage.scroll_queue = 0
+			end
+		end
+
+		if should_jump and grounded and not vstorage.was_grounded then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		elseif should_jump and grounded and state ~= Enum.HumanoidStateType.Jumping then
+			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		end
+
+		vstorage.was_grounded = grounded
+		
+		if in_air then
+			local wish_dir
+			local wish_speed = vstorage.max_speed * 0.1
+
+			if vstorage.auto_strafe and math.abs(vstorage.last_mouse_delta) > 1 then
+				local camera = workspace.CurrentCamera
+				local right = camera.CFrame.RightVector
+				local side = Vector3.new(right.X, 0, right.Z)
+				if side.Magnitude > 0 then side = side.Unit end
+
+				wish_dir = side * math.sign(vstorage.last_mouse_delta)
+				wish_speed = vstorage.max_speed * 0.15
+			else
+				wish_dir = get_strafe_direction()
+
+				if wish_dir.Magnitude == 0 then
+					wish_dir = get_move_direction()
+					wish_speed = vstorage.max_speed * 0.05
+				end
+			end
+
+			local new_vel = air_accelerate(horizontal_vel, wish_dir, wish_speed, dt)
+			
+			local new_speed = new_vel.Magnitude
+			if new_speed > vstorage.max_speed then
+				new_vel = new_vel.Unit * vstorage.max_speed
+			end
+
+			hrp.AssemblyLinearVelocity = Vector3.new(new_vel.X, current_vel.Y, new_vel.Z)
+		else
+			local wish_dir = get_move_direction()
+			local new_vel = ground_accelerate(horizontal_vel, wish_dir, vstorage.max_speed, dt)
+
+			local new_speed = new_vel.Magnitude
+			if new_speed > vstorage.max_speed then
+				new_vel = new_vel.Unit * vstorage.max_speed
+			end
+
+			hrp.AssemblyLinearVelocity = Vector3.new(new_vel.X, current_vel.Y, new_vel.Z)
+		end
+
+		vstorage.last_mouse_delta *= 0.85
+	end)
+
+	maid.add('bhop_respawn', stuff.owner.CharacterAdded, function(char)
+		if not vstorage.enabled then return end
+		char:WaitForChild('HumanoidRootPart')
+		task.wait(.1)
+		vstorage.was_grounded = true
+		vstorage.scroll_queue = 0
+	end)
+end)
+
+cmd_library.add({'unbhop', 'unbunnyhop', 'unstrafe'}, 'disables bhop', {}, function()
+	local vs = cmd_library.get_variable_storage('bhop')
+	if not vs.enabled then
+		return notify('bhop', 'not enabled', 2)
+	end
+
+	vs.enabled = false
+
+	maid.remove('bhop')
+	maid.remove('bhop_input')
+	maid.remove('bhop_input_end')
+	maid.remove('bhop_mouse')
+	maid.remove('bhop_respawn')
+
+	if vs.speed_gui then
+		vs.speed_gui:Destroy()
+		vs.speed_gui = nil
+		vs.speed_label = nil
+	end
+
+	notify('bhop', 'disabled', 1)
+end)
 
 cmd_library.add({'copychat'}, 'copies all chat messages', {}, function(vstorage)
 	vstorage.enabled = not vstorage.enabled
@@ -4933,7 +5689,7 @@ cmd_library.add({'netlag'}, 'glitches netless/reanimation users', {
 
 	vstorage.connections = vstorage.connections or {}
 
-	for _, target in ipairs(targets) do
+	for _, target in targets do
 		if target.Character then
 			local connection_id = `netlag_{target.Name}`
 
@@ -4970,7 +5726,7 @@ cmd_library.add({'unnetlag'}, 'stops netlagging', {
 	end
 
 	if targets and #targets > 0 then
-		for _, target in ipairs(targets) do
+		for _, target in targets do
 			local connection_id = `netlag_{target.Name}`
 			if netlag_vs.connections[connection_id] then
 				maid.remove(connection_id)
@@ -5005,7 +5761,7 @@ cmd_library.add({'spook', 'jumpscare'}, 'teleport in front of someone briefly', 
 	local hrp = char.HumanoidRootPart
 	local original_cf = stuff.rawrbxget(hrp, 'CFrame')
 
-	for _, plr in ipairs(players) do
+	for _, plr in players do
 		if plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
 			local target_hrp = plr.Character.HumanoidRootPart
 			local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
@@ -5192,7 +5948,7 @@ cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown abil
 
 		local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
 		if move_direction ~= Vector3.zero then
-			stuff.owner_char:PivotTo(predict_movement(target, 20))
+			stuff.owner_char:PivotTo(quick_predict_position(target, 20))
 		else
 			local target_hrp = stuff.rawrbxget(target_character, 'HumanoidRootPart')
 			local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
@@ -5319,7 +6075,7 @@ cmd_library.add({'fling'}, 'uses velocity to fling people', {
 			local target_vel = stuff.rawrbxget(target_hrp, 'Velocity')
 			if target_vel.Magnitude < 100 and tick() - oldtick < 5 then
 				local target_ws = stuff.rawrbxget(target_humanoid, 'WalkSpeed')
-				local predicted_cf = predict_movement(target, ((target_ws * 68.75) / 100))
+				local predicted_cf = quick_predict_position(target, ((target_ws * 68.75) / 100))
 				if predicted_cf then
 					stuff.rawrbxset(hrp, 'CFrame', predicted_cf)
 				end
@@ -5431,7 +6187,7 @@ cmd_library.add({'carpetfling', 'cfling'}, 'flings player using carpet animation
 
 	power = power or 1000
 
-	for _, target in ipairs(targets) do
+	for _, target in targets do
 		if target == stuff.owner then
 			notify('carpetfling', 'cannot fling yourself', 2)
 			continue
@@ -5704,6 +6460,36 @@ cmd_library.add({'explode', 'explosion'}, 'creates explosion at your position', 
 	stuff.rawrbxset(explosion, 'DestroyJointRadiusPercent', 0)
 	stuff.rawrbxset(explosion, 'Parent', workspace)
 end)
+cmd_library.add({"wait"},"waits a specified number of seconds before running a command",{
+	{"seconds","number"},
+	{"command","string"},
+	{['...'] = 'table'}
+},function(vstorage,s,c,...)
+	local arg1,arg2,arg3,arg4 = nil,nil,nil,nil
+	for _, v in pairs(table.pack(...)) do
+		if typeof(v) == "table" then
+			if arg1 == nil then
+				arg1 = v[1]
+				continue
+			end
+			if arg2 == nil then
+				arg2 = v[1]
+				continue
+			end
+			if arg3 == nil then
+				arg3 = v[1]
+				continue
+			end
+			if arg4 == nil then
+				arg4 = v[1]
+				continue
+			end
+		end
+	end
+	task.delay(s,function()
+		cmd_library.execute(c,arg1,arg2,arg3,arg4)
+	end)
+end)
 
 cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 	{'power', 'number'},
@@ -5748,6 +6534,55 @@ cmd_library.add({'rocket', 'launch'}, 'launches you like a rocket', {
 	end)
 
 	services.debris:AddItem(bv, 0.5)
+end)
+
+cmd_library.add({'push', 'dash'}, 'pushes you forward', {
+	{'power', 'number'},
+	{"time_lasted", 'number'},
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, power, timelasted, bypass)
+	power = power or 100
+	notify('push', `pushing forward with power {power}{bypass and ' (bypass)' or ''}`, 1)
+
+	local bv = Instance.new('BodyVelocity')
+	stuff.rawrbxset(bv, 'MaxForce', Vector3.new(math.huge, math.huge, math.huge))
+	stuff.rawrbxset(bv, 'Velocity', stuff.owner_char:FindFirstChild("HumanoidRootPart").CFrame.LookVector*power)
+
+	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
+
+	if bypass then
+		hook_lib.create_hook('push_bypass', {
+			newindex = function(self, key, value)
+				if self == bv and (key == 'Velocity' or key == 'MaxForce' or key == 'Parent') then
+					return false
+				end
+			end,
+			index = function(self, key)
+				if self == bv then
+					if key == 'Velocity' then
+						return Vector3.zero
+					elseif key == 'MaxForce' then
+						return Vector3.zero
+					elseif key == 'Parent' then
+						return nil
+					end
+				end
+			end
+		})
+	end
+
+	stuff.rawrbxset(bv, 'Parent', hrp)
+
+	task.delay(0.5, function()
+		if bypass then
+			hook_lib.destroy_hook('push_bypass')
+		end
+	end)
+	if timelasted == nil then
+		services.debris:AddItem(bv, 0.5)
+	else
+		services.debris:AddItem(bv,timelasted)
+	end
 end)
 
 -- c4: character
@@ -5856,7 +6691,7 @@ cmd_library.add({'esit', 'enablesit', 'unlocksit'}, 'allows your character to si
 	stuff.rawrbxset(humanoid, 'Sit', false)
 end)
 
-cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts', {
+cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal, velocity, smart, cframe)', {
 	{'mode', 'string'},
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -6622,7 +7457,7 @@ cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appe
 				if not children_cache[self] then
 					local actual_children = game.GetChildren(self)
 					local filtered = {}
-					for _, child in ipairs(actual_children) do
+					for _, child in actual_children do
 						if not child:IsA('BodyMover') then
 							table.insert(filtered, child)
 						end
@@ -6638,7 +7473,7 @@ cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appe
 			if vstorage.enabled and self == stuff.owner_char then
 				local actual_descendants = game.GetDescendants(self)
 				local filtered = {}
-				for _, descendant in ipairs(actual_descendants) do
+				for _, descendant in actual_descendants do
 					if not descendant:IsA('BodyMover') then
 						table.insert(filtered, descendant)
 					end
@@ -6853,1173 +7688,1491 @@ cmd_library.add({'togglefreegamepass', 'tfreegp', 'freegp'}, 'makes the client t
 	end
 end)
 
-cmd_library.add({'triggerbot', 'tbot'}, 'automatically clicks when aiming at enemies', {
-	{'toggle_key', 'string'},
+cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots when crosshair is on enemy', {
 	{'delay', 'number'},
-	{'randomize', 'boolean'},
-	{'body_parts', 'table'},
-	{'target_priority', 'string'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, toggle_key, delay, randomize, body_parts, target_priority, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('untriggerbot')
-		return
-	end
-
+	{'head_only', 'boolean'},
+	{'wallcheck', 'boolean'}
+}, function(vstorage, delay, head_only, wallcheck)
 	if vstorage.enabled then
-		return notify('triggerbot', 'triggerbot already enabled', 2)
+		return notify('triggerbot', 'already enabled', 2)
 	end
 
 	vstorage.enabled = true
-	vstorage.active = stuff.is_mobile
-	vstorage.toggle_key = (toggle_key and toggle_key:gsub('^%l', string.upper)) or 'T'
-	vstorage.delay = delay or 0.1
-	vstorage.randomize = randomize or false
-	vstorage.body_parts = body_parts or {'head', 'torso', 'arms', 'legs'}
-	vstorage.target_priority = target_priority or 'closest'
-	vstorage.last_click = 0
+	vstorage.delay = math.clamp(delay or 0.02, 0, 1)
+	vstorage.head_only = head_only or false
+	vstorage.wallcheck = wallcheck ~= false
+	vstorage.last_shot = 0
 
-	local valid_priorities = {'closest', 'random', 'headonly'}
-	if not table.find(valid_priorities, vstorage.target_priority) then
-		vstorage.target_priority = 'closest'
-	end
+	notify('triggerbot', `enabled | delay: {vstorage.delay}s | head only: {vstorage.head_only} | wallcheck: {vstorage.wallcheck}`, 1)
 
-	local notification_text = `triggerbot enabled | delay: {vstorage.delay}s | parts: {table.concat(vstorage.body_parts, ', ')} | priority: {vstorage.target_priority}`
-
-	if not stuff.is_mobile then
-		notification_text = notification_text .. ` | press '{vstorage.toggle_key}' to toggle`
-	end
-
-	notify('triggerbot', notification_text, 1)
-
-	local body_parts_map = {
-		r6 = {
-			head = {'Head'},
-			torso = {'Torso'},
-			arms = {'Left Arm', 'Right Arm'},
-			legs = {'Left Leg', 'Right Leg'}
-		},
-		r15 = {
-			head = {'Head'},
-			torso = {'UpperTorso', 'LowerTorso'},
-			arms = {'LeftUpperArm', 'LeftLowerArm', 'LeftHand', 'RightUpperArm', 'RightLowerArm', 'RightHand'},
-			legs = {'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot', 'RightUpperLeg', 'RightLowerLeg', 'RightFoot'}
-		}
+	local valid_parts = {
+		'Head', 'UpperTorso', 'LowerTorso', 'Torso',
+		'LeftUpperArm', 'LeftLowerArm', 'LeftHand',
+		'RightUpperArm', 'RightLowerArm', 'RightHand',
+		'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot',
+		'RightUpperLeg', 'RightLowerLeg', 'RightFoot',
+		'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg'
 	}
 
-	local function is_player_valid(player)
-		if not player or not player.Character then return false end
-
-		local character = player.Character
-		local humanoid = character:FindFirstChildOfClass('Humanoid')
-
-		if not humanoid then return false end
-
-		local health = stuff.rawrbxget(humanoid, 'Health')
-		if health <= 0 then return false end
-
-		local forcefield = character:FindFirstChild('ForceField')
-		if forcefield then return false end
-
-		return true
-	end
-
-	local function get_valid_parts(character)
-		local valid_parts = {}
-		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
-		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
-
-		for _, body_type in ipairs(vstorage.body_parts) do
-			local part_list = parts_table[body_type:lower()]
-			if part_list then
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						table.insert(valid_parts, part)
-					end
-				end
-			end
+	local function is_valid_body_part(part)
+		if vstorage.head_only then
+			return part.Name == 'Head'
 		end
-
-		return valid_parts
+		return table.find(valid_parts, part.Name) ~= nil
 	end
 
-	local function click_mouse()
-		if mouse1click then
-			mouse1click()
-		elseif services.virtual_user then
-			services.virtual_user:ClickButton1(Vector2.new(0, 0))
-		elseif services.virtual_input then
-			services.virtual_input:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-			task.wait()
-			services.virtual_input:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-		end
-	end
+	maid.add('triggerbot', services.run_service.Heartbeat, function()
+		if not vstorage.enabled or not stuff.owner_char then return end
 
-	if not stuff.is_mobile then
-		maid.add('triggerbot_toggle', services.user_input_service.InputBegan, function(input, processed)
-			if input.KeyCode == Enum.KeyCode[vstorage.toggle_key] and not processed then
-				vstorage.active = not vstorage.active
-				notify('triggerbot', vstorage.active and 'activated' or 'deactivated', 1)
-			end
-		end)
-	end
-
-	maid.add('triggerbot', services.run_service.RenderStepped, function()
-		if not vstorage.active then return end
+		local now = tick()
+		if now - vstorage.last_shot < vstorage.delay then return end
 
 		local mouse = stuff.owner:GetMouse()
 		local target = mouse.Target
 
 		if not target then return end
+		if not is_valid_body_part(target) then return end
 
-		local current_time = tick()
-		local actual_delay = vstorage.delay
+		local character = target:FindFirstAncestorOfClass('Model')
+		if not character then return end
 
-		if vstorage.randomize then
-			actual_delay = vstorage.delay + (math.random() * 0.05)
-		end
+		local player = services.players:GetPlayerFromCharacter(character)
+		if not is_valid_target(player) then return end
 
-		if current_time - vstorage.last_click < actual_delay then return end
-
-		local hit_targets = {}
-
-		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if is_player_valid(plr) and plr.Character and target:IsDescendantOf(plr.Character) then
-					local valid_parts = get_valid_parts(plr.Character)
-					local humanoid = plr.Character:FindFirstChildOfClass('Humanoid')
-					local health = humanoid and stuff.rawrbxget(humanoid, 'Health') or 100
-
-					for _, part in ipairs(valid_parts) do
-						if target == part or target:IsDescendantOf(part) then
-							table.insert(hit_targets, {
-								player = plr,
-								part = part,
-								health = health,
-								distance = (stuff.rawrbxget(stuff.owner_char.HumanoidRootPart, 'Position') - stuff.rawrbxget(part, 'Position')).Magnitude,
-								is_head = part.Name == 'Head'
-							})
-							break
-						end
-					end
-				end
+		if vstorage.wallcheck then
+			local camera = workspace.CurrentCamera
+			if not has_line_of_sight(camera.CFrame.Position, target.Position, character) then
+				return
 			end
 		end
 
-		if #hit_targets == 0 then return end
-
-		local chosen_target
-		if vstorage.target_priority == 'headonly' then
-			for _, t in ipairs(hit_targets) do
-				if t.is_head then
-					chosen_target = t
-					break
-				end
-			end
-		elseif vstorage.target_priority == 'random' then
-			chosen_target = hit_targets[math.random(1, #hit_targets)]
-		else
-			table.sort(hit_targets, function(a, b) return a.distance < b.distance end)
-			chosen_target = hit_targets[1]
-		end
-
-		if chosen_target then
-			vstorage.last_click = current_time
-			task.spawn(click_mouse)
-		end
+		vstorage.last_shot = now
+		mouse1click()
 	end)
 end)
 
-cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('triggerbot')
-
-	if not vstorage.enabled then
-		return notify('triggerbot', 'triggerbot not enabled', 2)
+cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function()
+	local vs = cmd_library.get_variable_storage('triggerbot')
+	if not vs.enabled then
+		return notify('triggerbot', 'not enabled', 2)
 	end
 
-	vstorage.enabled = false
-	vstorage.active = false
+	vs.enabled = false
 	maid.remove('triggerbot')
-	maid.remove('triggerbot_toggle')
-	notify('triggerbot', 'triggerbot disabled', 1)
+	notify('triggerbot', 'disabled', 1)
 end)
 
-cmd_library.add({'aimbot', 'aim'}, 'aims at nearest player', {
+cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "auto" or "automatic" instead of a number for automatic prediction)', {
 	{'toggle_key', 'string'},
-	{'wallcheck', 'boolean'},
 	{'fov', 'number'},
-	{'aimrange', 'number'},
-	{'smoothing', 'number'},
-	{'resolver', 'boolean'},
-	{'resolver_amount', 'number'},
-	{'resolver_mode', 'string'},
-	{'target_priority', 'string'},
-	{'body_part', 'string'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, toggle_key, wallcheck, fov, aim_range, smoothness, resolver, resolver_amount, resolver_mode, target_priority, body_part, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unaimbot')
-		return
-	end
-
+	{'max_distance', 'number'},
+	{'smoothness', 'number'},
+	{'target_part', 'string'},
+	{'prediction', 'string'},
+	{'priority', 'string'},
+	{'wallcheck', 'boolean'},
+	{'sticky', 'boolean'},
+	{'humanize', 'boolean'}
+}, function(vstorage, toggle_key, fov, max_distance, smoothness, target_part, prediction, priority, wallcheck, sticky, humanize)
 	if vstorage.enabled then
-		return notify('aimbot', 'aimbot already enabled', 2)
+		return notify('aimbot', 'already enabled', 2)
 	end
 
 	vstorage.enabled = true
 	vstorage.active = stuff.is_mobile
-	vstorage.toggle_key = (toggle_key and toggle_key:gsub('^%l', string.upper)) or 'G'
+	vstorage.toggle_key = toggle_key and Enum.KeyCode[toggle_key:gsub('^%l', string.upper)] or Enum.KeyCode.E
 	vstorage.fov = fov or 90
-	vstorage.radius = fov_to_radius(vstorage.fov)
-	vstorage.aim_range = aim_range or 300
-	vstorage.smoothness = math.clamp(smoothness or 0.2, 0.05, 1)
+	vstorage.fov_radius = fov_to_radius(vstorage.fov)
+	vstorage.max_distance = max_distance or 500
+	vstorage.smoothness = math.clamp(smoothness or 0.15, 0.01, 1)
+	vstorage.target_part = (target_part or 'head'):lower()
+	vstorage.priority = (priority or 'fov'):lower()
 	vstorage.wallcheck = wallcheck ~= false
-	vstorage.resolver = resolver or false
-	vstorage.resolver_amount = resolver_amount or 0.15
-	vstorage.resolver_mode = resolver_mode or 'hybrid'
-	vstorage.target_priority = target_priority or 'closest'
-	vstorage.body_part = body_part or 'head'
+	vstorage.sticky = sticky ~= false
+	vstorage.humanize = humanize or false
 	vstorage.current_target = nil
-	vstorage.target_data = {}
+	vstorage.locked_player = nil
+	vstorage.last_switch = 0
+	vstorage.velocity_cache = {}
+	vstorage.smooth_offset = Vector2.zero
 
-	local valid_priorities = {'closest', 'lowesthealth', 'highesthealth', 'mostthreat'}
-	if not table.find(valid_priorities, vstorage.target_priority) then
-		vstorage.target_priority = 'closest'
+	vstorage.auto_prediction = prediction == nil or prediction == 'auto' or prediction == 'automatic'
+	vstorage.base_prediction = tonumber(prediction) or 0.1
+	vstorage.ping_history = {}
+	vstorage.ping_avg = 0
+	vstorage.ping_std = 0
+	vstorage.hit_history = {}
+	vstorage.miss_streak = 0
+	vstorage.prediction_multiplier = 1.0
+	vstorage.last_prediction_adjust = 0
+	vstorage.target_velocity_history = {}
+	vstorage.calculated_prediction = 0.1
+
+	local valid_priorities = {'fov', 'distance', 'health', 'threat'}
+	if not table.find(valid_priorities, vstorage.priority) then
+		vstorage.priority = 'fov'
 	end
 
-	local valid_body_parts = {'head', 'torso', 'random', 'closest'}
-	if not table.find(valid_body_parts, vstorage.body_part) then
-		vstorage.body_part = 'head'
+	local part_lookup = {
+		head = {'Head'},
+		torso = {'UpperTorso', 'Torso', 'LowerTorso'},
+		chest = {'UpperTorso', 'Torso'},
+		pelvis = {'LowerTorso', 'Torso'},
+		legs = {'LeftUpperLeg', 'RightUpperLeg', 'Left Leg', 'Right Leg'},
+		arms = {'LeftUpperArm', 'RightUpperArm', 'Left Arm', 'Right Arm'},
+		random = {'Head', 'UpperTorso', 'Torso', 'LeftUpperArm', 'RightUpperArm'},
+		closest = nil
+	}
+	
+	if not part_lookup[vstorage.target_part] then
+		notify('rageaim', 'invalid target part, setting to closest', 3)
+		vstorage.target_part = 'closest'
 	end
 
-	if vstorage.resolver then
-		local valid_modes = {'velocity', 'pattern', 'hybrid', 'delta'}
-		if not table.find(valid_modes, vstorage.resolver_mode) then
-			vstorage.resolver_mode = 'hybrid'
+	if not table.find({'fov', 'distance', 'speed', 'none'}, vstorage.priority) then
+		notify('rageaim', 'invalid priority, setting to fov', 3)
+		vstorage.priority = 'fov'
+	end
+
+	local function update_ping_stats()
+		local current_ping = stuff.owner:GetNetworkPing()
+
+		table.insert(vstorage.ping_history, {
+			ping = current_ping,
+			time = tick()
+		})
+
+		while #vstorage.ping_history > 60 do
+			table.remove(vstorage.ping_history, 1)
+		end
+
+		local sum = 0
+		for _, data in vstorage.ping_history do
+			sum = sum + data.ping
+		end
+		vstorage.ping_avg = sum / #vstorage.ping_history
+
+		local variance_sum = 0
+		for _, data in vstorage.ping_history do
+			local diff = data.ping - vstorage.ping_avg
+			variance_sum = variance_sum + (diff * diff)
+		end
+		vstorage.ping_std = math.sqrt(variance_sum / #vstorage.ping_history)
+
+		return current_ping
+	end
+
+	local function calculate_auto_prediction(char, current_speed)
+		local current_ping = update_ping_stats()
+
+		local ping_prediction = vstorage.ping_avg
+		local jitter_compensation = vstorage.ping_std * 0.5
+
+		local speed_factor = 1.0
+		if current_speed > 0 then
+			local normalized_speed = current_speed / 16
+			speed_factor = 0.8 + (normalized_speed * 0.2)
+			speed_factor = math.clamp(speed_factor, 0.5, 2.0)
+		end
+
+		local distance_factor = 1.0
+		if char then
+			local hrp = char:FindFirstChild('HumanoidRootPart')
+			if hrp and stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+				local dist = (hrp.Position - stuff.owner_char.HumanoidRootPart.Position).Magnitude
+				distance_factor = 1.0 + (dist / 1000) * 0.2
+				distance_factor = math.clamp(distance_factor, 1.0, 1.5)
+			end
+		end
+
+		local prediction = (ping_prediction + jitter_compensation) * speed_factor * distance_factor
+		prediction = prediction * vstorage.prediction_multiplier
+		prediction = math.clamp(prediction, 0.01, 0.5)
+		vstorage.calculated_prediction = prediction
+
+		return prediction
+	end
+
+	local function get_target_speed(char)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return 0 end
+
+		local vel = hrp.AssemblyLinearVelocity
+		return Vector3.new(vel.X, 0, vel.Z).Magnitude
+	end
+
+	local function update_velocity_history(char)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return nil end
+
+		local key = tostring(char:GetDebugId())
+		local now = tick()
+		local current_vel = hrp.AssemblyLinearVelocity
+
+		if not vstorage.target_velocity_history[key] then
+			vstorage.target_velocity_history[key] = {
+				samples = {},
+				acceleration = Vector3.zero,
+				last_vel = current_vel,
+				last_time = now
+			}
+		end
+
+		local history = vstorage.target_velocity_history[key]
+
+		table.insert(history.samples, {
+			vel = current_vel,
+			time = now
+		})
+
+		while #history.samples > 10 do
+			table.remove(history.samples, 1)
+		end
+
+		if #history.samples >= 2 then
+			local oldest = history.samples[1]
+			local newest = history.samples[#history.samples]
+			local dt = newest.time - oldest.time
+
+			if dt > 0.05 then
+				history.acceleration = (newest.vel - oldest.vel) / dt
+			end
+		end
+
+		history.last_vel = current_vel
+		history.last_time = now
+
+		return history
+	end
+
+	local function get_smoothed_velocity(char)
+		local history = update_velocity_history(char)
+		if not history or #history.samples == 0 then
+			local hrp = char:FindFirstChild('HumanoidRootPart')
+			return hrp and hrp.AssemblyLinearVelocity or Vector3.zero
+		end
+
+		local weighted_vel = Vector3.zero
+		local total_weight = 0
+
+		for i, sample in history.samples do
+			local weight = i / #history.samples
+			weighted_vel = weighted_vel + sample.vel * weight
+			total_weight = total_weight + weight
+		end
+
+		if total_weight > 0 then
+			weighted_vel = weighted_vel / total_weight
+		end
+
+		return weighted_vel
+	end
+
+	local function predict_p(char, part)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		local hum = char:FindFirstChildOfClass('Humanoid')
+		if not hrp or not part then return part and part.Position or Vector3.zero end
+
+		local current_speed = get_target_speed(char)
+		local prediction_time
+
+		if vstorage.auto_prediction then
+			prediction_time = calculate_auto_prediction(char, current_speed)
+		else
+			prediction_time = vstorage.base_prediction + stuff.owner:GetNetworkPing()
+		end
+
+		local velocity = get_smoothed_velocity(char)
+		local h_vel = Vector3.new(velocity.X, 0, velocity.Z)
+
+		local move_vel = Vector3.zero
+		if hum and hum.MoveDirection.Magnitude > 0.1 then
+			move_vel = hum.MoveDirection.Unit * hum.WalkSpeed
+		end
+
+		local blended_vel
+		if h_vel.Magnitude > 1 then
+			blended_vel = h_vel * 0.65 + move_vel * 0.35
+		else
+			blended_vel = move_vel
+		end
+
+		local history = vstorage.target_velocity_history[tostring(char:GetDebugId())]
+		local acceleration = history and history.acceleration or Vector3.zero
+		local h_accel = Vector3.new(acceleration.X, 0, acceleration.Z)
+
+		if h_accel.Magnitude > 50 then
+			h_accel = h_accel.Unit * 50
+		end
+
+		local part_offset = part.Position - hrp.Position
+		local predicted_hrp = hrp.Position + 
+			blended_vel * prediction_time + 
+			h_accel * 0.5 * prediction_time * prediction_time
+
+		local max_offset = current_speed * prediction_time * 1.5
+		max_offset = math.max(max_offset, 5)
+		local offset = predicted_hrp - hrp.Position
+		if offset.Magnitude > max_offset then
+			predicted_hrp = hrp.Position + offset.Unit * max_offset
+		end
+
+		return predicted_hrp + part_offset
+	end
+
+	local function register_shot_result(hit)
+		table.insert(vstorage.hit_history, {
+			hit = hit,
+			time = tick(),
+			prediction = vstorage.calculated_prediction
+		})
+
+		while #vstorage.hit_history > 20 do
+			table.remove(vstorage.hit_history, 1)
+		end
+
+		local now = tick()
+		if now - vstorage.last_prediction_adjust < 0.5 then return end
+		vstorage.last_prediction_adjust = now
+
+		local recent_hits = 0
+		local recent_shots = 0
+		for _, data in vstorage.hit_history do
+			if now - data.time < 3 then
+				recent_shots = recent_shots + 1
+				if data.hit then recent_hits = recent_hits + 1 end
+			end
+		end
+
+		if recent_shots < 3 then return end
+
+		local hit_rate = recent_hits / recent_shots
+
+		if hit_rate < 0.3 then
+			vstorage.prediction_multiplier = math.min(vstorage.prediction_multiplier * 1.1, 2.0)
+		elseif hit_rate > 0.7 then
+			vstorage.prediction_multiplier = math.max(vstorage.prediction_multiplier * 0.95, 0.5)
 		end
 	end
 
-	local notification_text = `aimbot enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | smooth: {vstorage.smoothness} | priority: {vstorage.target_priority} | part: {vstorage.body_part}`
+	local function get_part(char)
+		if vstorage.target_part == 'closest' then
+			local cam_pos = workspace.CurrentCamera.CFrame.Position
+			local closest = nil
+			local closest_dist = math.huge
+			for _, p in char:GetDescendants() do
+				if p:IsA('BasePart') and p.Name ~= 'HumanoidRootPart' then
+					local d = (cam_pos - p.Position).Magnitude
+					if d < closest_dist then
+						closest_dist = d
+						closest = p
+					end
+				end
+			end
+			return closest
+		end
 
-	if vstorage.resolver then
-		notification_text = notification_text .. ` | resolver: {vstorage.resolver_mode}`
+		if vstorage.target_part == 'random' then
+			local valid = {}
+			for _, n in part_lookup.random do
+				local p = char:FindFirstChild(n)
+				if p then table.insert(valid, p) end
+			end
+			return #valid > 0 and valid[math.random(1, #valid)] or char:FindFirstChild('Head')
+		end
+
+		local names = part_lookup[vstorage.target_part] or part_lookup.head
+		for _, n in names do
+			local p = char:FindFirstChild(n)
+			if p then return p end
+		end
+		return char:FindFirstChild('Head') or char:FindFirstChild('HumanoidRootPart')
 	end
 
-	if not stuff.is_mobile then
-		notification_text = notification_text .. ` | '{vstorage.toggle_key}' to toggle`
+	local function has_los(origin, target_pos, ignore_char)
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {stuff.owner_char, ignore_char}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+
+		local direction = target_pos - origin
+		local result = workspace:Raycast(origin, direction, params)
+		return result == nil
 	end
 
-	notify('aimbot', notification_text, 1)
+	local function is_target_valid(plr)
+		if not plr or plr == stuff.owner then return false end
+		if plr.Team and plr.Team == stuff.owner.Team then return false end
 
-	local body_parts_map = {
-		r6 = {
-			head = {'Head'},
-			torso = {'Torso'}
-		},
-		r15 = {
-			head = {'Head'},
-			torso = {'UpperTorso', 'LowerTorso'}
-		}
-	}
+		local char = plr.Character
+		if not char then return false end
 
-	local function is_player_valid(player)
-		if not player or not player.Character then return false end
-
-		local character = player.Character
-		local humanoid = character:FindFirstChildOfClass('Humanoid')
-
-		if not humanoid then return false end
-
-		local health = stuff.rawrbxget(humanoid, 'Health')
-		if health <= 0 then return false end
-
-		local forcefield = character:FindFirstChild('ForceField')
-		if forcefield then return false end
+		local hum = char:FindFirstChildOfClass('Humanoid')
+		if not hum or hum.Health <= 0 then return false end
+		if char:FindFirstChildOfClass('ForceField') then return false end
 
 		return true
 	end
 
-	local function get_body_part(character, part_type)
-		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
-		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
+	local function calculate_threat(candidate)
+		local threat = 0
 
-		if part_type == 'random' then
-			local all_parts = {}
-			for _, part_list in pairs(parts_table) do
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						table.insert(all_parts, part)
-					end
-				end
+		threat = threat + (1 / (candidate.world_dist + 1)) * 50
+		threat = threat + ((100 - candidate.health) / 100) * 20
+
+		if candidate.has_tool then
+			threat = threat + 30
+		end
+
+		local look_dir = candidate.char:FindFirstChild('HumanoidRootPart')
+		if look_dir and stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+			local to_me = (stuff.owner_char.HumanoidRootPart.Position - look_dir.Position).Unit
+			local their_look = look_dir.CFrame.LookVector
+			local dot = to_me:Dot(their_look)
+			if dot > 0.7 then
+				threat = threat + 25
 			end
-			return all_parts[math.random(1, #all_parts)]
-		elseif part_type == 'closest' then
-			local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-			local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-			local closest_part = nil
-			local closest_dist = math.huge
+		end
 
-			for _, part_list in pairs(parts_table) do
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						local part_pos = stuff.rawrbxget(part, 'Position')
-						local dist = (cam_pos - part_pos).Magnitude
-						if dist < closest_dist then
-							closest_dist = dist
-							closest_part = part
+		return threat
+	end
+
+	local function ease_out_quad(t)
+		return 1 - (1 - t) * (1 - t)
+	end
+
+	local function get_best_target()
+		local camera = workspace.CurrentCamera
+		local center = camera.ViewportSize / 2
+		local cam_pos = camera.CFrame.Position
+		local now = tick()
+
+		if vstorage.sticky and vstorage.locked_player then
+			if is_target_valid(vstorage.locked_player) then
+				local char = vstorage.locked_player.Character
+				local part = get_part(char)
+				if part then
+					local world_dist = (cam_pos - part.Position).Magnitude
+					if world_dist <= vstorage.max_distance * 1.2 then
+						if not vstorage.wallcheck or has_los(cam_pos, part.Position, char) then
+							local predicted = predict_p(char, part)
+							return {
+								player = vstorage.locked_player,
+								character = char,
+								part = part,
+								predicted = predicted,
+								is_locked = true
+							}
 						end
 					end
 				end
 			end
-			return closest_part
-		else
-			local part_list = parts_table[part_type]
-			if part_list then
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						return part
-					end
-				end
-			end
+			vstorage.locked_player = nil
 		end
 
-		return character:FindFirstChild('Head')
-	end
+		local candidates = {}
 
-	local function get_target_data(player)
-		if not vstorage.target_data[player] then
-			vstorage.target_data[player] = {
-				positions = {},
-				velocities = {},
-				last_update = tick(),
-				movement_pattern = 'linear',
-				strafe_direction = 0,
-				jump_count = 0,
-				last_jump = 0
+		for _, plr in services.players:GetPlayers() do
+			if not is_target_valid(plr) then continue end
+
+			local char = plr.Character
+			local part = get_part(char)
+			if not part then continue end
+
+			local world_dist = (cam_pos - part.Position).Magnitude
+			if world_dist > vstorage.max_distance then continue end
+
+			local predicted = predict_p(char, part)
+			local screen, visible = camera:WorldToViewportPoint(predicted)
+			if not visible or screen.Z <= 0 then continue end
+
+			local screen_dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+			if screen_dist > vstorage.fov_radius then continue end
+
+			if vstorage.wallcheck and not has_los(cam_pos, part.Position, char) then
+				continue
+			end
+
+			local hum = char:FindFirstChildOfClass('Humanoid')
+			local has_tool = char:FindFirstChildOfClass('Tool') ~= nil
+
+			local candidate = {
+				player = plr,
+				char = char,
+				part = part,
+				predicted = predicted,
+				screen_dist = screen_dist,
+				world_dist = world_dist,
+				health = hum and hum.Health or 100,
+				has_tool = has_tool
 			}
-		end
-		return vstorage.target_data[player]
-	end
 
-	local function update_target_data(player, position, velocity)
-		local data = get_target_data(player)
-		local current_time = tick()
+			candidate.threat = calculate_threat(candidate)
 
-		table.insert(data.positions, {pos = position, time = current_time})
-		table.insert(data.velocities, velocity)
-
-		if #data.positions > 10 then
-			table.remove(data.positions, 1)
-			table.remove(data.velocities, 1)
+			table.insert(candidates, candidate)
 		end
 
-		if velocity.Y > 20 and current_time - data.last_jump > 0.5 then
-			data.jump_count = data.jump_count + 1
-			data.last_jump = current_time
+		if #candidates == 0 then return nil end
+
+		table.sort(candidates, function(a, b)
+			if vstorage.priority == 'distance' then
+				return a.world_dist < b.world_dist
+			elseif vstorage.priority == 'health' then
+				return a.health < b.health
+			elseif vstorage.priority == 'threat' then
+				return a.threat > b.threat
+			end
+			return a.screen_dist < b.screen_dist
+		end)
+
+		local best = candidates[1]
+
+		if vstorage.sticky and now - vstorage.last_switch > 0.5 then
+			vstorage.locked_player = best.player
+			vstorage.last_switch = now
 		end
 
-		if #data.positions >= 3 then
-			local prev_vel = data.velocities[#data.velocities - 1]
-			if prev_vel then
-				local vel_change = Vector3.new(velocity.X - prev_vel.X, 0, velocity.Z - prev_vel.Z)
-				if vel_change.Magnitude > 5 then
-					data.strafe_direction = data.strafe_direction + (vel_change.X > 0 and 1 or -1)
-				end
-			end
-		end
-
-		if #data.positions >= 5 then
-			local is_circular = true
-			local avg_turn = 0
-			for i = 2, #data.positions - 1 do
-				local v1 = (data.positions[i].pos - data.positions[i-1].pos).Unit
-				local v2 = (data.positions[i+1].pos - data.positions[i].pos).Unit
-				local dot = v1:Dot(v2)
-				avg_turn = avg_turn + math.acos(math.clamp(dot, -1, 1))
-			end
-			avg_turn = avg_turn / (#data.positions - 2)
-
-			if avg_turn > 0.3 then
-				data.movement_pattern = 'circular'
-			elseif math.abs(data.strafe_direction) > 3 then
-				data.movement_pattern = 'strafe'
-			else
-				data.movement_pattern = 'linear'
-			end
-		end
-
-		data.last_update = current_time
-	end
-
-	local function resolve_position(player, target_part, current_pos, current_vel)
-		local data = get_target_data(player)
-		local ping = stuff.owner:GetNetworkPing()
-		local base_prediction = ping + vstorage.resolver_amount
-
-		if vstorage.resolver_mode == 'velocity' then
-			return current_pos + (current_vel * base_prediction)
-
-		elseif vstorage.resolver_mode == 'pattern' then
-			if data.movement_pattern == 'circular' and #data.positions >= 3 then
-				local center = Vector3.zero
-				for _, pos_data in ipairs(data.positions) do
-					center = center + pos_data.pos
-				end
-				center = center / #data.positions
-
-				local radius = (current_pos - center).Magnitude
-				local current_angle = math.atan2(current_pos.Z - center.Z, current_pos.X - center.X)
-				local angular_velocity = current_vel.Magnitude / math.max(radius, 0.1)
-				local predicted_angle = current_angle + (angular_velocity * base_prediction)
-
-				return center + Vector3.new(
-					math.cos(predicted_angle) * radius,
-					current_pos.Y + (current_vel.Y * base_prediction),
-					math.sin(predicted_angle) * radius
-				)
-
-			elseif data.movement_pattern == 'strafe' then
-				local strafe_factor = data.strafe_direction > 0 and 1.2 or 0.8
-				return current_pos + (current_vel * base_prediction * strafe_factor)
-			else
-				return current_pos + (current_vel * base_prediction)
-			end
-
-		elseif vstorage.resolver_mode == 'delta' then
-			if #data.velocities >= 2 then
-				local vel_delta = data.velocities[#data.velocities] - data.velocities[#data.velocities - 1]
-				local predicted_vel = current_vel + vel_delta
-				return current_pos + (predicted_vel * base_prediction)
-			end
-			return current_pos + (current_vel * base_prediction)
-
-		else
-			local vel_prediction = current_pos + (current_vel * base_prediction)
-
-			if data.movement_pattern == 'circular' and #data.positions >= 3 then
-				local center = Vector3.zero
-				for _, pos_data in ipairs(data.positions) do
-					center = center + pos_data.pos
-				end
-				center = center / #data.positions
-
-				local radius = (current_pos - center).Magnitude
-				local current_angle = math.atan2(current_pos.Z - center.Z, current_pos.X - center.X)
-				local angular_velocity = current_vel.Magnitude / math.max(radius, 0.1)
-				local predicted_angle = current_angle + (angular_velocity * base_prediction)
-
-				local pattern_prediction = center + Vector3.new(
-					math.cos(predicted_angle) * radius,
-					current_pos.Y + (current_vel.Y * base_prediction),
-					math.sin(predicted_angle) * radius
-				)
-
-				return vel_prediction:Lerp(pattern_prediction, 0.6)
-			end
-
-			if #data.velocities >= 2 then
-				local vel_delta = data.velocities[#data.velocities] - data.velocities[#data.velocities - 1]
-				local delta_prediction = current_pos + ((current_vel + vel_delta) * base_prediction)
-				return vel_prediction:Lerp(delta_prediction, 0.4)
-			end
-
-			return vel_prediction
-		end
-	end
-
-	local function get_aimbot_target()
-		local mouse = stuff.owner:GetMouse()
-		local mouse_pos = Vector2.new(mouse.X, mouse.Y)
-		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-
-		local closest_player = nil
-		local closest_distance = vstorage.radius
-
-		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if is_player_valid(plr) and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
-					local target_part = get_body_part(plr.Character, vstorage.body_part)
-					if not target_part then continue end
-
-					local owner_head = stuff.owner_char and stuff.owner_char:FindFirstChild('Head')
-					if not owner_head then continue end
-
-					local part_pos = stuff.rawrbxget(target_part, 'Position')
-					local owner_head_pos = stuff.rawrbxget(owner_head, 'Position')
-					local world_distance = (owner_head_pos - part_pos).Magnitude
-
-					if world_distance <= vstorage.aim_range then
-						local screen_pos, on_screen = cam:WorldToViewportPoint(part_pos)
-
-						if on_screen and screen_pos.Z > 0 then
-							local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
-							local distance = (mouse_pos - screen_2d).Magnitude
-
-							if distance < closest_distance then
-								if vstorage.wallcheck then
-									local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-									local direction = (part_pos - cam_pos).Unit
-									local ray_params = RaycastParams.new()
-									ray_params.FilterDescendantsInstances = {stuff.owner_char}
-									ray_params.FilterType = Enum.RaycastFilterType.Exclude
-									ray_params.IgnoreWater = true
-
-									local ray_result = workspace:Raycast(cam_pos, direction * world_distance, ray_params)
-
-									if ray_result then
-										if ray_result.Instance:IsDescendantOf(plr.Character) then
-											closest_distance = distance
-											closest_player = plr
-										end
-									else
-										closest_distance = distance
-										closest_player = plr
-									end
-								else
-									closest_distance = distance
-									closest_player = plr
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-
-		return closest_player
+		return {
+			player = best.player,
+			character = best.char,
+			part = best.part,
+			predicted = best.predicted,
+			screen_dist = best.screen_dist,
+			is_locked = false
+		}
 	end
 
 	if not stuff.is_mobile then
-		maid.add('aimbot_toggle', services.user_input_service.InputBegan, function(input, processed)
-			if input.KeyCode == Enum.KeyCode[vstorage.toggle_key] and not processed then
+		maid.add('aimbot_toggle', services.user_input_service.InputBegan, function(input, gpe)
+			if gpe then return end
+			if input.KeyCode == vstorage.toggle_key then
 				vstorage.active = not vstorage.active
+				vstorage.locked_player = nil
 				notify('aimbot', vstorage.active and 'activated' or 'deactivated', 1)
 			end
 		end)
 	end
 
-	maid.add('aimbot', services.run_service.RenderStepped, function(delta_time)
-		if not vstorage.active then 
-			vstorage.current_target = nil
-			return 
-		end
+	maid.add('aimbot_shot_detect', services.user_input_service.InputBegan, function(input, gpe)
+		if gpe then return end
+		if not vstorage.active or not vstorage.auto_prediction then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
-		local target = get_aimbot_target()
+		local target = vstorage.current_target
+		if not target then return end
 
-		if not target or not target.Character or not target.Character:FindFirstChild('Head') then
+		task.delay(0.1, function()
+			if not target or not target.Parent then return end
+
+			local hum = target:FindFirstChildOfClass('Humanoid')
+			if not hum then return end
+
+			local current_health = hum.Health
+			task.wait(0.05)
+			if hum.Parent and hum.Health < current_health then
+				register_shot_result(true)
+			else
+				register_shot_result(false)
+			end
+		end)
+	end)
+
+	maid.add('aimbot', services.run_service.RenderStepped, function(dt)
+		if not vstorage.active or not stuff.owner_char then
 			vstorage.current_target = nil
 			return
 		end
 
-		vstorage.current_target = target
-
-		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
-		local camera_cframe = stuff.rawrbxget(camera, 'CFrame')
-		local target_head = target.Character.Head
-		local target_position = stuff.rawrbxget(target_head, 'Position')
-
-		if vstorage.resolver then
-			local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
-			if target_hrp then
-				local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
-
-				update_target_data(target, target_position, target_velocity)
-				target_position = resolve_position(target, target_head, target_position, target_velocity)
-			end
-		else
-			local target_humanoid = target.Character:FindFirstChildOfClass('Humanoid')
-			if target_humanoid then
-				local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
-
-				if move_direction.Magnitude > 0 then
-					local target_hrp = target.Character:FindFirstChild('HumanoidRootPart')
-					if target_hrp then
-						local target_velocity = stuff.rawrbxget(target_hrp, 'AssemblyLinearVelocity')
-						local ping = stuff.owner:GetNetworkPing()
-						local prediction_time = 0.1 + ping
-
-						target_position = target_position + (target_velocity * prediction_time)
-					end
-				end
-			end
+		local target = get_best_target()
+		if not target then
+			vstorage.current_target = nil
+			vstorage.smooth_offset = vstorage.smooth_offset:Lerp(Vector2.zero, 0.1)
+			return
 		end
 
-		local goal_cframe = CFrame.lookAt(camera_cframe.Position, target_position)
-		local smoothed_cframe = camera_cframe:Lerp(goal_cframe, vstorage.smoothness)
+		vstorage.current_target = target.character
 
-		stuff.rawrbxset(camera, 'CFrame', smoothed_cframe)
+		local camera = workspace.CurrentCamera
+		local goal = CFrame.lookAt(camera.CFrame.Position, target.predicted)
+
+		local current_look = camera.CFrame.LookVector
+		local goal_look = goal.LookVector
+		local angle_diff = math.acos(math.clamp(current_look:Dot(goal_look), -1, 1))
+
+		local base_smooth = vstorage.smoothness
+
+		local dist_factor = math.clamp(target.screen_dist / vstorage.fov_radius, 0, 1)
+		local adaptive_smooth = base_smooth * (0.5 + dist_factor * 0.5)
+
+		if angle_diff < math.rad(2) then
+			adaptive_smooth = adaptive_smooth * 1.5
+		end
+
+		adaptive_smooth = ease_out_quad(adaptive_smooth)
+
+		if vstorage.humanize then
+			local noise_x = math.sin(tick() * 8) * 0.002
+			local noise_y = math.cos(tick() * 6) * 0.002
+			vstorage.smooth_offset = vstorage.smooth_offset:Lerp(Vector2.new(noise_x, noise_y), 0.1)
+
+			adaptive_smooth = adaptive_smooth + (math.random() - 0.5) * 0.02
+			adaptive_smooth = math.clamp(adaptive_smooth, 0.01, 1)
+		else
+			vstorage.smooth_offset = Vector2.zero
+		end
+
+		local new_cf = camera.CFrame:Lerp(goal, adaptive_smooth)
+
+		if vstorage.humanize and vstorage.smooth_offset.Magnitude > 0.0001 then
+			new_cf = new_cf * CFrame.Angles(vstorage.smooth_offset.Y, vstorage.smooth_offset.X, 0)
+		end
+
+		camera.CFrame = new_cf
 	end)
 
-	if vstorage.resolver then
-		maid.add('aimbot_cleanup', services.run_service.Heartbeat, function()
-			local current_time = tick()
-			for player, data in pairs(vstorage.target_data) do
-				if current_time - data.last_update > 5 then
-					vstorage.target_data[player] = nil
-				end
-			end
-		end)
+	maid.add('aimbot_cleanup', stuff.owner.CharacterAdded, function()
+		vstorage.velocity_cache = {}
+		vstorage.target_velocity_history = {}
+		vstorage.locked_player = nil
+		vstorage.ping_history = {}
+		vstorage.hit_history = {}
+		vstorage.prediction_multiplier = 1.0
+	end)
+
+	local key_name = tostring(vstorage.toggle_key):split('.')[3]
+	local pred_str = vstorage.auto_prediction and 'auto' or tostring(vstorage.base_prediction)
+	local msg = `enabled | fov: {vstorage.fov}° | smooth: {vstorage.smoothness} | prediction: {pred_str} | priority: {vstorage.priority}`
+	if not stuff.is_mobile then
+		msg ..= ` | toggle: {key_name}`
 	end
+	notify('aimbot', msg, 1)
 end)
 
-cmd_library.add({'unaimbot', 'unaim'}, 'disables aimbot', {}, function(vstorage)
-	local aimbot_vs = cmd_library.get_variable_storage('aimbot')
-
-	if not aimbot_vs.enabled then
-		return notify('aimbot', 'aimbot not enabled', 2)
+cmd_library.add({'unaimbot', 'unaim'}, 'disables aimbot', {}, function()
+	local vs = cmd_library.get_variable_storage('aimbot')
+	if not vs.enabled then
+		return notify('aimbot', 'not enabled', 2)
 	end
 
-	aimbot_vs.enabled = false
-	aimbot_vs.active = false
+	vs.enabled = false
+	vs.active = false
+	vs.current_target = nil
+	vs.locked_player = nil
+	vs.velocity_cache = {}
+	vs.target_velocity_history = {}
+	vs.ping_history = {}
+	vs.hit_history = {}
 	maid.remove('aimbot')
 	maid.remove('aimbot_toggle')
 	maid.remove('aimbot_cleanup')
-	notify('aimbot', 'aimbot disabled', 1)
+	maid.remove('aimbot_shot_detect')
+	notify('aimbot', 'disabled', 1)
 end)
 
-cmd_library.add({'antiaim', 'aa'}, 'makes your character harder to hit', {
-	{'mode', 'string'},
-	{'speed', 'number'},
-	{'bypass_mode', 'boolean'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, mode, speed, bypass, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unantiaim')
-		return
-	end
-
-	if vstorage.enabled then
-		return notify('antiaim', 'antiaim already enabled', 2)
-	end
-
-	local valid_modes = {'jitter', 'spin', 'desync', 'random', 'strafe', 'offset'}
-	mode = mode and mode:lower() or 'jitter'
-
-	if not table.find(valid_modes, mode) then
-		return notify('antiaim', `invalid mode '{mode}'. valid modes: {table.concat(valid_modes, ', ')}`, 2)
-	end
-
-	vstorage.enabled = true
-	vstorage.mode = mode
-	vstorage.speed = speed or 20
-	vstorage.bypass = bypass
-	vstorage.angle = 0
-	vstorage.tick_count = 0
-	vstorage.desync_offset = CFrame.new()
-	vstorage.lag_positions = {}
-	vstorage.lag_tick = 0
-
-	notify('antiaim', `antiaim enabled | mode: {vstorage.mode} | speed: {vstorage.speed}{bypass and ' (bypass)' or ''}`, 1)
-
-	local function setup_antiaim()
-		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-		if not hrp then
-			return
-		end
-
-		maid.remove('antiaim')
-
-		if vstorage.bypass then
-			hook_lib.destroy_hook('antiaim_bypass')
-
-			hook_lib.create_hook('antiaim_bypass', {
-				index = function(self, key)
-					if self == hrp then
-						if key == 'CFrame' or key == 'cframe' then
-							local real_cf = stuff.rawrbxget(hrp, 'CFrame')
-							return CFrame.new(real_cf.Position)
-						elseif key == 'Orientation' then
-							return Vector3.new(0, 0, 0)
-						end
-					end
-				end,
-
-				newindex = function(self, key, value)
-					if self == hrp and (key == 'CFrame' or key == 'Position') then
-						return false
-					end
-				end
-			})
-		end
-
-		if vstorage.mode == 'jitter' then
-			local angles = {-180, 180, -90, 90, -135, 135, -45, 45}
-			local current_index = 1
-
-			maid.add('antiaim', services.run_service.Heartbeat, function()
-				if not vstorage.enabled then return end
-
-				vstorage.tick_count = vstorage.tick_count + 1
-
-				if vstorage.tick_count % math.max(1, math.floor(60 / vstorage.speed)) == 0 then
-					current_index = math.random(1, #angles)
-				end
-
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-				if hrp then
-					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(angles[current_index]), 0)
-					stuff.rawrbxset(hrp, 'CFrame', new_cf)
-				end
-			end)
-
-		elseif vstorage.mode == 'spin' then
-			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
-				if not vstorage.enabled then return end
-
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-				if hrp then
-					vstorage.angle = (vstorage.angle + (vstorage.speed * dt * 10)) % 360
-					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(vstorage.angle), 0)
-					stuff.rawrbxset(hrp, 'CFrame', new_cf)
-				end
-			end)
-
-		elseif vstorage.mode == 'desync' then
-			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
-				if not vstorage.enabled then return end
-
-				vstorage.tick_count = vstorage.tick_count + 1
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-
-				if hrp then
-					local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-					local move_dir = stuff.rawrbxget(humanoid, 'MoveDirection')
-
-					local base_angle = 0
-					if move_dir.Magnitude > 0 then
-						base_angle = math.atan2(move_dir.Z, move_dir.X)
-					end
-
-					local desync_angle = base_angle + math.rad(90 + (math.sin(vstorage.tick_count * 0.1) * 90))
-
-					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-					local offset_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, desync_angle, 0)
-					stuff.rawrbxset(hrp, 'CFrame', offset_cf)
-				end
-			end)
-
-		elseif vstorage.mode == 'random' then
-			maid.add('antiaim', services.run_service.Heartbeat, function()
-				if not vstorage.enabled then return end
-
-				vstorage.tick_count = vstorage.tick_count + 1
-
-				if vstorage.tick_count % math.max(1, math.floor(60 / vstorage.speed)) == 0 then
-					vstorage.angle = math.random(-180, 180)
-				end
-
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-				if hrp then
-					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-					local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(vstorage.angle), 0)
-					stuff.rawrbxset(hrp, 'CFrame', new_cf)
-				end
-			end)
-
-		elseif vstorage.mode == 'strafe' then
-			local strafe_direction = 1
-
-			maid.add('antiaim', services.run_service.Heartbeat, function(dt)
-				if not vstorage.enabled then return end
-
-				vstorage.tick_count = vstorage.tick_count + 1
-
-				if vstorage.tick_count % math.floor(60 / vstorage.speed) == 0 then
-					strafe_direction = -strafe_direction
-				end
-
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-				if hrp then
-					local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-					local move_dir = stuff.rawrbxget(humanoid, 'MoveDirection')
-
-					if move_dir.Magnitude > 0 then
-						local move_angle = math.atan2(move_dir.Z, move_dir.X)
-						local strafe_angle = move_angle + (math.rad(90) * strafe_direction)
-
-						local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-						local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, strafe_angle, 0)
-						stuff.rawrbxset(hrp, 'CFrame', new_cf)
-					else
-						local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-						local new_cf = CFrame.new(current_cf.Position) * CFrame.Angles(0, math.rad(90 * strafe_direction), 0)
-						stuff.rawrbxset(hrp, 'CFrame', new_cf)
-					end
-				end
-			end)
-
-		elseif vstorage.mode == 'offset' then
-			local offset_table = {
-				Vector3.new(3, 0, 0),
-				Vector3.new(-3, 0, 0),
-				Vector3.new(0, 0, 3),
-				Vector3.new(0, 0, -3),
-				Vector3.new(2, 0, 2),
-				Vector3.new(-2, 0, -2)
-			}
-			local current_offset = 1
-
-			maid.add('antiaim', services.run_service.Heartbeat, function()
-				if not vstorage.enabled then return end
-
-				vstorage.tick_count = vstorage.tick_count + 1
-
-				if vstorage.tick_count % math.floor(60 / vstorage.speed) == 0 then
-					current_offset = (current_offset % #offset_table) + 1
-				end
-
-				local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-				if hrp then
-					local current_cf = stuff.rawrbxget(hrp, 'CFrame')
-					local new_cf = current_cf + offset_table[current_offset]
-					stuff.rawrbxset(hrp, 'CFrame', new_cf)
-				end
-			end)
-		end
-	end
-
-	setup_antiaim()
-
-	maid.add('antiaim_died', stuff.owner_char.Humanoid.Died, function()
-		if not vstorage.enabled then return end
-		maid.remove('antiaim')
-		if vstorage.bypass then
-			hook_lib.destroy_hook('antiaim_bypass')
-		end
-	end)
-
-	maid.add('antiaim_char_added', stuff.owner.CharacterAdded, function(char)
-		if not vstorage.enabled then return end
-
-		char:WaitForChild('Humanoid')
-		char:WaitForChild('HumanoidRootPart')
-		task.wait(0.2)
-
-		vstorage.tick_count = 0
-		vstorage.angle = 0
-		vstorage.lag_positions = {}
-
-		setup_antiaim()
-		notify('antiaim', 'antiaim reapplied after respawn', 1)
-	end)
-end)
-
-cmd_library.add({'unantiaim', 'unaa'}, 'disables antiaim', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('antiaim')
-
-	if not vstorage.enabled then
-		return notify('antiaim', 'antiaim not enabled', 2)
-	end
-
-	vstorage.enabled = false
-	maid.remove('antiaim')
-	maid.remove('antiaim_died')
-	maid.remove('antiaim_char_added')
-
-	if vstorage.bypass then
-		hook_lib.destroy_hook('antiaim_bypass')
-	end
-
-	local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-	if hrp then
-		local current_pos = stuff.rawrbxget(hrp, 'Position')
-		stuff.rawrbxset(hrp, 'CFrame', CFrame.new(current_pos))
-	end
-
-	notify('antiaim', 'antiaim disabled', 1)
-end)
-
--- thank you, Averiias (github.com/Averiias/Universal-SilentAim)
-cmd_library.add({'silentaim'}, 'silent aim at nearest player', {
+cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (basically aimbot with triggerbot and without smoothing yes) (set prediction to "auto" or "automatic" instead of a number for automatic prediction)', {
+	{'toggle_key', 'string'},
 	{'fov', 'number'},
-	{'wallcheck', 'boolean'},
-	{'aim_range', 'number'},
-	{'hit_chance', 'number'},
-	{'prediction', 'number'},
-	{'target_priority', 'string'},
-	{'body_part', 'string'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, fov, wallcheck, aim_range, hit_chance, prediction, target_priority, body_part, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unsilentaim')
-		return
-	end
-
+	{'max_distance', 'number'},
+	{'target_part', 'string'},
+	{'prediction', 'string'},
+	{'priority', 'string'},
+	{'auto_fire', 'boolean'}
+}, function(vstorage, toggle_key, fov, max_distance, target_part, prediction, priority, auto_fire)
 	if vstorage.enabled then
-		return notify('silentaim', 'silent aim already enabled', 2)
+		return notify('rageaim', 'already enabled', 2)
 	end
 
 	vstorage.enabled = true
-	vstorage.fov = fov or 90
-	vstorage.radius = fov_to_radius(vstorage.fov)
-	vstorage.aim_range = aim_range or 300
-	vstorage.wallcheck = wallcheck ~= false
-	vstorage.hit_chance = hit_chance or 100
-	vstorage.prediction = prediction or 0.165
-	vstorage.target_priority = target_priority or 'closest'
-	vstorage.body_part = body_part or 'head'
+	vstorage.active = stuff.is_mobile
+	vstorage.toggle_key = toggle_key and Enum.KeyCode[toggle_key:gsub('^%l', string.upper)] or Enum.KeyCode.Q
+	vstorage.fov = fov or 180
+	vstorage.fov_radius = fov_to_radius(vstorage.fov)
+	vstorage.max_distance = max_distance or 2000
+	vstorage.target_part = (target_part or 'head'):lower()
+	vstorage.priority = (priority or 'fov'):lower()
+	vstorage.auto_fire = auto_fire or false
+	vstorage.locked_target = nil
+	vstorage.locked_player = nil
+	vstorage.last_fire = 0
+	vstorage.last_switch = 0
 
-	local valid_priorities = {'closest', 'lowesthealth', 'highesthealth', 'mostthreat'}
-	if not table.find(valid_priorities, vstorage.target_priority) then
-		vstorage.target_priority = 'closest'
-	end
+	vstorage.auto_prediction = prediction == nil or prediction == 'auto' or prediction == 'automatic'
+	vstorage.base_prediction = tonumber(prediction) or 0.15
+	vstorage.ping_history = {}
+	vstorage.ping_avg = 0
+	vstorage.ping_std = 0
+	vstorage.hit_history = {}
+	vstorage.prediction_multiplier = 1.0
+	vstorage.last_prediction_adjust = 0
+	vstorage.target_velocity_history = {}
+	vstorage.calculated_prediction = 0.15
 
-	local valid_body_parts = {'head', 'torso', 'random', 'closest'}
-	if not table.find(valid_body_parts, vstorage.body_part) then
-		vstorage.body_part = 'head'
-	end
-
-	notify('silentaim', `silent aim enabled | fov: {vstorage.fov} | range: {vstorage.aim_range} | wallcheck: {vstorage.wallcheck} | chance: {vstorage.hit_chance}% | priority: {vstorage.target_priority} | part: {vstorage.body_part}`, 1)
-
-	local body_parts_map = {
-		r6 = {
-			head = {'Head'},
-			torso = {'Torso'}
-		},
-		r15 = {
-			head = {'Head'},
-			torso = {'UpperTorso', 'LowerTorso'}
-		}
+	local part_lookup = {
+		head = {'Head'},
+		torso = {'UpperTorso', 'Torso', 'LowerTorso'},
+		pelvis = {'LowerTorso', 'Torso'},
+		random = {'Head', 'UpperTorso', 'Torso'},
+		closest = nil
 	}
+	
+	if not part_lookup[vstorage.target_part] then
+		notify('rageaim', 'invalid target part, setting to closest', 3)
+		vstorage.target_part = 'closest'
+	end
+	
+	if not table.find({'fov', 'distance', 'speed', 'none'}, vstorage.priority) then
+		notify('rageaim', 'invalid priority, setting to fov', 3)
+		vstorage.priority = 'fov'
+	end
 
-	local function is_player_valid(player)
-		if not player or not player.Character then return false end
+	local function update_ping_stats()
+		local current_ping = stuff.owner:GetNetworkPing()
 
-		local character = player.Character
-		local humanoid = character:FindFirstChildOfClass('Humanoid')
+		table.insert(vstorage.ping_history, {
+			ping = current_ping,
+			time = tick()
+		})
 
-		if not humanoid then return false end
+		while #vstorage.ping_history > 60 do
+			table.remove(vstorage.ping_history, 1)
+		end
 
-		local health = stuff.rawrbxget(humanoid, 'Health')
-		if health <= 0 then return false end
+		local sum = 0
+		for _, data in vstorage.ping_history do
+			sum = sum + data.ping
+		end
+		vstorage.ping_avg = sum / #vstorage.ping_history
 
-		local forcefield = character:FindFirstChild('ForceField')
-		if forcefield then return false end
+		local variance_sum = 0
+		for _, data in vstorage.ping_history do
+			local diff = data.ping - vstorage.ping_avg
+			variance_sum = variance_sum + (diff * diff)
+		end
+		vstorage.ping_std = math.sqrt(variance_sum / #vstorage.ping_history)
+
+		return current_ping
+	end
+
+	local function get_target_speed(char)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return 0 end
+		local vel = hrp.AssemblyLinearVelocity
+		return Vector3.new(vel.X, 0, vel.Z).Magnitude
+	end
+
+	local function calculate_auto_prediction(char, current_speed)
+		update_ping_stats()
+
+		local ping_prediction = vstorage.ping_avg
+		local jitter_compensation = vstorage.ping_std * 0.5
+
+		local speed_factor = 1.0
+		if current_speed > 0 then
+			local normalized_speed = current_speed / 16
+			speed_factor = 0.8 + (normalized_speed * 0.25)
+			speed_factor = math.clamp(speed_factor, 0.5, 2.5)
+		end
+
+		local distance_factor = 1.0
+		if char then
+			local hrp = char:FindFirstChild('HumanoidRootPart')
+			if hrp and stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+				local dist = (hrp.Position - stuff.owner_char.HumanoidRootPart.Position).Magnitude
+				distance_factor = 1.0 + (dist / 800) * 0.3
+				distance_factor = math.clamp(distance_factor, 1.0, 1.8)
+			end
+		end
+
+		local prediction = (ping_prediction + jitter_compensation) * speed_factor * distance_factor
+		prediction = prediction * vstorage.prediction_multiplier
+		prediction = math.clamp(prediction, 0.02, 0.6)
+
+		vstorage.calculated_prediction = prediction
+		return prediction
+	end
+
+	local function update_velocity_history(char)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return nil end
+
+		local key = tostring(char:GetDebugId())
+		local now = tick()
+		local current_vel = hrp.AssemblyLinearVelocity
+
+		if not vstorage.target_velocity_history[key] then
+			vstorage.target_velocity_history[key] = {
+				samples = {},
+				acceleration = Vector3.zero,
+				last_vel = current_vel,
+				last_time = now
+			}
+		end
+
+		local history = vstorage.target_velocity_history[key]
+
+		table.insert(history.samples, {
+			vel = current_vel,
+			time = now
+		})
+
+		while #history.samples > 10 do
+			table.remove(history.samples, 1)
+		end
+
+		if #history.samples >= 2 then
+			local oldest = history.samples[1]
+			local newest = history.samples[#history.samples]
+			local dt = newest.time - oldest.time
+
+			if dt > 0.05 then
+				history.acceleration = (newest.vel - oldest.vel) / dt
+			end
+		end
+
+		history.last_vel = current_vel
+		history.last_time = now
+
+		return history
+	end
+
+	local function get_smoothed_velocity(char)
+		local history = update_velocity_history(char)
+		if not history or #history.samples == 0 then
+			local hrp = char:FindFirstChild('HumanoidRootPart')
+			return hrp and hrp.AssemblyLinearVelocity or Vector3.zero
+		end
+
+		local weighted_vel = Vector3.zero
+		local total_weight = 0
+
+		for i, sample in history.samples do
+			local weight = i / #history.samples
+			weighted_vel = weighted_vel + sample.vel * weight
+			total_weight = total_weight + weight
+		end
+
+		if total_weight > 0 then
+			weighted_vel = weighted_vel / total_weight
+		end
+
+		return weighted_vel
+	end
+
+	local function predict_advanced(char, part)
+		local hrp = char:FindFirstChild('HumanoidRootPart')
+		local hum = char:FindFirstChildOfClass('Humanoid')
+		if not hrp or not part then return part and part.Position or Vector3.zero end
+
+		local current_speed = get_target_speed(char)
+		local prediction_time
+
+		if vstorage.auto_prediction then
+			prediction_time = calculate_auto_prediction(char, current_speed)
+		else
+			prediction_time = vstorage.base_prediction + stuff.owner:GetNetworkPing()
+		end
+
+		local velocity = get_smoothed_velocity(char)
+		local h_vel = Vector3.new(velocity.X, 0, velocity.Z)
+
+		local move_vel = Vector3.zero
+		if hum and hum.MoveDirection.Magnitude > 0.1 then
+			move_vel = hum.MoveDirection.Unit * hum.WalkSpeed
+		end
+
+		local blended_vel
+		if h_vel.Magnitude > 1 then
+			blended_vel = h_vel * 0.7 + move_vel * 0.3
+		else
+			blended_vel = move_vel
+		end
+
+		local history = vstorage.target_velocity_history[tostring(char:GetDebugId())]
+		local acceleration = history and history.acceleration or Vector3.zero
+		local h_accel = Vector3.new(acceleration.X, 0, acceleration.Z)
+
+		if h_accel.Magnitude > 80 then
+			h_accel = h_accel.Unit * 80
+		end
+
+		local part_offset = part.Position - hrp.Position
+		local predicted_hrp = hrp.Position + 
+			blended_vel * prediction_time + 
+			h_accel * 0.5 * prediction_time * prediction_time
+
+		local max_offset = current_speed * prediction_time * 2
+		max_offset = math.max(max_offset, 8)
+		local offset = predicted_hrp - hrp.Position
+		if offset.Magnitude > max_offset then
+			predicted_hrp = hrp.Position + offset.Unit * max_offset
+		end
+
+		return predicted_hrp + part_offset
+	end
+
+	local function register_shot_result(hit)
+		table.insert(vstorage.hit_history, {
+			hit = hit,
+			time = tick(),
+			prediction = vstorage.calculated_prediction
+		})
+
+		while #vstorage.hit_history > 20 do
+			table.remove(vstorage.hit_history, 1)
+		end
+
+		local now = tick()
+		if now - vstorage.last_prediction_adjust < 0.5 then return end
+		vstorage.last_prediction_adjust = now
+
+		local recent_hits = 0
+		local recent_shots = 0
+		for _, data in vstorage.hit_history do
+			if now - data.time < 3 then
+				recent_shots = recent_shots + 1
+				if data.hit then recent_hits = recent_hits + 1 end
+			end
+		end
+
+		if recent_shots < 3 then return end
+
+		local hit_rate = recent_hits / recent_shots
+
+		if hit_rate < 0.3 then
+			vstorage.prediction_multiplier = math.min(vstorage.prediction_multiplier * 1.15, 2.5)
+		elseif hit_rate > 0.7 then
+			vstorage.prediction_multiplier = math.max(vstorage.prediction_multiplier * 0.92, 0.4)
+		end
+	end
+
+	local function get_part(char)
+		if vstorage.target_part == 'closest' then
+			local cam_pos = workspace.CurrentCamera.CFrame.Position
+			local closest = nil
+			local closest_dist = math.huge
+			for _, p in char:GetDescendants() do
+				if p:IsA('BasePart') then
+					local d = (cam_pos - p.Position).Magnitude
+					if d < closest_dist then
+						closest_dist = d
+						closest = p
+					end
+				end
+			end
+			return closest
+		end
+
+		if vstorage.target_part == 'random' then
+			local valid = {}
+			for _, n in part_lookup.random do
+				local p = char:FindFirstChild(n)
+				if p then table.insert(valid, p) end
+			end
+			return valid[math.random(1, math.max(1, #valid))]
+		end
+
+		local names = part_lookup[vstorage.target_part] or part_lookup.head
+		for _, n in names do
+			local p = char:FindFirstChild(n)
+			if p then return p end
+		end
+		return char:FindFirstChild('Head')
+	end
+
+	local function has_los(origin, target_pos, ignore_char)
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {stuff.owner_char, ignore_char}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		local result = workspace:Raycast(origin, target_pos - origin, params)
+		return result == nil
+	end
+
+	local function is_target_valid(plr)
+		if not plr or plr == stuff.owner then return false end
+		if plr.Team and plr.Team == stuff.owner.Team then return false end
+
+		local char = plr.Character
+		if not char then return false end
+
+		local hum = char:FindFirstChildOfClass('Humanoid')
+		if not hum or hum.Health <= 0 then return false end
+		if char:FindFirstChildOfClass('ForceField') then return false end
 
 		return true
 	end
 
-	local function get_body_part(character, part_type)
-		local is_r15 = character:FindFirstChild('UpperTorso') ~= nil
-		local parts_table = is_r15 and body_parts_map.r15 or body_parts_map.r6
+	local function calculate_threat(candidate)
+		local threat = 0
+		threat = threat + (1 / (candidate.world_dist + 1)) * 50
+		threat = threat + ((100 - candidate.health) / 100) * 20
 
-		if part_type == 'random' then
-			local all_parts = {}
-			for _, part_list in pairs(parts_table) do
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						table.insert(all_parts, part)
-					end
-				end
-			end
-			return all_parts[math.random(1, #all_parts)]
-		elseif part_type == 'closest' then
-			local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-			local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-			local closest_part = nil
-			local closest_dist = math.huge
+		if candidate.has_tool then
+			threat = threat + 30
+		end
 
-			for _, part_list in pairs(parts_table) do
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						local part_pos = stuff.rawrbxget(part, 'Position')
-						local dist = (cam_pos - part_pos).Magnitude
-						if dist < closest_dist then
-							closest_dist = dist
-							closest_part = part
-						end
-					end
-				end
-			end
-			return closest_part
-		else
-			local part_list = parts_table[part_type]
-			if part_list then
-				for _, part_name in ipairs(part_list) do
-					local part = character:FindFirstChild(part_name)
-					if part then
-						return part
-					end
-				end
+		local look_dir = candidate.char:FindFirstChild('HumanoidRootPart')
+		if look_dir and stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+			local to_me = (stuff.owner_char.HumanoidRootPart.Position - look_dir.Position).Unit
+			local their_look = look_dir.CFrame.LookVector
+			local dot = to_me:Dot(their_look)
+			if dot > 0.7 then
+				threat = threat + 25
 			end
 		end
 
-		return character:FindFirstChild('Head') or character:FindFirstChild('HumanoidRootPart')
+		return threat
 	end
 
-	local calculate_chance = function(percentage)
-		percentage = math.floor(percentage)
-		local chance = math.floor(Random.new():NextNumber(0, 1) * 100) / 100
-		return chance <= percentage / 100
+	if not stuff.is_mobile then
+		maid.add('rageaim_toggle', services.user_input_service.InputBegan, function(input, gpe)
+			if gpe then return end
+			if input.KeyCode == vstorage.toggle_key then
+				vstorage.active = not vstorage.active
+				vstorage.locked_player = nil
+				notify('rageaim', vstorage.active and 'activated' or 'deactivated', 1)
+			end
+		end)
 	end
 
-	local get_direction = function(origin, position)
-		return (position - origin).Unit * 1000
-	end
+	maid.add('rageaim_shot_detect', services.user_input_service.InputBegan, function(input, gpe)
+		if gpe then return end
+		if not vstorage.active or not vstorage.auto_prediction then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
-	local is_player_visible = function(player)
-		local player_character = player.Character
-		local local_character = stuff.owner_char
+		local target = vstorage.locked_target
+		if not target then return end
 
-		if not (player_character and local_character) then return false end
+		task.delay(0.1, function()
+			if not target or not target.Parent then return end
 
-		local player_part = get_body_part(player_character, vstorage.body_part)
-		if not player_part then return false end
+			local hum = target:FindFirstChildOfClass('Humanoid')
+			if not hum then return end
 
-		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
-		local cam_pos = stuff.rawrbxget(cam, 'CFrame').Position
-		local part_pos = stuff.rawrbxget(player_part, 'Position')
+			local current_health = hum.Health
+			task.wait(0.05)
+			if hum.Parent and hum.Health < current_health then
+				register_shot_result(true)
+			else
+				register_shot_result(false)
+			end
+		end)
+	end)
 
-		local ray_params = RaycastParams.new()
-		ray_params.FilterDescendantsInstances = {local_character, player_character}
-		ray_params.FilterType = Enum.RaycastFilterType.Exclude
-		ray_params.IgnoreWater = true
+	maid.add('rageaim', services.run_service.RenderStepped, function()
+		if not vstorage.enabled or not vstorage.active or not stuff.owner_char then return end
 
-		local result = workspace:Raycast(cam_pos, (part_pos - cam_pos), ray_params)
-		return result == nil
-	end
+		local cam = workspace.CurrentCamera
+		local center = cam.ViewportSize / 2
+		local cam_pos = cam.CFrame.Position
+		local now = tick()
 
-	local function get_target()
-		local mouse = stuff.owner:GetMouse()
-		local mouse_pos = Vector2.new(mouse.X, mouse.Y)
-		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
+		if vstorage.locked_player and is_target_valid(vstorage.locked_player) then
+			local char = vstorage.locked_player.Character
+			local part = get_part(char)
+			if part then
+				local world_dist = (cam_pos - part.Position).Magnitude
+				if world_dist <= vstorage.max_distance * 1.2 then
+					if has_los(cam_pos, part.Position, char) then
+						local predicted = predict_advanced(char, part)
+						vstorage.locked_target = char
+						cam.CFrame = CFrame.lookAt(cam.CFrame.Position, predicted)
 
-		local closest_player = nil
-		local closest_part = nil
-		local closest_distance = vstorage.radius
-
-		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and (not plr.Team or plr.Team ~= stuff.owner.Team) then
-				if is_player_valid(plr) and plr.Character then
-					local character = plr.Character
-					if not character then continue end
-
-					if vstorage.wallcheck and not is_player_visible(plr) then continue end
-
-					local target_part_instance = get_body_part(character, vstorage.body_part)
-					if not target_part_instance then continue end
-
-					local owner_head = stuff.owner_char and stuff.owner_char:FindFirstChild('Head')
-					if not owner_head then continue end
-
-					local part_pos = stuff.rawrbxget(target_part_instance, 'Position')
-					local owner_pos = stuff.rawrbxget(owner_head, 'Position')
-					local world_distance = (owner_pos - part_pos).Magnitude
-
-					if world_distance <= vstorage.aim_range then
-						local screen_pos, on_screen = cam:WorldToViewportPoint(part_pos)
-
-						if on_screen and screen_pos.Z > 0 then
-							local screen_2d = Vector2.new(screen_pos.X, screen_pos.Y)
-							local distance = (mouse_pos - screen_2d).Magnitude
-
-							if distance < closest_distance then
-								closest_distance = distance
-								closest_player = plr
-								closest_part = target_part_instance
+						if vstorage.auto_fire then
+							if now - vstorage.last_fire > 0.05 then
+								vstorage.last_fire = now
+								mouse1click()
 							end
 						end
+						return
 					end
 				end
 			end
 		end
 
-		return closest_part
+		vstorage.locked_player = nil
+		local candidates = {}
+
+		for _, plr in services.players:GetPlayers() do
+			if not is_target_valid(plr) then continue end
+
+			local char = plr.Character
+			local part = get_part(char)
+			if not part then continue end
+
+			local world_dist = (cam_pos - part.Position).Magnitude
+			if world_dist > vstorage.max_distance then continue end
+
+			local predicted = predict_advanced(char, part)
+			local screen, visible = cam:WorldToViewportPoint(predicted)
+			if not visible or screen.Z <= 0 then continue end
+
+			local screen_dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+			if screen_dist > vstorage.fov_radius then continue end
+
+			if not has_los(cam_pos, part.Position, char) then continue end
+
+			local hum = char:FindFirstChildOfClass('Humanoid')
+			local has_tool = char:FindFirstChildOfClass('Tool') ~= nil
+
+			local candidate = {
+				player = plr,
+				char = char,
+				part = part,
+				predicted = predicted,
+				screen_dist = screen_dist,
+				world_dist = world_dist,
+				health = hum and hum.Health or 100,
+				has_tool = has_tool
+			}
+
+			candidate.threat = calculate_threat(candidate)
+			table.insert(candidates, candidate)
+		end
+
+		if #candidates == 0 then
+			vstorage.locked_target = nil
+			return
+		end
+
+		table.sort(candidates, function(a, b)
+			if vstorage.priority == 'distance' then return a.world_dist < b.world_dist end
+			if vstorage.priority == 'health' then return a.health < b.health end
+			if vstorage.priority == 'threat' then return a.threat > b.threat end
+			return a.screen_dist < b.screen_dist
+		end)
+
+		local best = candidates[1]
+		vstorage.locked_target = best.char
+		vstorage.locked_player = best.player
+		vstorage.last_switch = now
+
+		cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.predicted)
+
+		if vstorage.auto_fire then
+			if now - vstorage.last_fire > 0.05 then
+				vstorage.last_fire = now
+				mouse1click()
+			end
+		end
+	end)
+
+	maid.add('rageaim_cleanup', stuff.owner.CharacterAdded, function()
+		vstorage.target_velocity_history = {}
+		vstorage.locked_player = nil
+		vstorage.locked_target = nil
+		vstorage.ping_history = {}
+		vstorage.hit_history = {}
+		vstorage.prediction_multiplier = 1.0
+	end)
+
+	local key_name = tostring(vstorage.toggle_key):split('.')[3]
+	local pred_str = vstorage.auto_prediction and 'auto' or tostring(vstorage.base_prediction)
+	local msg = `enabled | fov: {vstorage.fov}° | prediction: {pred_str} | priority: {vstorage.priority} | auto fire: {vstorage.auto_fire}`
+	if not stuff.is_mobile then
+		msg ..= ` | toggle: {key_name}`
 	end
+	notify('rageaim', msg, 1)
+end)
+
+cmd_library.add({'unrageaim', 'unraim', 'unrage'}, 'disables rage aimbot', {}, function()
+	local vs = cmd_library.get_variable_storage('rageaim')
+	if not vs.enabled then
+		return notify('rageaim', 'not enabled', 2)
+	end
+
+	vs.enabled = false
+	vs.active = false
+	vs.locked_target = nil
+	vs.locked_player = nil
+	vs.target_velocity_history = {}
+	vs.ping_history = {}
+	vs.hit_history = {}
+	maid.remove('rageaim')
+	maid.remove('rageaim_toggle')
+	maid.remove('rageaim_cleanup')
+	maid.remove('rageaim_shot_detect')
+	notify('rageaim', 'disabled', 1)
+end)
+
+
+cmd_library.add({'antiaim', 'aa'}, 'makes your character harder to hit (modes: spin, jitter, random, sway, flip)', {
+	{'mode', 'string'},
+	{'speed', 'number'}
+}, function(vstorage, mode, speed)
+	if vstorage.enabled then
+		return notify('antiaim', 'already enabled', 2)
+	end
+
+	local modes = {'spin', 'jitter', 'random', 'sway', 'flip'}
+	mode = mode and mode:lower() or 'spin'
+
+	if not table.find(modes, mode) then
+		return notify('antiaim', `invalid mode. valid: {table.concat(modes, ', ')}`, 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.mode = mode
+	vstorage.speed = math.clamp(speed or 15, 1, 50)
+	vstorage.angle = 0
+	vstorage.tick = 0
+	vstorage.flip_state = false
+
+	notify('antiaim', `enabled | mode: {mode} | speed: {vstorage.speed}`, 1)
+
+	local jitter_angles = {-180, 180, -90, 90, -135, 135, -45, 45}
+
+	local function apply_rotation()
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return end
+
+		local hum = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+		local move_dir = hum and hum.MoveDirection or Vector3.zero
+		local base_angle = 0
+
+		if move_dir.Magnitude > 0.1 then
+			base_angle = math.atan2(-move_dir.X, -move_dir.Z)
+		else
+			local camera = workspace.CurrentCamera
+			local look = camera.CFrame.LookVector
+			base_angle = math.atan2(-look.X, -look.Z)
+		end
+
+		hrp.CFrame = CFrame.new(hrp.Position) * CFrame.Angles(0, base_angle + math.rad(vstorage.angle), 0)
+	end
+
+	maid.add('antiaim', services.run_service.Heartbeat, function(dt)
+		if not vstorage.enabled or not stuff.owner_char then return end
+
+		vstorage.tick += 1
+		local interval = math.max(1, math.floor(60 / vstorage.speed))
+
+		if vstorage.mode == 'spin' then
+			vstorage.angle = (vstorage.angle + vstorage.speed * dt * 20) % 360
+
+		elseif vstorage.mode == 'jitter' then
+			if vstorage.tick % interval == 0 then
+				vstorage.angle = jitter_angles[math.random(#jitter_angles)]
+			end
+
+		elseif vstorage.mode == 'random' then
+			if vstorage.tick % interval == 0 then
+				vstorage.angle = math.random(-180, 180)
+			end
+
+		elseif vstorage.mode == 'sway' then
+			vstorage.angle = math.sin(tick() * vstorage.speed * 0.3) * 180
+
+		elseif vstorage.mode == 'flip' then
+			if vstorage.tick % interval == 0 then
+				vstorage.flip_state = not vstorage.flip_state
+				vstorage.angle = vstorage.flip_state and 180 or 0
+			end
+		end
+
+		apply_rotation()
+	end)
+
+	maid.add('antiaim_respawn', stuff.owner.CharacterAdded, function(char)
+		if not vstorage.enabled then return end
+		char:WaitForChild('HumanoidRootPart')
+		
+		vstorage.angle = 0
+		vstorage.tick = 0
+	end)
+end)
+
+cmd_library.add({'unantiaim', 'unaa'}, 'disables antiaim', {}, function()
+	local vs = cmd_library.get_variable_storage('antiaim')
+	if not vs.enabled then
+		return notify('antiaim', 'not enabled', 2)
+	end
+
+	vs.enabled = false
+	maid.remove('antiaim')
+	maid.remove('antiaim_respawn')
+	notify('antiaim', 'disabled', 1)
+end)
+
+cmd_library.add({'silentaim', 'sa'}, 'silently redirects shots to enemies', {
+	{'fov', 'number'},
+	{'max_distance', 'number'},
+	{'hitchance', 'number'},
+	{'target_part', 'string'},
+	{'sticky', 'boolean'}
+}, function(vstorage, fov, max_distance, hitchance, target_part, sticky)
+	if vstorage.enabled then
+		return notify('silentaim', 'already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.fov = fov or 90
+	vstorage.fov_radius = fov_to_radius(vstorage.fov)
+	vstorage.max_distance = max_distance or 500
+	vstorage.hitchance = math.clamp(hitchance or 100, 0, 100)
+	vstorage.target_part = (target_part or 'head'):lower()
+	vstorage.sticky = sticky ~= false
+
+	notify('silentaim', `enabled | fov: {vstorage.fov}° | range: {vstorage.max_distance} | hitchance: {vstorage.hitchance}% | part: {vstorage.target_part} | sticky: {vstorage.sticky}`, 1)
+
+	local sticky_target = nil
+	local frame_cache = {tick = 0, target = nil, hitchance_passed = nil}
+
+	local function is_target_valid(char, part, cam_pos, center)
+		if not char or not char.Parent or not part or not part.Parent then 
+			return false, math.huge 
+		end
+
+		local part_pos = part.Position
+		if (cam_pos - part_pos).Magnitude > vstorage.max_distance then 
+			return false, math.huge 
+		end
+
+		local screen, visible = workspace.CurrentCamera:WorldToViewportPoint(part_pos)
+		if not visible or screen.Z <= 0 then 
+			return false, math.huge 
+		end
+
+		local screen_dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+		if screen_dist > vstorage.fov_radius then 
+			return false, math.huge 
+		end
+
+		if not has_line_of_sight(cam_pos, part_pos, char) then 
+			return false, math.huge 
+		end
+
+		return true, screen_dist
+	end
+
+	local function get_best_target()
+		local now = tick()
+
+		if (now - frame_cache.tick) < 0.016 then
+			if frame_cache.hitchance_passed == false then return nil end
+			return frame_cache.target
+		end
+
+		frame_cache.tick = now
+		frame_cache.hitchance_passed = math.random(100) <= vstorage.hitchance
+
+		if not frame_cache.hitchance_passed then
+			frame_cache.target = nil
+			return nil
+		end
+
+		local camera = workspace.CurrentCamera
+		local center = camera.ViewportSize / 2
+		local cam_pos = camera.CFrame.Position
+
+		if vstorage.sticky and sticky_target then
+			local part = get_target_part(sticky_target, vstorage.target_part)
+			local valid = is_target_valid(sticky_target, part, cam_pos, center)
+
+			if valid then
+				frame_cache.target = {character = sticky_target, part = part}
+				return frame_cache.target
+			end
+			sticky_target = nil
+		end
+
+		local best = nil
+		local best_dist = vstorage.fov_radius
+
+		for _, player in services.players:GetPlayers() do
+			if not is_valid_target(player) then continue end
+
+			local char = player.Character
+			local part = get_target_part(char, vstorage.target_part)
+			if not part then continue end
+
+			local valid, screen_dist = is_target_valid(char, part, cam_pos, center)
+			if valid and screen_dist < best_dist then
+				best_dist = screen_dist
+				best = {character = char, part = part}
+			end
+		end
+
+		if best then
+			sticky_target = best.character
+		end
+
+		frame_cache.target = best
+		return best
+	end
+
+	local mouse = stuff.owner:GetMouse()
 
 	hook_lib.create_hook('silentaim', {
 		index = function(self, key)
-			if not calculate_chance(vstorage.hit_chance) then return end
+			if not vstorage.enabled or self ~= mouse then return end
 
-			if self:IsA('Mouse') and (key == 'Hit' or key == 'Target') then
-				local target_part = get_target()
-				if target_part then
-					if key == 'Hit' then
-						local part_cframe = stuff.rawrbxget(target_part, 'CFrame')
-						local part_velocity = stuff.rawrbxget(target_part, 'AssemblyLinearVelocity')
-						return part_cframe + (part_velocity * vstorage.prediction)
-					elseif key == 'Target' then
-						return target_part
-					end
-				end
+			local target = get_best_target()
+			if not target then return end
+
+			local pos = target.part.Position
+
+			if key == 'Hit' then
+				return CFrame.new(pos)
+			elseif key == 'Target' then
+				return target.part
+			elseif key == 'X' then
+				return (workspace.CurrentCamera:WorldToViewportPoint(pos)).X
+			elseif key == 'Y' then
+				return (workspace.CurrentCamera:WorldToViewportPoint(pos)).Y
+			elseif key == 'UnitRay' then
+				local origin = workspace.CurrentCamera.CFrame.Position
+				return Ray.new(origin, (pos - origin).Unit)
 			end
 		end,
 
 		namecall = function(self, ...)
-			if not calculate_chance(vstorage.hit_chance) then return end
+			if not vstorage.enabled or self ~= workspace then return end
 
-			local args = {...}
 			local method = getnamecallmethod()
-			local target_part = get_target()
+			local args = {...}
+			local cam_pos = workspace.CurrentCamera.CFrame.Position
 
-			if not target_part then return end
+			if method == 'Raycast' then
+				local origin, direction, params = args[1], args[2], args[3]
+				if (origin - cam_pos).Magnitude > 15 then return end
 
-			local target_pos = stuff.rawrbxget(target_part, 'Position')
-			local target_vel = stuff.rawrbxget(target_part, 'AssemblyLinearVelocity')
-			target_pos = target_pos + (target_vel * vstorage.prediction)
+				local target = get_best_target()
+				if not target then return end
 
-			if self == workspace then
-				if method == 'FindPartOnRayWithIgnoreList' then
-					if typeof(args[2]) == 'Ray' then
-						local ray = args[2]
-						local origin = ray.Origin
-						local direction = get_direction(origin, target_pos)
-						args[2] = Ray.new(origin, direction)
-						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
-					end
-				elseif method == 'FindPartOnRayWithWhitelist' then
-					if typeof(args[2]) == 'Ray' then
-						local ray = args[2]
-						local origin = ray.Origin
-						local direction = get_direction(origin, target_pos)
-						args[2] = Ray.new(origin, direction)
-						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
-					end
-				elseif method == 'FindPartOnRay' then
-					if typeof(args[2]) == 'Ray' then
-						local ray = args[2]
-						local origin = ray.Origin
-						local direction = get_direction(origin, target_pos)
-						args[2] = Ray.new(origin, direction)
-						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
-					end
-				elseif method == 'Raycast' then
-					if typeof(args[2]) == 'Vector3' and typeof(args[3]) == 'Vector3' then
-						local origin = args[2]
-						args[3] = get_direction(origin, target_pos)
-						return hook_lib.active_hooks['silentaim'].hooks.old_namecall(self, unpack(args))
-					end
-				end
+				local new_dir = (target.part.Position - origin).Unit * direction.Magnitude
+				return workspace:Raycast(origin, new_dir, params)
 			end
 
-			if self:IsA('Camera') then
-				if method == 'ScreenPointToRay' or method == 'ViewportPointToRay' then
-					local cam_cf = stuff.rawrbxget(self, 'CFrame')
-					return Ray.new(cam_cf.Position, (target_pos - cam_cf.Position).Unit)
-				end
+			local ray_methods = {
+				FindPartOnRay = true,
+				FindPartOnRayWithIgnoreList = true,
+				FindPartOnRayWithWhitelist = true
+			}
+
+			if ray_methods[method] then
+				local ray = args[1]
+				if (ray.Origin - cam_pos).Magnitude > 15 then return end
+
+				local target = get_best_target()
+				if not target then return end
+
+				local new_dir = (target.part.Position - ray.Origin).Unit * ray.Direction.Magnitude
+				local new_ray = Ray.new(ray.Origin, new_dir)
+
+				return workspace[method](workspace, new_ray, args[2], args[3], args[4])
 			end
 		end
 	})
 end)
 
-cmd_library.add({'unsilentaim'}, 'disables silent aim', {}, function(vstorage)
-	local silentaim_vs = cmd_library.get_variable_storage('silentaim')
-
-	if not silentaim_vs.enabled then
-		return notify('silentaim', 'silent aim not enabled', 2)
+cmd_library.add({'unsa', 'unsilentaim'}, 'disables silent aim', {}, function()
+	local vs = cmd_library.get_variable_storage('silentaim')
+	if not vs.enabled then
+		return notify('silentaim', 'not enabled', 2)
 	end
 
-	silentaim_vs.enabled = false
+	vs.enabled = false
 	hook_lib.destroy_hook('silentaim')
-	notify('silentaim', 'silent aim disabled', 1)
+	notify('silentaim', 'disabled', 1)
 end)
 
 cmd_library.add({'partcontrol', 'pcontrol'}, 'networkownership goes brr', {}, function(vstorage)
@@ -8043,7 +9196,7 @@ cmd_library.add({'partcontrol', 'pcontrol'}, 'networkownership goes brr', {}, fu
 	task.wait(.8)
 
 	local found_part
-	for _, part in ipairs(workspace:GetDescendants()) do
+	for _, part in workspace:GetDescendants() do
 		pcall(function()
 			local anchored = stuff.rawrbxget(part, 'Anchored')
 			if not anchored and #part:GetConnectedParts() <= 1 and network_check(part) then
@@ -8099,7 +9252,7 @@ cmd_library.add({'partcontrol', 'pcontrol'}, 'networkownership goes brr', {}, fu
 			end
 
 			local in_attack = false
-			for _, plr in ipairs(services.players:GetPlayers()) do
+			for _, plr in services.players:GetPlayers() do
 				if plr ~= stuff.owner and plr.Character and plr.Character:FindFirstChild('Head') then
 					local head = stuff.rawrbxget(stuff.owner_char, 'Head')
 					local head_pos = stuff.rawrbxget(head, 'Position')
@@ -8189,7 +9342,7 @@ cmd_library.add({'partstorm', 'pstorm', 'partrain'}, 'rain parts on a player', {
 	local parts = {}
 	local part_limit = vstorage.intensity * 5
 
-	for _, part in ipairs(workspace:GetDescendants()) do
+	for _, part in workspace:GetDescendants() do
 		if part:IsA('BasePart') then
 			local anchored = stuff.rawrbxget(part, 'Anchored')
 			if not anchored and #part:GetConnectedParts() < 2 then
@@ -8426,7 +9579,11 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			stuff.rawrbxset(part, 'Anchored', false)
 			stuff.rawrbxset(part, 'CanCollide', false)
 			stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.new(0, velocity, 0))
-			stuff.rawrbxset(part, 'CFrame', stuff.rawrbxget(target_hrp, 'CFrame'))
+			local character_of_target = target.Character
+			local predicted_cf = predict_position(character_of_target)
+			if predicted_cf then
+				stuff.rawrbxset(part, 'CFrame', predicted_cf)
+			end
 		end)
 	end
 
@@ -8453,7 +9610,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 		local head = stuff.rawrbxget(stuff.owner_char, 'Head')
 		local head_pos = stuff.rawrbxget(head, 'Position')
 
-		for _, v in ipairs(workspace:GetDescendants()) do
+		for _, v in workspace:GetDescendants() do
 			if v:IsA('BasePart') then
 				local anchored = stuff.rawrbxget(v, 'Anchored')
 				if not anchored and not v.Parent:FindFirstChildOfClass('Humanoid') and not v.Parent.Parent:FindFirstChildOfClass('Humanoid') and not v:IsDescendantOf(stuff.owner_char) then
@@ -8678,27 +9835,8 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		cmd_library.execute('unflingaura')
 	end)
 
-	local predict_movement = function(player, future)
-		local char = player.Character
-		if not char then return end
-		if future == nil  then
-			future  = ((char:FindFirstChildOfClass("Humanoid").WalkSpeed * 68.75) / 100)
-		end
-
-		local hrp = char:FindFirstChild('HumanoidRootPart')
-		local humanoid = char:FindFirstChild('Humanoid')
-		if not (hrp and humanoid) then return end
-
-		local move_dir = humanoid.MoveDirection
-		if move_dir == Vector3.zero then
-			return hrp.CFrame
-		end
-
-		return hrp.CFrame + move_dir * future
-	end
-
 	local is_player_part = function(part)
-		for _, plr in ipairs(services.players:GetPlayers()) do
+		for _, plr in services.players:GetPlayers() do
 			if plr.Character and plr.Character:IsAncestorOf(part) then
 				return true
 			end
@@ -8717,7 +9855,7 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		return #part:GetConnectedParts() < 2
 	end
 
-	for _, part in ipairs(workspace:GetDescendants()) do
+	for _, part in workspace:GetDescendants() do
 		if part:IsA('BasePart') and is_valid_part(part) then
 			table.insert(parts, part)
 		end
@@ -8743,14 +9881,14 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		local owner_pos = stuff.rawrbxget(new_hrp, 'Position')
 		local nearby_targets = {}
 
-		for _, player in ipairs(services.players:GetPlayers()) do
+		for _, player in services.players:GetPlayers() do
 			if player ~= stuff.owner and player.Character and player.Character:FindFirstChild('HumanoidRootPart') then
 				local target_hrp = player.Character.HumanoidRootPart
 				local target_pos = stuff.rawrbxget(target_hrp, 'Position')
 				local distance = (target_pos - owner_pos).Magnitude
 
 				if distance <= radius then
-					local predicted_cf = predict_movement(player)
+					local predicted_cf = predict_position(player)
 					table.insert(nearby_targets, {player = player, hrp = target_hrp, predicted_cf = predicted_cf})
 				end
 			end
@@ -8860,7 +9998,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 		local cycle_progress = 0
 
 		local is_player_part = function(part)
-			for _, plr in ipairs(services.players:GetPlayers()) do
+			for _, plr in services.players:GetPlayers() do
 				if plr.Character and plr.Character:IsAncestorOf(part) then
 					return true
 				end
@@ -8879,7 +10017,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			return #part:GetConnectedParts() < 2
 		end
 
-		for _, part in ipairs(workspace:GetDescendants()) do
+		for _, part in workspace:GetDescendants() do
 			if part:IsA('BasePart') and is_valid_part(part) then
 				table.insert(parts, part)
 			end
@@ -8946,7 +10084,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 end)
 
 cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', 'unpwf'}, 'stop partwalkfling', {}, function(vstorage)
-	for _, player in ipairs(services.players:GetPlayers()) do
+	for _, player in services.players:GetPlayers() do
 		maid.remove('part_walkfling_'..player.Name)
 	end
 
@@ -8962,6 +10100,209 @@ cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', '
 end)
 
 -- c6: visual
+
+cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shooting', {
+	{'color', 'color'},
+	{'thickness', 'number'},
+	{'duration', 'number'}
+}, function(vstorage, color, thickness, duration)
+	if vstorage.enabled then
+		return notify('btracers', 'already enabled, use unbtracers to disable', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.color = color or Color3.fromRGB(176, 126, 215)
+	vstorage.thickness = math.clamp(thickness or 0.05, 0.05, 0.5)
+	vstorage.duration = math.clamp(duration or 0.5, 0.1, 5)
+	vstorage.last_click = 0
+
+	local function trace(start_pos, end_pos)
+		local distance = (end_pos - start_pos).Magnitude
+		if distance < 0.1 then return end
+
+		local cylinder = Instance.new('Part')
+		cylinder.Name = 'tracer'
+		cylinder.Shape = Enum.PartType.Cylinder
+		cylinder.Material = Enum.Material.Neon
+		cylinder.Color = vstorage.color
+		cylinder.Size = Vector3.new(distance, vstorage.thickness, vstorage.thickness)
+		cylinder.Anchored = true
+		cylinder.CanCollide = false
+		cylinder.CastShadow = false
+		cylinder.Transparency = 0
+
+		local midpoint = (start_pos + end_pos) / 2
+		cylinder.CFrame = CFrame.lookAt(midpoint, end_pos) * CFrame.Angles(0, math.rad(90), 0)
+		cylinder.Parent = workspace.Terrain
+
+		local highlight = Instance.new('Highlight')
+		local h, s, v = vstorage.color:ToHSV()
+		highlight.FillColor = Color3.fromHSV(h, s, v * 0.5)
+		highlight.FillTransparency = 0
+		highlight.OutlineTransparency = 1
+		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+		highlight.Adornee = cylinder
+		highlight.Parent = services.core_gui
+
+		task.delay(vstorage.duration, stuff.destroy, cylinder)
+	end
+
+	local function get_start_position()
+		local character = stuff.owner_char
+		if not character then return workspace.CurrentCamera.CFrame.Position end
+
+		local tool = character:FindFirstChildOfClass('Tool')
+		if tool then
+			local handle = tool:FindFirstChild('Handle')
+			if handle then
+				local muzzle = handle:FindFirstChild('Muzzle') or handle:FindFirstChild('Flash') or handle:FindFirstChild('FirePoint')
+				if muzzle and muzzle:IsA('Attachment') then
+					return muzzle.WorldPosition
+				elseif muzzle and muzzle:IsA('BasePart') then
+					return muzzle.Position
+				else
+					return (handle.CFrame * CFrame.new(0, 0, -handle.Size.Z / 2)).Position
+				end
+			end
+		end
+
+		return workspace.CurrentCamera.CFrame.Position
+	end
+
+	local function on_click()
+		if not vstorage.enabled then return end
+
+		local now = tick()
+		if now - vstorage.last_click < 0.05 then return end
+		vstorage.last_click = now
+
+		local character = stuff.owner_char
+		if not character then return end
+
+		local mouse = stuff.owner:GetMouse()
+		local camera = workspace.CurrentCamera
+		local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {character}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.IgnoreWater = true
+
+		local start_pos = get_start_position()
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+		local end_pos = result and result.Position or (ray.Origin + ray.Direction * 500)
+
+		task.spawn(trace, start_pos, end_pos)
+	end
+
+	maid.add('btracers_click', stuff.owner:GetMouse().Button1Down, on_click)
+
+	notify('btracers', `enabled | thickness: {vstorage.thickness} | duration: {vstorage.duration}s`, 1)
+end)
+
+cmd_library.add({'unbtracers', 'unbullettracers', 'untracers'}, 'disables bullet tracers', {}, function(vstorage)
+	if not vstorage.enabled then
+		return notify('btracers', 'not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	maid.remove('btracers_click')
+
+	for _, part in ipairs(workspace:GetChildren()) do
+		if part.Name == 'BulletTracer' then
+			part:Destroy()
+		end
+	end
+
+	notify('btracers', 'disabled', 1)
+end)
+
+cmd_library.add({'hitsound', 'hitmarker', 'hs'}, 'plays a sound when hitting a player', {
+	{'sound_id', 'string'},
+	{'volume', 'number'},
+	{'pitch', 'number'}
+}, function(vstorage, sound_id, volume, pitch)
+	if vstorage.enabled then
+		return notify('hitsound', 'already enabled, use unhitsound to disable', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.sound_id = sound_id or 'rbxassetid://97643101798871'
+	vstorage.volume = math.clamp(volume or 1, 0.1, 2)
+	vstorage.pitch = math.clamp(pitch or 1, 0.5, 2)
+	vstorage.last_click = 0
+
+	local function is_player_part(part)
+		if not part then return false end
+
+		local character = part:FindFirstAncestorOfClass('Model')
+		if not character then return false end
+
+		local humanoid = character:FindFirstChildOfClass('Humanoid')
+		if not humanoid then return false end
+
+		local player = services.players:GetPlayerFromCharacter(character)
+		if not player then return false end
+
+		if player == stuff.owner then return false end
+
+		return true, player
+	end
+
+	local function play_hit_sound()
+		local sound = Instance.new('Sound')
+		sound.SoundId = vstorage.sound_id
+		sound.Volume = vstorage.volume
+		sound.PlaybackSpeed = vstorage.pitch * (0.95 + math.random() * 0.1)
+		sound.Parent = workspace.CurrentCamera
+		sound.PlayOnRemove = true
+		pcall(stuff.destroy, sound)
+	end
+
+	local function on_click()
+		if not vstorage.enabled then return end
+
+		local now = tick()
+		if now - vstorage.last_click < 0.05 then return end
+		vstorage.last_click = now
+
+		local character = stuff.owner_char
+		if not character then return end
+
+		local mouse = stuff.owner:GetMouse()
+		local camera = workspace.CurrentCamera
+		local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {character}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.IgnoreWater = true
+
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+
+		if result and result.Instance then
+			local hit, player = is_player_part(result.Instance)
+			if hit then
+				play_hit_sound()
+			end
+		end
+	end
+
+	maid.add('hitsound_click', stuff.owner:GetMouse().Button1Down, on_click)
+
+	notify('hitsound', `enabled | sound: {vstorage.sound_id} | volume: {vstorage.volume} | pitch: {vstorage.pitch}`, 1)
+end)
+
+cmd_library.add({'unhitsound', 'unhitmarker', 'unhs'}, 'disables hit sound', {}, function(vstorage)
+	if not vstorage.enabled then
+		return notify('hitsound', 'not enabled', 2)
+	end
+
+	vstorage.enabled = false
+	maid.remove('hitsound_click')
+
+	notify('hitsound', 'disabled', 1)
+end)
 
 cmd_library.add({'xray'}, 'makes walls transparent', {
 	{'transparency', 'number'}
@@ -9002,111 +10343,118 @@ cmd_library.add({'xray'}, 'makes walls transparent', {
 	end
 end)
 
-cmd_library.add({'crosshair', 'crossh'}, 'toggles custom crosshair', {
+cmd_library.add({'crosshair', 'cross', 'xhair'}, 'custom crosshair', {
+	{'style', 'string'},
 	{'size', 'number'},
 	{'thickness', 'number'},
-	{'color', 'color3'},
-	{'style', 'string'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, size, thickness, color, style, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('uncrosshair')
-		return
-	end
-
+	{'gap', 'number'},
+	{'color', 'color'},
+	{'outline', 'boolean'}
+}, function(vstorage, style, size, thickness, gap, color, outline)
 	if vstorage.enabled then
-		return notify('crosshair', 'crosshair already enabled', 2)
+		cmd_library.execute('uncrosshair')
 	end
 
 	vstorage.enabled = true
+	vstorage.style = (style or 'cross'):lower()
 	vstorage.size = size or 10
 	vstorage.thickness = thickness or 2
+	vstorage.gap = gap or 4
 	vstorage.color = color or Color3.fromRGB(176, 126, 215)
-	vstorage.style = style or 'cross'
+	vstorage.outline = outline ~= false
+	vstorage.drawings = {}
 
-	local valid_styles = {'cross', 'dot'}
-	local style_valid = false
-	for _, valid_style in ipairs(valid_styles) do
-		if vstorage.style == valid_style then
-			style_valid = true
-			break
-		end
-	end
-
-	if not style_valid then
-		vstorage.style = 'cross'
-	end
-
-	notify('crosshair', `crosshair enabled | size: {vstorage.size} | style: {vstorage.style}`, 1)
-
-	local gui = Instance.new('ScreenGui')
-	stuff.rawrbxset(gui, 'Name', 'crosshair_gui')
-	stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
-	stuff.rawrbxset(gui, 'ResetOnSpawn', false)
-	stuff.rawrbxset(gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
-	pcall(protect_gui, gui)
-	vstorage.gui = gui
+	local center = workspace.CurrentCamera.ViewportSize / 2
 
 	if vstorage.style == 'cross' then
-		local horizontal = Instance.new('Frame')
-		stuff.rawrbxset(horizontal, 'Size', UDim2.new(0, vstorage.size * 2, 0, vstorage.thickness))
-		stuff.rawrbxset(horizontal, 'Position', UDim2.new(0.5, 0, 0.5, 0))
-		stuff.rawrbxset(horizontal, 'AnchorPoint', Vector2.new(0.5, 0.5))
-		stuff.rawrbxset(horizontal, 'BackgroundColor3', vstorage.color)
-		stuff.rawrbxset(horizontal, 'BorderSizePixel', 0)
-		stuff.rawrbxset(horizontal, 'ZIndex', 10000)
-		stuff.rawrbxset(horizontal, 'Parent', gui)
+		local lines = {
+			{Vector2.new(center.X, center.Y - vstorage.gap - vstorage.size), Vector2.new(center.X, center.Y - vstorage.gap)},
+			{Vector2.new(center.X, center.Y + vstorage.gap), Vector2.new(center.X, center.Y + vstorage.gap + vstorage.size)},
+			{Vector2.new(center.X - vstorage.gap - vstorage.size, center.Y), Vector2.new(center.X - vstorage.gap, center.Y)},
+			{Vector2.new(center.X + vstorage.gap, center.Y), Vector2.new(center.X + vstorage.gap + vstorage.size, center.Y)}
+		}
 
-		local vertical = Instance.new('Frame')
-		stuff.rawrbxset(vertical, 'Size', UDim2.new(0, vstorage.thickness, 0, vstorage.size * 2))
-		stuff.rawrbxset(vertical, 'Position', UDim2.new(0.5, 0, 0.5, 0))
-		stuff.rawrbxset(vertical, 'AnchorPoint', Vector2.new(0.5, 0.5))
-		stuff.rawrbxset(vertical, 'BackgroundColor3', vstorage.color)
-		stuff.rawrbxset(vertical, 'BorderSizePixel', 0)
-		stuff.rawrbxset(vertical, 'ZIndex', 10000)
-		stuff.rawrbxset(vertical, 'Parent', gui)
+		for i, data in lines do
+			if vstorage.outline then
+				local outline_line = Drawing.new('Line')
+				outline_line.From = data[1]
+				outline_line.To = data[2]
+				outline_line.Thickness = vstorage.thickness + 2
+				outline_line.Color = Color3.new(0, 0, 0)
+				outline_line.Visible = true
+				table.insert(vstorage.drawings, outline_line)
+			end
 
-		local center = Instance.new('Frame')
-		stuff.rawrbxset(center, 'Size', UDim2.new(0, vstorage.thickness, 0, vstorage.thickness))
-		stuff.rawrbxset(center, 'Position', UDim2.new(0.5, 0, 0.5, 0))
-		stuff.rawrbxset(center, 'AnchorPoint', Vector2.new(0.5, 0.5))
-		stuff.rawrbxset(center, 'BackgroundColor3', vstorage.color)
-		stuff.rawrbxset(center, 'BorderSizePixel', 0)
-		stuff.rawrbxset(center, 'ZIndex', 10001)
-		stuff.rawrbxset(center, 'Parent', gui)
+			local line = Drawing.new('Line')
+			line.From = data[1]
+			line.To = data[2]
+			line.Thickness = vstorage.thickness
+			line.Color = vstorage.color
+			line.Visible = true
+			table.insert(vstorage.drawings, line)
+		end
 	elseif vstorage.style == 'dot' then
-		local dot = Instance.new('Frame')
-		stuff.rawrbxset(dot, 'Size', UDim2.new(0, vstorage.size, 0, vstorage.size))
-		stuff.rawrbxset(dot, 'Position', UDim2.new(0.5, 0, 0.5, 0))
-		stuff.rawrbxset(dot, 'AnchorPoint', Vector2.new(0.5, 0.5))
-		stuff.rawrbxset(dot, 'BackgroundColor3', vstorage.color)
-		stuff.rawrbxset(dot, 'BorderSizePixel', 0)
-		stuff.rawrbxset(dot, 'ZIndex', 10000)
-		stuff.rawrbxset(dot, 'Parent', gui)
+		if vstorage.outline then
+			local outline_dot = Drawing.new('Circle')
+			outline_dot.Position = center
+			outline_dot.Radius = vstorage.size / 2 + 1
+			outline_dot.Filled = true
+			outline_dot.Color = Color3.new(0, 0, 0)
+			outline_dot.Visible = true
+			table.insert(vstorage.drawings, outline_dot)
+		end
 
-		local corner = Instance.new('UICorner')
-		stuff.rawrbxset(corner, 'CornerRadius', UDim.new(1, 0))
-		stuff.rawrbxset(corner, 'Parent', dot)
+		local dot = Drawing.new('Circle')
+		dot.Position = center
+		dot.Radius = vstorage.size / 2
+		dot.Filled = true
+		dot.Color = vstorage.color
+		dot.NumSides = 16
+		dot.Visible = true
+		table.insert(vstorage.drawings, dot)
+	elseif vstorage.style == 'circle' then
+		if vstorage.outline then
+			local outline_circle = Drawing.new('Circle')
+			outline_circle.Position = center
+			outline_circle.Radius = vstorage.size
+			outline_circle.Filled = false
+			outline_circle.Thickness = vstorage.thickness + 2
+			outline_circle.Color = Color3.new(0, 0, 0)
+			outline_circle.NumSides = 32
+			outline_circle.Visible = true
+			table.insert(vstorage.drawings, outline_circle)
+		end
+
+		local circle = Drawing.new('Circle')
+		circle.Position = center
+		circle.Radius = vstorage.size
+		circle.Filled = false
+		circle.Thickness = vstorage.thickness
+		circle.Color = vstorage.color
+		circle.NumSides = 32
+		circle.Visible = true
+		table.insert(vstorage.drawings, circle)
+	else
+		return notify('crosshair', 'invalid style, must be one of: lines, dot, circle', 2)
 	end
 
-	stuff.rawrbxset(gui, 'Parent', services.core_gui)
+	notify('crosshair', `enabled | style: {vstorage.style} | size: {vstorage.size}`, 1)
 end)
 
-cmd_library.add({'uncrosshair', 'uncrossh'}, 'disables crosshair', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('crosshair')
-
-	if not vstorage.enabled then
-		return notify('crosshair', 'crosshair not enabled', 2)
+cmd_library.add({'uncrosshair', 'uncross', 'unxhair'}, 'disables crosshair', {}, function()
+	local vs = cmd_library.get_variable_storage('crosshair')
+	if not vs.enabled then
+		return notify('crosshair', 'not enabled', 2)
 	end
 
-	vstorage.enabled = false
+	vs.enabled = false
 
-	if vstorage.gui then
-		pcall(stuff.destroy, vstorage.gui)
-		vstorage.gui = nil
+	for _, drawing in vs.drawings or {} do
+		if drawing.Remove then drawing:Remove() end
 	end
+	vs.drawings = {}
 
-	notify('crosshair', 'crosshair disabled', 1)
+	notify('crosshair', 'disabled', 1)
 end)
 
 cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
@@ -9689,12 +11037,29 @@ cmd_library.add({'time'}, 'sets the time of day', {
 	stuff.rawrbxset(services.lighting, 'ClockTime', time)
 end)
 
-cmd_library.add({'fogend', 'fog'}, 'sets fog end distance', {
-	{'distance', 'number'}
-}, function(vstorage, distance)
-	distance = distance or 100000
-	notify('fogend', `fog end set to {distance}`, 1)
-	stuff.rawrbxset(services.lighting, 'FogEnd', distance)
+cmd_library.add({'nofog', 'unfog'}, 'removes fog', {}, function(vstorage)
+	if vstorage.enabled then
+		return notify('nofog', 'already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.original = services.lighting.FogEnd
+
+	services.lighting.FogEnd = 100000
+
+	notify('nofog', 'enabled', 1)
+end)
+
+cmd_library.add({'unnofog', 'fog'}, 'restores fog', {}, function()
+	local vs = cmd_library.get_variable_storage('nofog')
+	if not vs.enabled then
+		return notify('nofog', 'not enabled', 2)
+	end
+
+	vs.enabled = false
+	services.lighting.FogEnd = vs.original or 10000
+
+	notify('nofog', 'disabled', 1)
 end)
 
 cmd_library.add({'brightness'}, 'sets brightness', {
@@ -9762,69 +11127,80 @@ cmd_library.add({'fixlighting', 'resetlighting'}, 'resets lighting', {}, functio
 	stuff.rawrbxset(services.lighting, 'ClockTime', 14)
 end)
 
-cmd_library.add({'showfov', 'showcircle'}, 'shows aim circle', {
+cmd_library.add({'showfov', 'showcircle', 'fov'}, 'shows aim circle following mouse', {
 	{'fov', 'number'},
-	{'color', 'color3'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, fov, color, et)
-	fov = fov or 60
-
-	if et and vstorage.enabled then
+	{'color', 'color'},
+	{'thickness', 'number'},
+	{'segments', 'number'},
+	{'outline', 'boolean'}
+}, function(vstorage, fov, color, thickness, segments, outline)
+	if vstorage.enabled then
 		cmd_library.execute('hidefov')
-		return
-	end
-
-	if vstorage.enabled and vstorage.fov == fov then
-		return notify('showfov', 'aim circle already enabled', 2)
-	end
-
-	vstorage.fov = fov
-	local radius = fov_to_radius(fov)
-
-	local circle_gui = vstorage.circle
-	if circle_gui then
-		stuff.destroy(circle_gui)
-		vstorage.circle = nil
 	end
 
 	vstorage.enabled = true
-	notify('showfov', `aim circle enabled with fov {fov}`, 1)
+	vstorage.fov = fov or 90
+	vstorage.color = color or Color3.fromRGB(176, 126, 215)
+	vstorage.thickness = thickness or 1
+	vstorage.segments = segments or 64
+	vstorage.outline = outline ~= false
+	vstorage.drawings = {}
 
-	local circle_gui = Instance.new('ScreenGui')
-	stuff.rawrbxset(circle_gui, 'Name', 'aim_circle')
-	stuff.rawrbxset(circle_gui, 'IgnoreGuiInset', true)
-	stuff.rawrbxset(circle_gui, 'ResetOnSpawn', false)
-	pcall(protect_gui, circle_gui)
-	vstorage.circle = circle_gui
+	local radius = fov_to_radius(vstorage.fov)
 
-	local circle = Instance.new('ImageLabel')
-	stuff.rawrbxset(circle, 'Image', 'rbxassetid://10131954007')
-	stuff.rawrbxset(circle, 'Size', UDim2.new(0, radius * 2, 0, radius * 2))
-	stuff.rawrbxset(circle, 'Position', UDim2.new(0.5, 0, 0.5, 0))
-	stuff.rawrbxset(circle, 'BackgroundTransparency', 1)
-	stuff.rawrbxset(circle, 'ImageColor3', color or Color3.fromRGB(176, 126, 215))
-	stuff.rawrbxset(circle, 'ImageTransparency', 0)
-	stuff.rawrbxset(circle, 'AnchorPoint', Vector2.new(0.5, 0.5))
-	stuff.rawrbxset(circle, 'Parent', circle_gui)
+	if vstorage.outline then
+		vstorage.drawings.outline = Drawing.new('Circle')
+		vstorage.drawings.outline.Filled = false
+		vstorage.drawings.outline.NumSides = vstorage.segments
+		vstorage.drawings.outline.Thickness = vstorage.thickness + 2
+		vstorage.drawings.outline.Color = Color3.new(0, 0, 0)
+		vstorage.drawings.outline.Transparency = 0.5
+		vstorage.drawings.outline.Radius = radius
+		vstorage.drawings.outline.Visible = true
+	end
 
-	stuff.rawrbxset(circle_gui, 'Parent', services.core_gui)
+	vstorage.drawings.circle = Drawing.new('Circle')
+	vstorage.drawings.circle.Filled = false
+	vstorage.drawings.circle.NumSides = vstorage.segments
+	vstorage.drawings.circle.Thickness = vstorage.thickness
+	vstorage.drawings.circle.Color = vstorage.color
+	vstorage.drawings.circle.Transparency = 1
+	vstorage.drawings.circle.Radius = radius
+	vstorage.drawings.circle.Visible = true
+
+	maid.add('fov_circle', services.run_service.RenderStepped, function()
+		if not vstorage.enabled then return end
+
+		local mouse = stuff.owner:GetMouse()
+		local pos = Vector2.new(mouse.X, mouse.Y)
+
+		if vstorage.drawings.outline then
+			vstorage.drawings.outline.Position = pos
+		end
+		vstorage.drawings.circle.Position = pos
+	end)
+
+	notify('showfov', `fov circle enabled | fov: {vstorage.fov}° | radius: {math.floor(radius)}px`, 1)
 end)
 
-cmd_library.add({'hidefov', 'hidecircle'}, 'hides aim circle', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('showfov')
+cmd_library.add({'hidefov', 'hidecircle', 'unfov'}, 'hides aim circle', {}, function()
+	local vs = cmd_library.get_variable_storage('showfov')
 
-	if not vstorage.enabled then
-		return notify('showfov', 'aim circle not enabled', 2)
+	if not vs.enabled then
+		return notify('showfov', 'not enabled', 2)
 	end
 
-	vstorage.enabled = false
-	notify('showfov', 'aim circle disabled', 1)
+	vs.enabled = false
+	maid.remove('fov_circle')
 
-	local circle_gui = vstorage.circle
-	if circle_gui then
-		stuff.destroy(circle_gui)
-		vstorage.circle = nil
+	if vs.drawings then
+		for _, drawing in vs.drawings do
+			if drawing.Remove then drawing:Remove() end
+		end
+		vs.drawings = nil
 	end
+
+	notify('showfov', 'disabled', 1)
 end)
 
 cmd_library.add({'trail'}, 'adds trail to character', {
@@ -10432,7 +11808,7 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 		end
 
 		repeat
-			local predicted_pos = predict_movement(target, 9)
+			local predicted_pos = predict_position(target, 9)
 			if not predicted_pos then break end
 
 			firetouchinterest(seat, target_hrp, 0)
@@ -10453,17 +11829,34 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 	end
 end)
 
+
+-- preload
+
+task.spawn(function()
+	local auto_plugins = config.get('auto_plugins') or {}
+
+	for plugin_name, url in auto_plugins do
+		task.spawn(function()
+			notify('plugin', `loading '{plugin_name}'...`, 4)
+			cmd_library.execute('pluginload', url)
+		end)
+		task.wait(.1)
+	end
+end)
+
+
 -- chat cmds
 
 maid.add('owner_chatted', stuff.owner.Chatted, function(msg)
 	if msg:sub(1, #(stuff.chat_prefix)) == stuff.chat_prefix then
-		local args = msg:sub(#(stuff.chat_prefix) + 1):split(' ')
-		local cmd = table.remove(args, 1)
-		if cmd then
-			cmd_library.execute(cmd, unpack(args))
+		local commands = cmd_library.parse_command(msg:sub(#(stuff.chat_prefix) + 1))
+
+		for _, data in commands do
+			cmd_library.execute(data.cmd, unpack(data.args))
 		end
 	end
 end, true)
+
 
 -- ui
 
@@ -10481,7 +11874,7 @@ local ui_cmdlist_commandlist = ui_cmdlist_main_container.commands
 local ui_cmdlist_template = ui_cmdlist_commandlist.template
 
 local ui_notifications_main_container = ui_notifications.main_container
-local ui_notifications_template = ui_notifications_main_container.template
+local ui_notifications_template = ui_notifications_main_container:WaitForChild('template')
 
 ui_cmdlist_template.Parent = nil
 ui_notifications_template.Parent = nil
@@ -10531,18 +11924,18 @@ do
 		end, true)
 	end
 	stuff.update_keybind()
-
+	
 	maid.add('cmdbox_focuslost', ui_cmdbox_inputbox.FocusLost, function(enter)
 		tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_closed}, false)
 		open = false
 
 		if enter then
 			local text = ui_cmdbox_inputbox.Text
-			local args = text:split(' ')
-			local cmd = args[1]
-			table.remove(args, 1)
+			local commands = cmd_library.parse_command(text)
 
-			cmd_library.execute(cmd, unpack(args))
+			for _, data in commands do
+				cmd_library.execute(data.cmd, unpack(data.args))
+			end
 		end
 
 		ui_cmdbox_inputbox.Text = ''
@@ -10559,7 +11952,7 @@ do
 
 	maid.add('cmdlist_search', ui_cmdlist_search:GetPropertyChangedSignal('Text'), function()
 		local search_text = ui_cmdlist_search.Text:lower()
-
+		ui_cmdlist_commandlist.CanvasPosition = Vector2.zero
 		for _, label in pairs(ui_cmdlist_commandlist:GetChildren()) do
 			if label:IsA('TextLabel') and label ~= stuff.ui_cmdlist_template then
 				if search_text == '' then
