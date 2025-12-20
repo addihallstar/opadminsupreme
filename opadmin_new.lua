@@ -12,7 +12,7 @@ hookmetamethod = hookmetamethod or function() end
 getloadedmodules = getloadedmodules or nil
 decompile = decompile or function() return '' end
 getnamecallmethod = getnamecallmethod or function() return '' end
-checkcaller = checkcaller or nil
+checkcaller = checkcaller or function() return false end
 syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
 set_hidden_property = sethiddenproperty or function() end
@@ -104,13 +104,6 @@ local stuff = {
 
 stuff.owner_char = stuff.owner.Character or stuff.owner.CharacterAdded:Wait()
 
-stuff.ui = (workspace:FindFirstChild('opadmin_ui') and workspace.opadmin_ui or game:GetObjects('rbxassetid://121800440973428')[1])
-if stuff.ui then
-	stuff.ui = stuff.ui:Clone()
-else
-	return warn('[opadmin] ui failed to load')
-end
-
 local function get_plrs(exclude)
 	local plrs = {}
 	for _, plr in services.players:GetPlayers() do
@@ -131,14 +124,17 @@ local function get_plr(name)
 		['@random'] = function() return {all_plrs[math.random(#all_plrs)]} end,
 		['@rand'] = function() return {all_plrs[math.random(#all_plrs)]} end,
 		['@r'] = function() return {all_plrs[math.random(#all_plrs)]} end,
+		
 		['@self'] = function() return {stuff.owner} end,
 		['@me'] = function() return {stuff.owner} end,
 		['@s'] = function() return {stuff.owner} end,
 		['@m'] = function() return {stuff.owner} end,
+		
 		['@everyone'] = function() return all_plrs end,
 		['@all'] = function() return all_plrs end,
 		['@e'] = function() return all_plrs end,
 		['@a'] = function() return all_plrs end,
+		
 		['@others'] = function()
 			local others = {}
 			for _, plr in all_plrs do
@@ -150,6 +146,7 @@ local function get_plr(name)
 		end,
 		['@other'] = function() return special_selectors['@others']() end,
 		['@o'] = function() return special_selectors['@others']() end,
+		
 		['@view'] = function()
 			local subject = workspace.CurrentCamera.CameraSubject
 			if subject and subject.Parent then
@@ -158,6 +155,7 @@ local function get_plr(name)
 			return {}
 		end,
 		['@v'] = function() return special_selectors['@view']() end,
+		
 		['@nearest'] = function()
 			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 			if not owner_hrp then return {} end
@@ -178,6 +176,7 @@ local function get_plr(name)
 			return nearest and {nearest} or {}
 		end,
 		['@n'] = function() return special_selectors['@nearest']() end,
+		
 		['@enemies'] = function()
 			local enemies = {}
 			for _, plr in all_plrs do
@@ -189,6 +188,7 @@ local function get_plr(name)
 			end
 			return enemies
 		end,
+		
 		['@team'] = function()
 			local teammates = {}
 			for _, plr in all_plrs do
@@ -814,12 +814,18 @@ do
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
 
-	stuff.rawrbxset = function(obj, key, value)
-		obj[key] = value
-	end
-	stuff.rawrbxget = function(obj, key)
-		return obj[key]
-	end -- got rid of them because doesnt work on low unc
+	xpcall(function()
+		stuff.rawrbxget = getrawmetatable(game).__index
+		stuff.rawrbxset = getrawmetatable(game).__newindex
+	end, function()
+		stuff.rawrbxset = function(obj, key, value)
+			obj[key] = value
+		end
+
+		stuff.rawrbxget = function(obj, key)
+			return obj[key]
+		end
+	end)
 
 	local hum = stuff.owner_char:WaitForChild('Humanoid', 10)
 	if hum then
@@ -1145,7 +1151,8 @@ local config = {
 	current_game_id = tostring(game.PlaceId),
 	default_settings = {
 		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or "KeypadZero",
-		chat_prefix = "!",
+		chat_prefix = '!',
+		ui_asset = "rbxassetid://121800440973428",
 		aliases = {},
 		binds = {},
 		auto_plugins = {}
@@ -1183,8 +1190,10 @@ function config.save()
 		local success = pcall(function()
 			writefile(config.file_name, services.http:JSONEncode(config.current_settings))
 		end)
+		
 		return success
 	end
+	
 	return false
 end
 
@@ -1260,6 +1269,31 @@ function config.apply()
 	end
 end
 
+local function load_ui()
+	local ui_asset = config.get('ui_asset') or 'rbxassetid://121800440973428'
+
+	local ui = workspace:FindFirstChild('opadmin_ui') -- for studio testing
+	if not ui then
+		local success, result = pcall(function()
+			return game:GetObjects(ui_asset)[1]
+		end)
+		if success and result then
+			ui = result
+		end
+	end
+
+	if ui then
+		return ui:Clone()
+	end
+	
+	return nil
+end
+
+stuff.ui = load_ui()
+if not stuff.ui then
+	return warn('[opadmin] ui failed to load')
+end
+
 config.load()
 config.apply()
 
@@ -1275,13 +1309,14 @@ function hook_lib.create_hook(name, hooks)
 
 	local hook_data = {
 		hooks = {},
+		function_hooks = {},
 		enabled = true
 	}
 
 	if hooks.namecall and hookmetamethod then
 		pcall(function()
 			hook_data.hooks.old_namecall = hookmetamethod(game, '__namecall', newcclosure(function(self, ...)
-				if hook_data.enabled and checkcaller and not checkcaller() then
+				if hook_data.enabled and not checkcaller() then
 					local result = hooks.namecall(self, ...)
 					if result ~= nil then
 						return result
@@ -1295,7 +1330,7 @@ function hook_lib.create_hook(name, hooks)
 	if hooks.index and hookmetamethod then
 		pcall(function()
 			hook_data.hooks.old_index = hookmetamethod(game, '__index', newcclosure(function(self, key)
-				if hook_data.enabled and checkcaller and not checkcaller() then
+				if hook_data.enabled and not checkcaller() then
 					local result = hooks.index(self, key)
 					if result ~= nil then
 						return result
@@ -1309,7 +1344,7 @@ function hook_lib.create_hook(name, hooks)
 	if hooks.newindex and hookmetamethod then
 		pcall(function()
 			hook_data.hooks.old_newindex = hookmetamethod(game, '__newindex', newcclosure(function(self, key, value)
-				if hook_data.enabled and checkcaller and not checkcaller() then
+				if hook_data.enabled and not checkcaller() then
 					local result = hooks.newindex(self, key, value)
 					if result == false then
 						return
@@ -1320,6 +1355,24 @@ function hook_lib.create_hook(name, hooks)
 		end)
 	end
 
+	if hooks.functions and hookfunction then
+		for original_func, handler in pairs(hooks.functions) do
+			pcall(function()
+				local old_func
+				old_func = hookfunction(original_func, newcclosure(function(...)
+					if hook_data.enabled and not checkcaller() then
+						local result = handler(old_func, ...)
+						if result ~= nil then
+							return result
+						end
+					end
+					return old_func(...)
+				end))
+				hook_data.function_hooks[original_func] = old_func
+			end)
+		end
+	end
+
 	hook_lib.active_hooks[name] = hook_data
 	return hook_data
 end
@@ -1328,6 +1381,15 @@ function hook_lib.destroy_hook(name)
 	local hook_data = hook_lib.active_hooks[name]
 	if hook_data then
 		hook_data.enabled = false
+
+		if hookfunction then
+			for original_func, old_func in pairs(hook_data.function_hooks) do
+				pcall(function()
+					hookfunction(original_func, old_func)
+				end)
+			end
+		end
+
 		hook_lib.active_hooks[name] = nil
 	end
 end
@@ -1340,6 +1402,38 @@ function hook_lib.toggle_hook(name, enabled)
 end
 
 hook_lib.presets.antikick = function(player)
+	local functions = {}
+
+	pcall(function()
+		local teleport = services.teleport_service.Teleport
+		if teleport then
+			functions[teleport] = function(old, ...)
+				notify('antikick', 'blocked direct teleport call', 3)
+				return nil
+			end
+		end
+	end)
+
+	pcall(function()
+		local teleport_async = services.teleport_service.TeleportAsync
+		if teleport_async then
+			functions[teleport_async] = function(old, ...)
+				notify('antikick', 'blocked direct teleport async call', 3)
+				return nil
+			end
+		end
+	end)
+
+	pcall(function()
+		local teleport_place = services.teleport_service.TeleportToPlaceInstance
+		if teleport_place then
+			functions[teleport_place] = function(old, ...)
+				notify('antikick', 'blocked direct teleport to place call', 3)
+				return nil
+			end
+		end
+	end)
+
 	return {
 		namecall = function(self, ...)
 			local method = getnamecallmethod()
@@ -1349,33 +1443,77 @@ hook_lib.presets.antikick = function(player)
 				return nil
 			end
 
-			if self == services.teleport_service and (method == 'Teleport' or method == 'TeleportAsync') then
-				notify('antikick', `blocked teleport attempt`, 3)
+			if self == services.teleport_service and (method == 'Teleport' or method == 'TeleportAsync' or method == 'TeleportToPlaceInstance') then
+				notify('antikick', `blocked {method} attempt`, 3)
 				return nil
 			end
-		end
+		end,
+
+		functions = functions
 	}
 end
 
 hook_lib.presets.freegamepass = function()
+	local functions = {}
+
+	pcall(function()
+		local user_owns = services.marketplace_service.UserOwnsGamePassAsync
+		if user_owns then
+			functions[user_owns] = function(old, ...)
+				return true
+			end
+		end
+	end)
+
+	pcall(function()
+		local player_owns = services.marketplace_service.PlayerOwnsAsset
+		if player_owns then
+			functions[player_owns] = function(old, ...)
+				return true
+			end
+		end
+	end)
+
 	return {
 		namecall = function(self, ...)
 			local method = getnamecallmethod()
 
 			if self == services.marketplace_service then
-				if method == 'UserOwnsGamePassAsync' or method == 'PlayerOwnsAsset' then
+				if method == 'UserOwnsGamePassAsync' or method == 'PlayerOwnsAsset' or method == 'PlayerOwnsBundle' then
 					return true
+				elseif method == 'GetProductInfo' then
+					local success, result = pcall(function(...)
+						return self[method](self, ...)
+					end, ...)
+					
+					if success and result then
+						result.IsOwned = true
+						result.IsForSale = true
+						return result
+					end
 				end
 			end
 
-			if self:IsA('Player') then
+			if typeof(self) == 'Instance' and self:IsA('Player') then
 				if method == 'IsInGroup' then
 					return true
 				elseif method == 'GetRankInGroup' then
 					return 255
+				elseif method == 'GetRoleInGroup' then
+					return 'Owner'
 				end
 			end
-		end
+		end,
+
+		index = function(self, key)
+			if typeof(self) == 'Instance' and self:IsA('Player') then
+				if key == 'MembershipType' then
+					return Enum.MembershipType.Premium
+				end
+			end
+		end,
+
+		functions = functions
 	}
 end
 
@@ -4507,13 +4645,11 @@ cmd_library.add({'jobid', 'jid'}, 'shows job id', {}, function(vstorage)
 end)
 
 cmd_library.add({'fps'}, 'shows current fps', {}, function(vstorage)
-	local fps = math.floor(1 / services.run_service.Heartbeat:Wait())
-	notify('fps', `fps: {fps}`, 1)
+	notify('fps', `fps: {stuff.avg_fps}`, 1)
 end)
 
 cmd_library.add({'ping'}, 'shows your ping', {}, function(vstorage)
-	local ping = stuff.owner:GetNetworkPing() * 1000
-	notify('ping', `ping: {math.floor(ping)}ms`, 1)
+	notify('ping', `ping: {string.format('%0.2f', stuff.avg_ping)} ms`, 1)
 end)
 
 cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
@@ -4537,8 +4673,6 @@ cmd_library.add({'antiafk', 'noafk'}, 'prevents afk kick', {
 	end)
 
 	maid.add('anti_afk', stuff.owner.Idled, function()
-		--services.virt_user:CaptureController()
-		--services.virt_user:ClickButton2(Vector2.new())
 		mouse1click()
 	end)
 end)
@@ -5443,7 +5577,7 @@ cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
 		end
 
 		vstorage.was_grounded = grounded
-		
+
 		if in_air then
 			local wish_dir
 			local wish_speed = vstorage.max_speed * 0.1
@@ -5466,7 +5600,7 @@ cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
 			end
 
 			local new_vel = air_accelerate(horizontal_vel, wish_dir, wish_speed, dt)
-			
+
 			local new_speed = new_vel.Magnitude
 			if new_speed > vstorage.max_speed then
 				new_vel = new_vel.Unit * vstorage.max_speed
@@ -7713,7 +7847,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		random = {'Head', 'UpperTorso', 'Torso', 'LeftUpperArm', 'RightUpperArm'},
 		closest = nil
 	}
-	
+
 	if not part_lookup[vstorage.target_part] then
 		notify('rageaim', 'invalid target part, setting to closest', 3)
 		vstorage.target_part = 'closest'
@@ -8303,12 +8437,12 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		random = {'Head', 'UpperTorso', 'Torso'},
 		closest = nil
 	}
-	
+
 	if not part_lookup[vstorage.target_part] then
 		notify('rageaim', 'invalid target part, setting to closest', 3)
 		vstorage.target_part = 'closest'
 	end
-	
+
 	if not table.find({'fov', 'distance', 'speed', 'none'}, vstorage.priority) then
 		notify('rageaim', 'invalid priority, setting to fov', 3)
 		vstorage.priority = 'fov'
@@ -8864,7 +8998,7 @@ cmd_library.add({'antiaim', 'aa'}, 'makes your character harder to hit (modes: s
 	maid.add('antiaim_respawn', stuff.owner.CharacterAdded, function(char)
 		if not vstorage.enabled then return end
 		char:WaitForChild('HumanoidRootPart')
-		
+
 		vstorage.angle = 0
 		vstorage.tick = 0
 	end)
@@ -9990,6 +10124,40 @@ cmd_library.add({'unpartwalkfling', 'unpwalkfling', 'unpartwalkf', 'unpwalkf', '
 end)
 
 -- c6: visual
+
+cmd_library.add({'setuiasset', 'uiasset'}, 'change the ui asset id', {{'asset_id', 'string'}}, function(storage, asset_id)
+	if not asset_id then
+		notify('config', 'please provide an asset id', 3)
+		return
+	end
+
+	if tonumber(asset_id) then
+		asset_id = 'rbxassetid://' .. asset_id
+	elseif not asset_id:match('^rbxassetid://') then
+		asset_id = 'rbxassetid://' .. asset_id:gsub('%D', '')
+	end
+
+	local success, result = pcall(function()
+		return game:GetObjects(asset_id)[1]
+	end)
+
+	if success and result then
+		config.set('ui_asset', asset_id)
+		notify('config', `ui asset set to {asset_id}. rejoin to apply.`, 5)
+	else
+		notify('config', 'invalid asset id or failed to load', 3)
+	end
+end)
+
+cmd_library.add({'resetuiasset', 'defaultui'}, 'reset ui asset to default', {}, function(storage)
+	config.reset('ui_asset')
+	notify('config', 'ui asset reset to default. rejoin to apply.', 5)
+end)
+
+cmd_library.add({'getuiasset', 'currentui'}, 'get the current ui asset id', {}, function(storage)
+	local asset = config.get('ui_asset') or config.default_settings.ui_asset
+	notify('config', `current ui asset: {asset}`, 5)
+end)
 
 cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shooting', {
 	{'color', 'color'},
@@ -11814,7 +11982,7 @@ do
 		end, true)
 	end
 	stuff.update_keybind()
-	
+
 	maid.add('cmdbox_focuslost', ui_cmdbox_inputbox.FocusLost, function(enter)
 		tween_ui(ui_cmdbox_main_container, 0.15, {Position = pos_closed}, false)
 		open = false
