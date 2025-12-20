@@ -7746,45 +7746,121 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots when crosshair is 
 	vstorage.wallcheck = wallcheck ~= false
 	vstorage.last_shot = 0
 
-	notify('triggerbot', `enabled | delay: {vstorage.delay}s | head only: {vstorage.head_only} | wallcheck: {vstorage.wallcheck}`, 1)
-
 	local valid_parts = {
-		'Head', 'UpperTorso', 'LowerTorso', 'Torso',
-		'LeftUpperArm', 'LeftLowerArm', 'LeftHand',
-		'RightUpperArm', 'RightLowerArm', 'RightHand',
-		'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot',
-		'RightUpperLeg', 'RightLowerLeg', 'RightFoot',
-		'Left Arm', 'Right Arm', 'Left Leg', 'Right Leg'
+		head = true,
+		uppertorso = true,
+		lowertorso = true,
+		torso = true,
+		humanoidrootpart = true,
+		leftupperarm = true,
+		leftlowerarm = true,
+		lefthand = true,
+		rightupperarm = true,
+		rightlowerarm = true,
+		righthand = true,
+		leftupperleg = true,
+		leftlowerleg = true,
+		leftfoot = true,
+		rightupperleg = true,
+		rightlowerleg = true,
+		rightfoot = true,
+		['left arm'] = true,
+		['right arm'] = true,
+		['left leg'] = true,
+		['right leg'] = true
 	}
 
-	local function is_valid_body_part(part)
-		if vstorage.head_only then
-			return part.Name == 'Head'
+	local function get_player_from_part(part)
+		if not part then return nil, nil end
+
+		local ancestor = part
+		while ancestor do
+			local humanoid = ancestor:FindFirstChildOfClass('Humanoid')
+			if humanoid then
+				local player = services.players:GetPlayerFromCharacter(ancestor)
+				if player and player ~= stuff.owner then
+					return player, ancestor
+				end
+			end
+			ancestor = ancestor.Parent
 		end
-		return table.find(valid_parts, part.Name) ~= nil
+
+		return nil, nil
+	end
+
+	local function is_valid_body_part(part)
+		local name_lower = part.Name:lower()
+
+		if vstorage.head_only then
+			return name_lower == 'head'
+		end
+
+		return valid_parts[name_lower] == true
+	end
+
+	local function get_target_at_mouse()
+		local camera = workspace.CurrentCamera
+		local mouse_location = services.user_input_service:GetMouseLocation()
+		local ray = camera:ViewportPointToRay(mouse_location.X, mouse_location.Y)
+
+		local params = RaycastParams.new()
+		params.FilterDescendantsInstances = {stuff.owner_char}
+		params.FilterType = Enum.RaycastFilterType.Exclude
+
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, params)
+		return result and result.Instance, result and result.Position
+	end
+
+	local function check_accessory(part)
+		local accessory = part:FindFirstAncestorOfClass('Accessory')
+		if accessory then
+			local character = accessory.Parent
+			if character then
+				local humanoid = character:FindFirstChildOfClass('Humanoid')
+				if humanoid then
+					local head = character:FindFirstChild('Head')
+					if head then
+						return head, character
+					end
+				end
+			end
+		end
+		return nil, nil
 	end
 
 	maid.add('triggerbot', services.run_service.Heartbeat, function()
-		if not vstorage.enabled or not stuff.owner_char then return end
+		if not vstorage.enabled then return end
+		if not stuff.owner_char then return end
 
 		local now = tick()
 		if now - vstorage.last_shot < vstorage.delay then return end
 
-		local mouse = stuff.owner:GetMouse()
-		local target = mouse.Target
-
+		local target, hit_position = get_target_at_mouse()
 		if not target then return end
+
+		local player, character = get_player_from_part(target)
+
+		if not player then
+			local accessory_part, accessory_char = check_accessory(target)
+			if accessory_part and accessory_char then
+				target = accessory_part
+				character = accessory_char
+				player = services.players:GetPlayerFromCharacter(character)
+			end
+		end
+
+		if not player then return end
+		if not is_valid_target(player) then return end
 		if not is_valid_body_part(target) then return end
 
-		local character = target:FindFirstAncestorOfClass('Model')
-		if not character then return end
-
-		local player = services.players:GetPlayerFromCharacter(character)
-		if not is_valid_target(player) then return end
-
-		if vstorage.wallcheck then
+		if vstorage.wallcheck and hit_position then
 			local camera = workspace.CurrentCamera
-			if not has_line_of_sight(camera.CFrame.Position, target.Position, character) then
+			local params = RaycastParams.new()
+			params.FilterDescendantsInstances = {stuff.owner_char, character}
+			params.FilterType = Enum.RaycastFilterType.Exclude
+
+			local wall_check = workspace:Raycast(camera.CFrame.Position, (hit_position - camera.CFrame.Position).Unit * 1000, params)
+			if wall_check then
 				return
 			end
 		end
@@ -7792,6 +7868,8 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots when crosshair is 
 		vstorage.last_shot = now
 		mouse1click()
 	end)
+
+	notify('triggerbot', `enabled | delay: {vstorage.delay}s | head only: {vstorage.head_only} | wallcheck: {vstorage.wallcheck}`, 1)
 end)
 
 cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function()
@@ -10189,10 +10267,9 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 
 	vstorage.enabled = true
 	vstorage.color = color or Color3.fromRGB(176, 126, 215)
-	vstorage.thickness = math.clamp(thickness or 0.1, 0.02, 3)
-	vstorage.duration = math.clamp(duration or 5, 0.1, 60)
-	vstorage.last_click = 0
-	vstorage.fade_time = 0.15
+	vstorage.thickness = math.clamp(thickness or 0.05, 0.02, 3)
+	vstorage.duration = math.clamp(duration or 1, 0.1, 60)
+	vstorage.fade_time = .5
 
 	local muzzle_names = {
 		'muzzle', 'flash', 'firepoint', 'fire', 'nozzle', 
@@ -10299,12 +10376,8 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 			local tween = services.tween_service:Create(cylinder, tween_info, {
 				Size = Vector3.new(distance, 0, 0)
 			})
-			local highlight_tween = services.tween_service:Create(highlight, tween_info, {
-				FillTransparency = 1
-			})
 
 			tween:Play()
-			highlight_tween:Play()
 
 			tween.Completed:Once(function()
 				stuff.destroy(cylinder)
@@ -10315,10 +10388,6 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 
 	local function on_click()
 		if not vstorage.enabled then return end
-
-		local now = tick()
-		if now - vstorage.last_click < 0.05 then return end
-		vstorage.last_click = now
 
 		local character = stuff.owner_char
 		if not character then return end
