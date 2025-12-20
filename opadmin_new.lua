@@ -10189,9 +10189,82 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 
 	vstorage.enabled = true
 	vstorage.color = color or Color3.fromRGB(176, 126, 215)
-	vstorage.thickness = math.clamp(thickness or 0.05, 0.05, 0.5)
-	vstorage.duration = math.clamp(duration or 0.5, 0.1, 5)
+	vstorage.thickness = math.clamp(thickness or 0.1, 0.02, 3)
+	vstorage.duration = math.clamp(duration or 5, 0.1, 60)
 	vstorage.last_click = 0
+	vstorage.fade_time = 0.15
+
+	local muzzle_names = {
+		'muzzle', 'flash', 'firepoint', 'fire', 'nozzle', 
+		'barrel', 'tip', 'gunpoint', 'shootpoint', 'muzzleflash',
+		'firemuzzle', 'gunfire', 'shootpart'
+	}
+
+	local function find_muzzle(tool)
+		for _, descendant in tool:GetDescendants() do
+			local name_lower = descendant.Name:lower()
+			for _, muzzle_name in muzzle_names do
+				if name_lower:find(muzzle_name, 1, true) then
+					if descendant:IsA('Attachment') then
+						return descendant.WorldPosition
+					elseif descendant:IsA('BasePart') then
+						return descendant.Position
+					end
+				end
+			end
+		end
+		return nil
+	end
+
+	local function get_tool_front(tool)
+		local parts = {}
+		for _, descendant in tool:GetDescendants() do
+			if descendant:IsA('BasePart') then
+				table.insert(parts, descendant)
+			end
+		end
+
+		if #parts == 0 then return nil end
+
+		local camera = workspace.CurrentCamera
+		local look_direction = camera.CFrame.LookVector
+
+		local furthest_part = nil
+		local furthest_dot = -math.huge
+
+		for _, part in parts do
+			local to_part = (part.Position - camera.CFrame.Position).Unit
+			local dot = to_part:Dot(look_direction)
+			if dot > furthest_dot then
+				furthest_dot = dot
+				furthest_part = part
+			end
+		end
+
+		if furthest_part then
+			local cf = furthest_part.CFrame
+			local size = furthest_part.Size
+			return (cf * CFrame.new(0, 0, -size.Z / 2)).Position
+		end
+
+		return nil
+	end
+
+	local function get_start_position()
+		local character = stuff.owner_char
+		if not character then return workspace.CurrentCamera.CFrame.Position end
+
+		local tool = character:FindFirstChildOfClass('Tool')
+		if not tool then return workspace.CurrentCamera.CFrame.Position end
+
+		local muzzle_pos = find_muzzle(tool)
+		if muzzle_pos then return muzzle_pos end
+
+		local front_pos = get_tool_front(tool)
+		if front_pos then return front_pos end
+
+		return workspace.CurrentCamera.CFrame.Position
+	end
 
 	local function trace(start_pos, end_pos)
 		local distance = (end_pos - start_pos).Magnitude
@@ -10221,29 +10294,23 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 		highlight.Adornee = cylinder
 		highlight.Parent = services.core_gui
 
-		task.delay(vstorage.duration, stuff.destroy, cylinder)
-	end
+		task.delay(vstorage.duration, function()
+			local tween_info = TweenInfo.new(vstorage.fade_time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			local tween = services.tween_service:Create(cylinder, tween_info, {
+				Size = Vector3.new(distance, 0, 0)
+			})
+			local highlight_tween = services.tween_service:Create(highlight, tween_info, {
+				FillTransparency = 1
+			})
 
-	local function get_start_position()
-		local character = stuff.owner_char
-		if not character then return workspace.CurrentCamera.CFrame.Position end
+			tween:Play()
+			highlight_tween:Play()
 
-		local tool = character:FindFirstChildOfClass('Tool')
-		if tool then
-			local handle = tool:FindFirstChild('Handle')
-			if handle then
-				local muzzle = handle:FindFirstChild('Muzzle') or handle:FindFirstChild('Flash') or handle:FindFirstChild('FirePoint')
-				if muzzle and muzzle:IsA('Attachment') then
-					return muzzle.WorldPosition
-				elseif muzzle and muzzle:IsA('BasePart') then
-					return muzzle.Position
-				else
-					return (handle.CFrame * CFrame.new(0, 0, -handle.Size.Z / 2)).Position
-				end
-			end
-		end
-
-		return workspace.CurrentCamera.CFrame.Position
+			tween.Completed:Once(function()
+				stuff.destroy(cylinder)
+				stuff.destroy(highlight)
+			end)
+		end)
 	end
 
 	local function on_click()
@@ -10305,9 +10372,8 @@ cmd_library.add({'hitsound', 'hitmarker', 'hs'}, 'plays a sound when hitting a p
 
 	vstorage.enabled = true
 	vstorage.sound_id = sound_id or 'rbxassetid://97643101798871'
-	vstorage.volume = math.clamp(volume or 1, 0.1, 2)
+	vstorage.volume = math.clamp(volume or 3, 0.1, 2)
 	vstorage.pitch = math.clamp(pitch or 1, 0.5, 2)
-	vstorage.last_click = 0
 
 	local function is_player_part(part)
 		if not part then return false end
@@ -10331,7 +10397,7 @@ cmd_library.add({'hitsound', 'hitmarker', 'hs'}, 'plays a sound when hitting a p
 		sound.SoundId = vstorage.sound_id
 		sound.Volume = vstorage.volume
 		sound.PlaybackSpeed = vstorage.pitch * (0.95 + math.random() * 0.1)
-		sound.Parent = workspace.CurrentCamera
+		sound.Parent = services.sound_service
 		sound.PlayOnRemove = true
 		pcall(stuff.destroy, sound)
 	end
@@ -10339,16 +10405,12 @@ cmd_library.add({'hitsound', 'hitmarker', 'hs'}, 'plays a sound when hitting a p
 	local function on_click()
 		if not vstorage.enabled then return end
 
-		local now = tick()
-		if now - vstorage.last_click < 0.05 then return end
-		vstorage.last_click = now
-
 		local character = stuff.owner_char
 		if not character then return end
 
-		local mouse = stuff.owner:GetMouse()
 		local camera = workspace.CurrentCamera
-		local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+		local mouse_location = services.user_input_service:GetMouseLocation()
+		local ray = camera:ViewportPointToRay(mouse_location.X, mouse_location.Y)
 
 		local params = RaycastParams.new()
 		params.FilterDescendantsInstances = {character}
