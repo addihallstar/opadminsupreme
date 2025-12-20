@@ -7588,6 +7588,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 		notify('blackhole', 'blackhole is already enabled', 2)
 	end
 
+	vstorage.enabled = true
 	vstorage.radius = radius or 10
 	vstorage.angle = 1
 
@@ -7694,7 +7695,7 @@ end)
 cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vstorage)
 	local blackhole_vs = cmd_library.get_variable_storage('blackhole')
 
-	if not blackhole_vs or not blackhole_vs.enabled then
+	if not blackhole_vs.enabled then
 		return notify('blackhole', 'black hole not enabled', 2)
 	end
 
@@ -10253,9 +10254,9 @@ cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shoo
 		local character = stuff.owner_char
 		if not character then return end
 
-		local mouse = stuff.owner:GetMouse()
 		local camera = workspace.CurrentCamera
-		local ray = camera:ViewportPointToRay(mouse.X, mouse.Y)
+		local mouse_location = services.user_input_service:GetMouseLocation()
+		local ray = camera:ViewportPointToRay(mouse_location.X, mouse_location.Y)
 
 		local params = RaycastParams.new()
 		params.FilterDescendantsInstances = {character}
