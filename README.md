@@ -9,7 +9,7 @@ another admin script yes, currently we have 245 commands
 - **visuals** - esp, tracers, crosshair, fov circle, bullter tracers, hit sounds (slop), and more
 - **combat** - aimbot, silent aim, rageaim, triggerbot, hitbox expand
 - **movement** - fly, noclip, speed, infinite jump, teleport
-- **bypasses** - decent bypasses for most movement/visual/combat commands
+- **bypasses** - decent bypasses for most movement/visual/combat commands (you have to set bypass arg to true if the command have one)
 - **cool stuff** - flingaura, partfling, parttrap, partwalkfling, blackhole, partrain, partcontrol (very fun yes)
 
 ## running
