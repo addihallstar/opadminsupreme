@@ -6,7 +6,7 @@ another admin script yes, currently we have 245 commands
 
 - **plugin support** - load custom plugins from urls with auto-reload on rejoin.
 - **targeting** - flexible player targeting (me, all, others, random, teamamtes, enemies, nearest, currently viewing, partial matching).
-- **visuals** - esp, tracers, crosshair, fov circle, bullter tracers, hit sounds (slop), and more.
+- **visuals** - esp, tracers, crosshair, fov circle, bullet tracers, hit sounds (slop), and more.
 - **combat** - aimbot, silent aim, rageaim, triggerbot, hitbox expand, antiaim (useless) and more.
 - **movement** - fly, noclip, speed, infinite jump, teleport, click tp, teleport tool, cframewalkspeed, noclip and more.
 - **bypasses** - decent bypasses for most movement/visual/combat commands. (you have to set bypass arg to true if the command have one)
