@@ -48,7 +48,7 @@ note: all selectors (expect partial name matching) should start with @
 
 examples:
 ```
-!kill others
+!murder others (the command doesn't exist it just for the funny)
 !to nearest
 !orbit random
 !partfling enemies
