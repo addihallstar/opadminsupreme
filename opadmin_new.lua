@@ -813,19 +813,35 @@ do
 	local con = stuff.connect(game.Changed, stuff.empty_function)
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
+	
+	stuff.rawrbxset = function(obj, key, value)
+		obj[key] = value
+	end
 
-	xpcall(function()
-		stuff.rawrbxget = getrawmetatable(game).__index
-		stuff.rawrbxset = getrawmetatable(game).__newindex
-	end, function()
-		stuff.rawrbxset = function(obj, key, value)
-			obj[key] = value
-		end
+	stuff.rawrbxget = function(obj, key)
+		return obj[key]
+	end
 
-		stuff.rawrbxget = function(obj, key)
-			return obj[key]
-		end
-	end)
+	--xpcall(function()
+	--	stuff.rawrbxget = getrawmetatable(game).__index
+	--	stuff.rawrbxset = getrawmetatable(game).__newindex
+	--end, function()
+	--	stuff.rawrbxset = function(obj, key, value)
+	--		obj[key] = value
+	--	end
+
+	--	stuff.rawrbxget = function(obj, key)
+	--		return obj[key]
+	--	end
+	--end) -- murder
+	
+	stuff.rawrbxset = function(obj, key, value)
+		obj[key] = value
+	end
+
+	stuff.rawrbxget = function(obj, key)
+		return obj[key]
+	end
 
 	local hum = stuff.owner_char:WaitForChild('Humanoid', 10)
 	if hum then
