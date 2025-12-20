@@ -4459,7 +4459,7 @@ cmd_library.add({'remotespy', 'rspy', 'ketamine'}, 'allows you to spy on remotes
 end)
 
 cmd_library.add({'dex'}, 'dex (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
-	notify('remotespy', 'loading dex', 1)
+	notify('dex', 'loading dex', 1)
 	local success, err = pcall(function()
 		loadstring(game:HttpGet('https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua'))()
 	end)
