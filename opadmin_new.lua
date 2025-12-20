@@ -2572,6 +2572,7 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 		get_maid = function() return maid end,
 		get_stuff = function() return stuff end,
 		get_cmd_library = function() return cmd_library end,
+		get_hook_library = function() return hook_lib end,
 		config = config
 	})
 
