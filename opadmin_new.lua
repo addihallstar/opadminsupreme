@@ -938,7 +938,6 @@ function cmd_library.register_plugin(plugin_name, plugin_data)
 		data = plugin_data.data or {}
 	}
 
-	notify('plugin', `plugin '{plugin_name}' registered`, 1)
 	return cmd_library._plugins[plugin_name:lower()]
 end
 
