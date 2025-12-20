@@ -5146,7 +5146,7 @@ end)
 
 cmd_library.add({"revive"},'attempts to stop oneshots',{},function(vstorage)
 	notify("revive","activated revive",1)
-	local pc = game:GetService("Players").LocalPlayer.Character
+	local pc = stuff.owner_char
 	local Older;Older=pc:FindFirstChildOfClass("Humanoid").Health
 	local reload = true
 	task.spawn(function()
