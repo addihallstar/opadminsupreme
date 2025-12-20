@@ -4316,7 +4316,7 @@ cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]
 	end
 end)
 
-cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox bigger', {
+cmd_library.add({'hitbox', 'headsize', 'expandhitbox'}, 'makes head hitbox bigger', {
 	{'size', 'number'},
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -4339,14 +4339,14 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 
 	notify('hitbox', `hitbox size set to {size}{bypass and ' (bypass)' or ''}`, 1)
 
-	local function store_original_properties(hrp)
-		local hrp_id = tostring(hrp)
-		if not vstorage.original_properties[hrp_id] then
-			vstorage.original_properties[hrp_id] = {
-				size = stuff.rawrbxget(hrp, 'Size'),
-				transparency = stuff.rawrbxget(hrp, 'Transparency'),
-				can_collide = stuff.rawrbxget(hrp, 'CanCollide'),
-				brick_color = stuff.rawrbxget(hrp, 'BrickColor')
+	local function store_original_properties(head)
+		local head_id = tostring(head)
+		if not vstorage.original_properties[head_id] then
+			vstorage.original_properties[head_id] = {
+				size = stuff.rawrbxget(head, 'Size'),
+				transparency = stuff.rawrbxget(head, 'Transparency'),
+				can_collide = stuff.rawrbxget(head, 'CanCollide'),
+				brick_color = stuff.rawrbxget(head, 'BrickColor')
 			}
 		end
 	end
@@ -4354,9 +4354,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 	if bypass then
 		hook_lib.create_hook('hitbox_bypass', {
 			index = function(self, key)
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
-					local original = vstorage.original_properties[hrp_id]
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
+					local original = vstorage.original_properties[head_id]
 
 					if original then
 						if key == 'Size' then
@@ -4373,12 +4373,12 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 			end,
 
 			newindex = function(self, key, value)
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
 
-					if vstorage.original_properties[hrp_id] then
+					if vstorage.original_properties[head_id] then
 						if key == 'Size' or key == 'Transparency' or key == 'CanCollide' or key == 'BrickColor' then
-							return false
+							return
 						end
 					end
 				end
@@ -4388,10 +4388,10 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 				local method = getnamecallmethod()
 				local args = {...}
 
-				if self:IsA('BasePart') and self.Name == 'HumanoidRootPart' then
-					local hrp_id = tostring(self)
+				if self:IsA('BasePart') and self.Name == 'Head' then
+					local head_id = tostring(self)
 
-					if vstorage.original_properties[hrp_id] and method == 'GetPropertyChangedSignal' then
+					if vstorage.original_properties[head_id] and method == 'GetPropertyChangedSignal' then
 						if args[1] == 'Size' or args[1] == 'Transparency' or args[1] == 'CanCollide' or args[1] == 'BrickColor' then
 							return Instance.new('BindableEvent').Event
 						end
@@ -4404,14 +4404,14 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 	maid.add('hitbox_connection', services.run_service.Heartbeat, function()
 		for _, plr in pairs(services.players:GetPlayers()) do
 			if plr ~= stuff.owner and plr.Character then
-				local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
-				if hrp then
-					store_original_properties(hrp)
+				local head = plr.Character:FindFirstChild('Head')
+				if head then
+					store_original_properties(head)
 
-					stuff.rawrbxset(hrp, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
-					stuff.rawrbxset(hrp, 'Transparency', 0.75)
-					stuff.rawrbxset(hrp, 'BrickColor', BrickColor.random())
-					stuff.rawrbxset(hrp, 'CanCollide', false)
+					stuff.rawrbxset(head, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
+					stuff.rawrbxset(head, 'Transparency', 0.75)
+					stuff.rawrbxset(head, 'BrickColor', BrickColor.random())
+					stuff.rawrbxset(head, 'CanCollide', false)
 				end
 			end
 		end
@@ -4425,9 +4425,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 			if player == stuff.owner then return end
 
 			task.wait(0.5)
-			local hrp = character:FindFirstChild('HumanoidRootPart')
-			if hrp then
-				store_original_properties(hrp)
+			local head = character:FindFirstChild('Head')
+			if head then
+				store_original_properties(head)
 			end
 		end)
 	end)
@@ -4438,9 +4438,9 @@ cmd_library.add({'hitbox', 'torsosize', 'expandhitbox'}, 'makes rootpart hitbox 
 				if not vstorage.enabled then return end
 
 				task.wait(0.5)
-				local hrp = character:FindFirstChild('HumanoidRootPart')
-				if hrp then
-					store_original_properties(hrp)
+				local head = character:FindFirstChild('Head')
+				if head then
+					store_original_properties(head)
 				end
 			end)
 		end
@@ -4461,15 +4461,15 @@ cmd_library.add({'unhitbox', 'untorsosize', 'unexpandhitbox'}, 'disables hitbox 
 		hook_lib.destroy_hook('hitbox_bypass')
 	end
 
-	for hrp_id, original in pairs(vstorage.original_properties) do
+	for head_id, original in pairs(vstorage.original_properties) do
 		for _, player in pairs(services.players:GetPlayers()) do
 			if player.Character then
-				local hrp = player.Character:FindFirstChild('HumanoidRootPart')
-				if hrp and tostring(hrp) == hrp_id then
-					pcall(stuff.rawrbxset, hrp, 'Size', original.size)
-					pcall(stuff.rawrbxset, hrp, 'Transparency', original.transparency)
-					pcall(stuff.rawrbxset, hrp, 'CanCollide', original.can_collide)
-					pcall(stuff.rawrbxset, hrp, 'BrickColor', original.brick_color)
+				local head = player.Character:FindFirstChild('Head')
+				if head and tostring(head) == head_id then
+					pcall(stuff.rawrbxset, head, 'Size', original.size)
+					pcall(stuff.rawrbxset, head, 'Transparency', original.transparency)
+					pcall(stuff.rawrbxset, head, 'CanCollide', original.can_collide)
+					pcall(stuff.rawrbxset, head, 'BrickColor', original.brick_color)
 				end
 			end
 		end
