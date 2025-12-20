@@ -4296,10 +4296,10 @@ cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: I
 	end
 end)
 
-cmd_library.add({'remotespy', 'rspy', 'octospy'}, 'allows you to spy on remotes [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+cmd_library.add({'remotespy', 'rspy', 'ketamine'}, 'allows you to spy on remotes [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
 	notify('remotespy', 'loading remote spy', 1)
 	local success, err = pcall(function()
-		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Octo-Spy/refs/heads/main/Main.lua'))()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/InfernusScripts/Ketamine/refs/heads/main/Ketamine.lua'))()
 	end)
 	if not success then
 		notify('remotespy', 'failed to load remote spy: ' .. tostring(err), 2)
