@@ -4306,10 +4306,10 @@ cmd_library.add({'remotespy', 'rspy', 'ketamine'}, 'allows you to spy on remotes
 	end
 end)
 
-cmd_library.add({'dex'}, 'dex explorer (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+cmd_library.add({'dex'}, 'dex (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
 	notify('remotespy', 'loading dex', 1)
 	local success, err = pcall(function()
-		loadstring(game:HttpGet('https://gist.githubusercontent.com/BROgenesis/958c1fee7d8ad100da7f7d020d5d67f3/raw/8dc95caca1b46aa9f4d9dd2433f6be3d9bc69e45/Dex++'))()
+		loadstring(game:HttpGet('https://github.com/AZYsGithub/DexPlusPlus/releases/latest/download/out.lua'))()
 	end)
 	if not success then
 		notify('dex', 'failed to load dex: ' .. tostring(err), 2)
