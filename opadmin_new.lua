@@ -1014,7 +1014,6 @@ function cmd_library.remove_plugin(plugin_name)
 	end
 
 	cmd_library._plugins[plugin_name:lower()] = nil
-	notify('plugin', `plugin '{plugin_name}' removed`, 1)
 	return true
 end
 
@@ -5151,8 +5150,9 @@ end)
 
 cmd_library.add({'spam'}, 'spams a command', {
 	{'times', 'number'},
+	{'delay', 'number'},
 	{['...'] = 'string'}
-}, function(vstorage, times, ...)
+}, function(vstorage, times, delay, ...)
 	times = times or 10
 	local args = {...}
 	local cmd_name = args[1]
@@ -5162,7 +5162,9 @@ cmd_library.add({'spam'}, 'spams a command', {
 
 	for i = 1, times do
 		cmd_library.execute(cmd_name, unpack(args))
-		task.wait(0.1)
+		if delay > 0 then
+			task.wait(delay or 0.1)
+		end
 	end
 end)
 
