@@ -2705,6 +2705,7 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 	{'url', 'string'}
 }, function(vars, url)
 	local success, content = pcall(function()
+		notify('plugin', 'fetching plugin from url...', 1)
 		return game:HttpGet(url, true)
 	end)
 
@@ -2764,26 +2765,6 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 		config = config
 	})
 	
-	export type maid = {
-		_tasks: {[string]: {task: any, type: string}},
-		_protected: {[string]: {task: any, type: string}},
-		add: (self: maid, name: string?, task: any, important: number?) -> (),
-		remove: (self: maid, name: string) -> boolean,
-		remove_protected: (self: maid, name: string) -> boolean,
-		clean: (self: maid, keep_protected: boolean?) -> (),
-		get: (self: maid, name: string) -> any?,
-		exists: (self: maid, name: string) -> boolean
-	}
-	
-	export type hook_lib = {
-		
-	}
-	
-	export type plugin_api = {
-		add_command: (names: {string}, description: string, args: {string}, fn: () -> ()) -> (),
-		notify: (text: string, level: number) -> (),
-	}
-
 	if not success4 then
 		cmd_library.remove_plugin(plugin_data.name)
 		notify('plugin', `plugin initialization failed: {err2}`, 2)
@@ -2813,25 +2794,66 @@ cmd_library.add({'pluginunload', 'punload'}, 'unload a plugin', {
 end)
 
 cmd_library.add({'pluginreload', 'preload'}, 'reload a plugin', {
-	{'plugin_name', 'string'}
-}, function(vars, plugin_name)
+	{'plugin_name', 'string'},
+	{'refetch', 'boolean'}
+}, function(vars, plugin_name, refetch)
 	local plugin = cmd_library._plugins[plugin_name:lower()]
 	if not plugin then
 		notify('plugin', `plugin '{plugin_name}' not found`, 2)
 		return
 	end
 
-	local url = nil
 	local auto_plugins = config.get('auto_plugins') or {}
-	url = auto_plugins[plugin_name]
+	local url = auto_plugins[plugin_name]
 
 	if not url then
 		notify('plugin', `no url saved for plugin '{plugin_name}'. use pluginload instead.`, 3)
 		return
 	end
 
-	cmd_library.remove_plugin(plugin_name)
-	cmd_library.execute('pluginload', url)
+	if refetch then
+		cmd_library.remove_plugin(plugin_name)
+		cmd_library.execute('pluginload', url)
+		notify('plugin', `plugin '{plugin_name}' refetched and reloaded`, 1)
+	else
+		local plugin_data = plugin.data
+		if not plugin_data or not plugin_data.init then
+			notify('plugin', `plugin '{plugin_name}' has no cached data, use refetch`, 2)
+			return
+		end
+
+		for i = #cmd_library._commands, 1, -1 do
+			local cmd = cmd_library._commands[i]
+			if cmd.plugin and cmd.plugin:lower() == plugin_name:lower() then
+				for _, name in cmd.names do
+					cmd_library._command_map[name:lower()] = nil
+				end
+				table.remove(cmd_library._commands, i)
+			end
+		end
+
+		plugin.commands = {}
+
+		local success, err = pcall(plugin_data.init, {
+			add_command = function(names, description, args, fn)
+				return cmd_library.add_plugin_command(plugin_name, names, description, args, fn)
+			end,
+			notify = notify,
+			get_maid = function() return maid end,
+			get_stuff = function() return stuff end,
+			get_cmd_library = function() return cmd_library end,
+			get_hook_library = function() return hook_lib end,
+			config = config
+		})
+
+		if not success then
+			cmd_library.remove_plugin(plugin_name)
+			notify('plugin', `plugin reinitialization failed: {err}`, 2)
+			return
+		end
+
+		notify('plugin', `plugin '{plugin_name}' reloaded`, 1)
+	end
 end)
 
 cmd_library.add({'plugininfo', 'pinfo'}, 'show plugin information', {
