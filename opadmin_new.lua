@@ -1165,7 +1165,7 @@ local config = {
 	file_name = 'opadmin_settings.json',
 	current_game_id = tostring(game.PlaceId),
 	default_settings = {
-		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or "KeypadZero",
+		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or "RightBracket",
 		chat_prefix = '!',
 		ui_asset = "rbxassetid://121800440973428",
 		aliases = {},
@@ -1252,7 +1252,7 @@ function config.apply()
 		if settings.open_keybind:len() == 1 then
 			settings.open_keybind = settings.open_keybind:upper()
 		end
-		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.Quote
+		stuff.open_keybind = Enum.KeyCode[settings.open_keybind] or Enum.KeyCode.RightBracket
 	end
 
 	if settings.chat_prefix then
