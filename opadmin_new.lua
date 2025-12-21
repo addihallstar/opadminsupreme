@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.3.5',
+	ver = '3.4.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -5830,47 +5830,143 @@ cmd_library.add({'spam'}, 'spams a command', {
 	end
 end)
 
-cmd_library.add({'reach'}, 'sets tool reach', {
-	{'size', 'number'},
+cmd_library.add({'reach', 'r'}, 'increases your tool handle size', {
+	{'reach', 'number'},
+	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, size, et)
+}, function(vstorage, reach, bypass, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unreach')
 		return
 	end
-	size = size or 10
+
+	reach = reach or 15
+
+	local tool = stuff.owner_char:FindFirstChildOfClass('Tool') or stuff.owner.Backpack:FindFirstChildOfClass('Tool')
+	if not tool then
+		return notify('reach', 'equip a tool first', 2)
+	end
+
+	local tool_handle = stuff.rawrbxget(tool, 'Handle')
+	if not tool_handle then
+		return notify('reach', 'tool has no handle', 2)
+	end
 
 	if vstorage.enabled then
 		return notify('reach', 'reach already enabled', 2)
 	end
 
 	vstorage.enabled = true
-	notify('reach', `reach set to {size}`, 1)
+	vstorage.tool = tool
+	vstorage.original_size = tool_handle.Size
+	vstorage.original_transparency = tool_handle.Transparency
+	notify('reach', `enabled reach ({reach} studs){bypass and ' (bypass)' or ''}`, 1)
 
-	pcall(function()
-		maid.remove('reach')
-	end)
+	if bypass then
+		hook_lib.create_hook('reach_bypass', hook_lib.presets.property_spoof(tool_handle, {
+			Size = tool_handle.Size,
+			Transparency = tool_handle.Transparency
+		}))
+	end
 
-	maid.add('reach', services.run_service.Heartbeat, function()
-		for _, tool in pairs(stuff.owner_char:GetChildren()) do
-			if tool:IsA('Tool') and tool:FindFirstChild('Handle') then
-				stuff.rawrbxset(tool.Handle, 'Size', Vector3.new(size, size, size))
-				stuff.rawrbxset(tool.Handle, 'Transparency', 0.5)
+	stuff.rawrbxset(tool_handle, 'Size', Vector3.new(reach, reach, reach))
+	stuff.rawrbxset(tool_handle, 'Transparency', 0.8)
+end)
+
+cmd_library.add({'unreach', 'unr'}, 'disables reach', {}, function(vstorage)
+	local reach_storage = cmd_library.get_storage('reach')
+	if not reach_storage or not reach_storage.enabled then
+		return notify('reach', 'reach is not enabled', 2)
+	end
+
+	local tool_handle = stuff.rawrbxget(reach_storage.tool, 'Handle')
+	if tool_handle then
+		stuff.rawrbxset(tool_handle, 'Size', reach_storage.original_size)
+		stuff.rawrbxset(tool_handle, 'Transparency', reach_storage.original_transparency)
+	end
+
+	reach_storage.enabled = false
+	hook_lib.destroy_hook('reach_bypass')
+	notify('reach', 'disabled reach', 1)
+end)
+
+cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your tool', {
+	{'reach', 'number'},
+	{'bypass_mode', 'boolean'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, reach, bypass, et)
+	if not firetouchinterest then
+		return notify('touchreach', 'firetouchinterest not found', 2)
+	end
+
+	if et and vstorage.enabled then
+		cmd_library.execute('untouchreach')
+		return
+	end
+
+	reach = reach or 15
+
+	local tool = stuff.owner_char:FindFirstChildOfClass('Tool') or stuff.owner.Backpack:FindFirstChildOfClass('Tool')
+	if not tool then
+		return notify('touchreach', 'equip a tool first', 2)
+	end
+
+	local tool_handle = stuff.rawrbxget(tool, 'Handle')
+	if not tool_handle then
+		return notify('touchreach', 'tool has no handle', 2)
+	end
+
+	if vstorage.enabled then
+		return notify('touchreach', 'touchreach already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.tool = tool
+	notify('touchreach', `enabled touchreach ({reach} studs){bypass and ' (bypass)' or ''}`, 1)
+
+	if bypass then
+		hook_lib.create_hook('touchreach_bypass', hook_lib.presets.property_spoof(tool_handle, {
+			Size = tool_handle.Size,
+			Position = tool_handle.Position,
+			CFrame = tool_handle.CFrame
+		}))
+	end
+
+	maid.add('touchreach_loop', services.run_service.Heartbeat, function()
+		pcall(function()
+			if not vstorage.enabled then return end
+
+			local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
+
+			for _, v in pairs(workspace:GetDescendants()) do
+				if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
+					local char = v.Parent
+					if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
+						local humanoid = char:FindFirstChildOfClass('Humanoid')
+						if humanoid and humanoid.Health > 0 then
+							local v_pos = stuff.rawrbxget(v, 'Position')
+							if (handle_pos - v_pos).Magnitude <= reach then
+								firetouchinterest(v, tool_handle, 0)
+								firetouchinterest(v, tool_handle, 1)
+							end
+						end
+					end
+				end
 			end
-		end
+		end)
 	end)
 end)
 
-cmd_library.add({'unreach'}, 'disables reach', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('reach')
-
-	if not vstorage.enabled then
-		return notify('reach', 'reach not enabled', 2)
+cmd_library.add({'untouchreach', 'untreach', 'untr'}, 'disables touch reach', {}, function(vstorage)
+	local touchreach_storage = cmd_library.get_storage('touchreach')
+	if not touchreach_storage or not touchreach_storage.enabled then
+		return notify('touchreach', 'touchreach is not enabled', 2)
 	end
 
-	vstorage.enabled = false
-	notify('reach', 'reach disabled', 1)
-	maid.remove('reach')
+	touchreach_storage.enabled = false
+	maid.remove('touchreach_loop')
+	hook_lib.destroy_hook('touchreach_bypass')
+	notify('touchreach', 'disabled touchreach', 1)
 end)
 
 stuff.real_char, stuff.fakechars = nil, {}
