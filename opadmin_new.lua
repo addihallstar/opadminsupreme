@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.2.2',
+	ver = '3.2.3',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1190,7 +1190,7 @@ local config = {
 	file_name = 'opadmin_settings.json',
 	current_game_id = tostring(game.PlaceId),
 	default_settings = {
-		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or "RightBracket",
+		open_keybind = env['opadmin'].opadmin_open_keybind and env['opadmin'].opadmin_open_keybind.Name or 'RightBracket',
 		chat_prefix = '!',
 		ui_asset = "rbxassetid://121800440973428",
 		aliases = {},
@@ -1307,6 +1307,14 @@ function config.apply()
 			end
 		end
 	end
+
+	for plugin_name, url in settings.saved_plugins do
+		task.spawn(function()
+			notify('plugin', `loading '{plugin_name}'...`, 4)
+			cmd_library.execute('pluginload', url)
+		end)
+		task.wait(.1)
+	end
 end
 
 local function load_ui()
@@ -1335,7 +1343,6 @@ if not stuff.ui then
 end
 
 config.load()
-config.apply()
 
 local hook_lib = {
 	active_hooks = {},
@@ -12589,21 +12596,6 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 end)
 
 
--- preload
-
-task.delay(5, function()
-	local saved_plugins = config.get('saved_plugins') or {}
-
-	for plugin_name, url in saved_plugins do
-		task.spawn(function()
-			notify('plugin', `loading '{plugin_name}'...`, 4)
-			cmd_library.execute('pluginload', url)
-		end)
-		task.wait(.1)
-	end
-end)
-
-
 -- chat cmds
 
 maid.add('owner_chatted', stuff.owner.Chatted, function(msg)
@@ -12760,5 +12752,6 @@ pcall(protect_gui, ui_notifications)
 stuff.ui_notifications_template = ui_notifications_template
 stuff.ui_notifications_main_container = ui_notifications_main_container
 
+config.apply()
 notify('info', 'join the discord .gg/StHSWMjcnk', 4)
 notify('info', `opadmin v{stuff.ver} loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
