@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.2.3',
+	ver = '3.3.3',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -705,6 +705,393 @@ local function str_to_type(str, t)
 
 	notify('args', `invalid type '{t}' for string '{str}'`, 2)
 	return nil
+end
+
+local function esp_frame_(parent)
+	local esp_frame = Instance.new('Frame')
+	stuff.rawrbxset(esp_frame, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(esp_frame, 'BorderSizePixel', 0)
+	stuff.rawrbxset(esp_frame, 'AnchorPoint', Vector2.new(0.5, 0.5))
+	stuff.rawrbxset(esp_frame, 'Parent', parent)
+
+	local top = Instance.new('Frame')
+	stuff.rawrbxset(top, 'Name', 'top')
+	stuff.rawrbxset(top, 'Size', UDim2.new(1, 0, 0, 1))
+	stuff.rawrbxset(top, 'Position', UDim2.new(0, 0, 0, 0))
+	stuff.rawrbxset(top, 'BorderSizePixel', 0)
+	stuff.rawrbxset(top, 'Parent', esp_frame)
+
+	local bottom = Instance.new('Frame')
+	stuff.rawrbxset(bottom, 'Name', 'bottom')
+	stuff.rawrbxset(bottom, 'Size', UDim2.new(1, 0, 0, 1))
+	stuff.rawrbxset(bottom, 'Position', UDim2.new(0, 0, 1, -1))
+	stuff.rawrbxset(bottom, 'BorderSizePixel', 0)
+	stuff.rawrbxset(bottom, 'Parent', esp_frame)
+
+	local left = Instance.new('Frame')
+	stuff.rawrbxset(left, 'Name', 'left')
+	stuff.rawrbxset(left, 'Size', UDim2.new(0, 1, 1, 0))
+	stuff.rawrbxset(left, 'Position', UDim2.new(0, 0, 0, 0))
+	stuff.rawrbxset(left, 'BorderSizePixel', 0)
+	stuff.rawrbxset(left, 'Parent', esp_frame)
+
+	local right = Instance.new('Frame')
+	stuff.rawrbxset(right, 'Name', 'right')
+	stuff.rawrbxset(right, 'Size', UDim2.new(0, 1, 1, 0))
+	stuff.rawrbxset(right, 'Position', UDim2.new(1, -1, 0, 0))
+	stuff.rawrbxset(right, 'BorderSizePixel', 0)
+	stuff.rawrbxset(right, 'Parent', esp_frame)
+
+	local name_label = Instance.new('TextLabel')
+	stuff.rawrbxset(name_label, 'Name', 'name')
+	stuff.rawrbxset(name_label, 'Size', UDim2.new(1, 0, 0, 18))
+	stuff.rawrbxset(name_label, 'Position', UDim2.new(0, 0, 0, -20))
+	stuff.rawrbxset(name_label, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(name_label, 'BorderSizePixel', 0)
+	stuff.rawrbxset(name_label, 'TextSize', 14)
+	stuff.rawrbxset(name_label, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(name_label, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(name_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+	stuff.rawrbxset(name_label, 'TextYAlignment', Enum.TextYAlignment.Bottom)
+	stuff.rawrbxset(name_label, 'Parent', esp_frame)
+
+	local distance_label = Instance.new('TextLabel')
+	stuff.rawrbxset(distance_label, 'Name', 'distance')
+	stuff.rawrbxset(distance_label, 'Size', UDim2.new(1, 0, 0, 14))
+	stuff.rawrbxset(distance_label, 'Position', UDim2.new(0, 0, 1, 2))
+	stuff.rawrbxset(distance_label, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(distance_label, 'BorderSizePixel', 0)
+	stuff.rawrbxset(distance_label, 'TextSize', 12)
+	stuff.rawrbxset(distance_label, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(distance_label, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(distance_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+	stuff.rawrbxset(distance_label, 'TextYAlignment', Enum.TextYAlignment.Top)
+	stuff.rawrbxset(distance_label, 'Parent', esp_frame)
+
+	local health_bg = Instance.new('Frame')
+	stuff.rawrbxset(health_bg, 'Name', 'health_bg')
+	stuff.rawrbxset(health_bg, 'Size', UDim2.new(0, 3, 1, 0))
+	stuff.rawrbxset(health_bg, 'Position', UDim2.new(1, 4, 0, 0))
+	stuff.rawrbxset(health_bg, 'BackgroundColor3', Color3.new(0.1, 0.1, 0.1))
+	stuff.rawrbxset(health_bg, 'BorderSizePixel', 0)
+	stuff.rawrbxset(health_bg, 'Parent', esp_frame)
+
+	local health_bar = Instance.new('Frame')
+	stuff.rawrbxset(health_bar, 'Name', 'health_bar')
+	stuff.rawrbxset(health_bar, 'Size', UDim2.new(1, 0, 1, 0))
+	stuff.rawrbxset(health_bar, 'Position', UDim2.new(0, 0, 1, 0))
+	stuff.rawrbxset(health_bar, 'AnchorPoint', Vector2.new(0, 1))
+	stuff.rawrbxset(health_bar, 'BackgroundColor3', Color3.fromRGB(0, 255, 0))
+	stuff.rawrbxset(health_bar, 'BorderSizePixel', 0)
+	stuff.rawrbxset(health_bar, 'Parent', health_bg)
+
+	local health_text = Instance.new('TextLabel')
+	stuff.rawrbxset(health_text, 'Name', 'health_text')
+	stuff.rawrbxset(health_text, 'Size', UDim2.new(0, 30, 0, 14))
+	stuff.rawrbxset(health_text, 'Position', UDim2.new(1, 5, 1, -14))
+	stuff.rawrbxset(health_text, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(health_text, 'BorderSizePixel', 0)
+	stuff.rawrbxset(health_text, 'TextSize', 12)
+	stuff.rawrbxset(health_text, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(health_text, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(health_text, 'TextStrokeColor3', Color3.new(0, 0, 0))
+	stuff.rawrbxset(health_text, 'TextXAlignment', Enum.TextXAlignment.Left)
+	stuff.rawrbxset(health_text, 'Parent', health_bg)
+
+	local tool_label = Instance.new('TextLabel')
+	stuff.rawrbxset(tool_label, 'Name', 'tool')
+	stuff.rawrbxset(tool_label, 'Size', UDim2.new(0, 100, 0, 50))
+	stuff.rawrbxset(tool_label, 'Position', UDim2.new(0, -104, 0, 0))
+	stuff.rawrbxset(tool_label, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(tool_label, 'BorderSizePixel', 0)
+	stuff.rawrbxset(tool_label, 'TextSize', 12)
+	stuff.rawrbxset(tool_label, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(tool_label, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(tool_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+	stuff.rawrbxset(tool_label, 'TextXAlignment', Enum.TextXAlignment.Right)
+	stuff.rawrbxset(tool_label, 'TextYAlignment', Enum.TextYAlignment.Top)
+	stuff.rawrbxset(tool_label, 'TextWrapped', false)
+	stuff.rawrbxset(tool_label, 'Parent', esp_frame)
+
+	return esp_frame
+end
+
+local function esp_gui_()
+	local gui = Instance.new('ScreenGui')
+	stuff.rawrbxset(gui, 'ResetOnSpawn', false)
+	stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
+	stuff.rawrbxset(gui, 'DisplayOrder', 999)
+	stuff.rawrbxset(gui, 'Parent', services.core_gui)
+	return gui
+end
+
+local function update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, esp_color, display_name, distance, health_data, tool_names, show_health)
+	stuff.rawrbxset(esp_frame, 'Visible', true)
+	stuff.rawrbxset(esp_frame, 'Size', UDim2.new(0, box_width, 0, box_height))
+	stuff.rawrbxset(esp_frame, 'Position', UDim2.new(0, box_center_x, 0, box_center_y))
+
+	local top = esp_frame:FindFirstChild('top')
+	local bottom = esp_frame:FindFirstChild('bottom')
+	local left = esp_frame:FindFirstChild('left')
+	local right = esp_frame:FindFirstChild('right')
+	local name_label = esp_frame:FindFirstChild('name')
+	local distance_label = esp_frame:FindFirstChild('distance')
+	local health_bg = esp_frame:FindFirstChild('health_bg')
+	local tool_label = esp_frame:FindFirstChild('tool')
+
+	stuff.rawrbxset(top, 'BackgroundColor3', esp_color)
+	stuff.rawrbxset(bottom, 'BackgroundColor3', esp_color)
+	stuff.rawrbxset(left, 'BackgroundColor3', esp_color)
+	stuff.rawrbxset(right, 'BackgroundColor3', esp_color)
+
+	stuff.rawrbxset(name_label, 'Text', display_name)
+	stuff.rawrbxset(name_label, 'TextColor3', esp_color)
+
+	stuff.rawrbxset(distance_label, 'Text', `[{distance}m]`)
+	stuff.rawrbxset(distance_label, 'TextColor3', Color3.fromRGB(200, 200, 200))
+
+	stuff.rawrbxset(health_bg, 'Visible', show_health)
+
+	if show_health and health_data then
+		local health_bar = health_bg:FindFirstChild('health_bar')
+		local health_text = health_bg:FindFirstChild('health_text')
+
+		stuff.rawrbxset(health_bar, 'Size', UDim2.new(1, 0, health_data.percent, 0))
+		stuff.rawrbxset(health_bar, 'BackgroundColor3', health_data.color)
+		stuff.rawrbxset(health_text, 'Text', health_data.text)
+		stuff.rawrbxset(health_text, 'TextColor3', health_data.color)
+	end
+
+	stuff.rawrbxset(tool_label, 'Text', tool_names or '')
+	stuff.rawrbxset(tool_label, 'TextColor3', Color3.fromRGB(200, 200, 200))
+	stuff.rawrbxset(tool_label, 'Visible', tool_names and #tool_names > 0)
+end
+
+local function get_bounding_box_screen(camera, cf, size)
+	local half_size = size / 1.8
+
+	local corners = {
+		(cf * CFrame.new(half_size.X, half_size.Y, half_size.Z)).Position,
+		(cf * CFrame.new(-half_size.X, half_size.Y, half_size.Z)).Position,
+		(cf * CFrame.new(half_size.X, -half_size.Y, half_size.Z)).Position,
+		(cf * CFrame.new(-half_size.X, -half_size.Y, half_size.Z)).Position,
+		(cf * CFrame.new(half_size.X, half_size.Y, -half_size.Z)).Position,
+		(cf * CFrame.new(-half_size.X, half_size.Y, -half_size.Z)).Position,
+		(cf * CFrame.new(half_size.X, -half_size.Y, -half_size.Z)).Position,
+		(cf * CFrame.new(-half_size.X, -half_size.Y, -half_size.Z)).Position
+	}
+
+	local min_x, min_y = math.huge, math.huge
+	local max_x, max_y = -math.huge, -math.huge
+
+	for _, corner in corners do
+		local screen_pos = camera:WorldToViewportPoint(corner)
+		min_x = math.min(min_x, screen_pos.X)
+		min_y = math.min(min_y, screen_pos.Y)
+		max_x = math.max(max_x, screen_pos.X)
+		max_y = math.max(max_y, screen_pos.Y)
+	end
+
+	return max_x - min_x, max_y - min_y, (min_x + max_x) / 2, (min_y + max_y) / 2
+end
+
+local function get_health_data(humanoid)
+	local health = stuff.rawrbxget(humanoid, 'Health')
+	local max_health = stuff.rawrbxget(humanoid, 'MaxHealth')
+	local health_percent = math.clamp(health / max_health, 0, 1)
+	local health_color = Color3.fromRGB(math.floor(255 * (1 - health_percent)), math.floor(255 * health_percent), 0)
+
+	return {
+		percent = health_percent,
+		color = health_color,
+		text = tostring(math.floor(health))
+	}
+end
+
+local function highlight_(char, esp_color)
+	local highlight = Instance.new('Highlight')
+	stuff.rawrbxset(highlight, 'Adornee', char)
+	stuff.rawrbxset(highlight, 'FillColor', esp_color)
+	stuff.rawrbxset(highlight, 'FillTransparency', 0.75)
+	stuff.rawrbxset(highlight, 'OutlineColor', esp_color)
+	stuff.rawrbxset(highlight, 'OutlineTransparency', 0.5)
+	stuff.rawrbxset(highlight, 'DepthMode', Enum.HighlightDepthMode.AlwaysOnTop)
+	stuff.rawrbxset(highlight, 'Parent', services.core_gui)
+	return highlight
+end
+
+local function update_highlight(highlight, char, esp_color)
+	stuff.rawrbxset(highlight, 'Enabled', true)
+	if stuff.rawrbxget(highlight, 'Adornee') ~= char then
+		stuff.rawrbxset(highlight, 'Adornee', char)
+	end
+	stuff.rawrbxset(highlight, 'FillColor', esp_color)
+	stuff.rawrbxset(highlight, 'OutlineColor', esp_color)
+end
+
+local function tracer_line_(parent)
+	local line = Instance.new('Frame')
+	stuff.rawrbxset(line, 'Name', 'tracer')
+	stuff.rawrbxset(line, 'BorderSizePixel', 0)
+	stuff.rawrbxset(line, 'AnchorPoint', Vector2.new(0.5, 0.5))
+	stuff.rawrbxset(line, 'Parent', parent)
+
+	local outline = Instance.new('UIStroke')
+	stuff.rawrbxset(outline, 'Color', Color3.new(0, 0, 0))
+	stuff.rawrbxset(outline, 'Thickness', 1)
+	stuff.rawrbxset(outline, 'Transparency', 0.5)
+	stuff.rawrbxset(outline, 'Parent', line)
+
+	return line
+end
+
+local function tracer_arrow_(parent, arrow_size)
+	local arrow = Instance.new('ImageLabel')
+	stuff.rawrbxset(arrow, 'Name', 'arrow')
+	stuff.rawrbxset(arrow, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(arrow, 'AnchorPoint', Vector2.new(0.5, 0.5))
+	stuff.rawrbxset(arrow, 'Size', UDim2.new(0, arrow_size, 0, arrow_size))
+	stuff.rawrbxset(arrow, 'Image', 'rbxassetid://3926305904')
+	stuff.rawrbxset(arrow, 'ImageRectOffset', Vector2.new(524, 763))
+	stuff.rawrbxset(arrow, 'ImageRectSize', Vector2.new(36, 36))
+	stuff.rawrbxset(arrow, 'ResampleMode',Enum.ResamplerMode.Pixelated)
+	stuff.rawrbxset(arrow, 'Parent', parent)
+
+	local distance_label = Instance.new('TextLabel')
+	stuff.rawrbxset(distance_label, 'Name', 'distance')
+	stuff.rawrbxset(distance_label, 'BackgroundTransparency', 1)
+	stuff.rawrbxset(distance_label, 'Size', UDim2.new(0, 50, 0, 14))
+	stuff.rawrbxset(distance_label, 'Position', UDim2.new(0.5, 0, 1, 2))
+	stuff.rawrbxset(distance_label, 'AnchorPoint', Vector2.new(0.5, 0))
+	stuff.rawrbxset(distance_label, 'Font', Enum.Font.Code)
+	stuff.rawrbxset(distance_label, 'TextSize', 10)
+	stuff.rawrbxset(distance_label, 'TextStrokeTransparency', 0.5)
+	stuff.rawrbxset(distance_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+	stuff.rawrbxset(distance_label, 'Parent', arrow)
+
+	return arrow
+end
+
+local function update_tracer_line(line, start_x, start_y, end_x, end_y, color, thickness, transparency)
+	local dx = end_x - start_x
+	local dy = end_y - start_y
+	local distance = math.sqrt(dx * dx + dy * dy)
+	local angle = math.deg(math.atan2(dy, dx))
+
+	stuff.rawrbxset(line, 'BackgroundColor3', color)
+	stuff.rawrbxset(line, 'BackgroundTransparency', transparency)
+	stuff.rawrbxset(line, 'Size', UDim2.new(0, distance, 0, thickness))
+	stuff.rawrbxset(line, 'Position', UDim2.new(0, (start_x + end_x) / 2, 0, (start_y + end_y) / 2))
+	stuff.rawrbxset(line, 'Rotation', angle)
+	stuff.rawrbxset(line, 'Visible', true)
+end
+
+local function update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, color, arrow_distance)
+	local direction = (hrp_pos - camera.CFrame.Position).Unit
+	local screen_direction = Vector2.new(
+		direction:Dot(camera.CFrame.RightVector),
+		-direction:Dot(camera.CFrame.UpVector)
+	).Unit
+
+	local arrow_dist = math.min(center_x, center_y) - arrow_distance
+	local arrow_x = center_x + screen_direction.X * arrow_dist
+	local arrow_y = center_y + screen_direction.Y * arrow_dist
+	local arrow_angle = math.deg(math.atan2(screen_direction.Y, screen_direction.X)) + 90
+
+	local dist_text = ''
+	if owner_pos then
+		local dist = math.floor((owner_pos - hrp_pos).Magnitude)
+		dist_text = `{dist}m`
+	end
+
+	local distance_label = arrow:FindFirstChild('distance')
+	if distance_label then
+		stuff.rawrbxset(distance_label, 'Text', dist_text)
+		stuff.rawrbxset(distance_label, 'TextColor3', color)
+		stuff.rawrbxset(distance_label, 'Rotation', -arrow_angle)
+	end
+
+	stuff.rawrbxset(arrow, 'ImageColor3', color)
+	stuff.rawrbxset(arrow, 'Position', UDim2.new(0, arrow_x, 0, arrow_y))
+	stuff.rawrbxset(arrow, 'Rotation', arrow_angle)
+	stuff.rawrbxset(arrow, 'Visible', true)
+end
+
+local function get_tracer_start(mode, viewport, mouse_pos)
+	local center_x = viewport.X / 2
+	local center_y = viewport.Y / 2
+
+	if mode == 'center' then
+		return center_x, center_y
+	elseif mode == 'mouse' then
+		return mouse_pos.X, mouse_pos.Y
+	else
+		return center_x, viewport.Y
+	end
+end
+
+local function is_valid_npc(model)
+	if not model:IsA('Model') then return false end
+
+	local humanoid = model:FindFirstChildOfClass('Humanoid')
+	local root = model:FindFirstChild('HumanoidRootPart')
+	if not humanoid or not root then return false end
+
+	for _, plr in services.players:GetPlayers() do
+		if plr.Character == model then return false end
+	end
+
+	if model == stuff.owner_char then return false end
+
+	return true
+end
+
+local function is_valid_item(obj)
+	if obj:IsA('Tool') and obj.Parent == workspace then
+		return true
+	end
+
+	if obj:IsA('Model') and obj:FindFirstChild('Handle') and not obj:FindFirstChildOfClass('Humanoid') then
+		return true
+	end
+
+	return false
+end
+
+local function cleanup_esp(vstorage, highlights_key)
+	for _, frame in vstorage.frames or {} do
+		pcall(stuff.destroy, frame)
+	end
+
+	for _, highlight in vstorage.highlights or {} do
+		pcall(stuff.destroy, highlight)
+	end
+
+	if vstorage.screen_gui then
+		pcall(stuff.destroy, vstorage.screen_gui)
+		vstorage.screen_gui = nil
+	end
+
+	table.clear(vstorage.frames or {})
+	table.clear(vstorage.highlights or {})
+end
+
+local function cleanup_tracers(vstorage)
+	for _, line in vstorage.lines or {} do
+		pcall(stuff.destroy, line)
+	end
+
+	for _, arrow in vstorage.arrows or {} do
+		pcall(stuff.destroy, arrow)
+	end
+
+	if vstorage.gui then
+		pcall(stuff.destroy, vstorage.gui)
+		vstorage.gui = nil
+	end
+
+	table.clear(vstorage.lines or {})
+	table.clear(vstorage.arrows or {})
 end
 
 local maid = {
@@ -10921,465 +11308,405 @@ cmd_library.add({'uncrosshair', 'uncross', 'unxhair'}, 'disables crosshair', {},
 	notify('crosshair', 'disabled', 1)
 end)
 
-cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
-	{'include_npcs', 'boolean'},
+cmd_library.add({'esp', 'playeresp'}, 'toggles player esp', {
 	{'color', 'color3'}
-}, function(vstorage, include_npcs, color)
+}, function(vstorage, color)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.team = color == 'team'
-	vstorage.include_npcs = include_npcs or false
-	vstorage.billboards = vstorage.billboards or {}
-	vstorage.npcs = vstorage.npcs or {}
+	vstorage.frames = vstorage.frames or {}
+	vstorage.highlights = vstorage.highlights or {}
 
-	if not vstorage.team then
-		if color then
-			vstorage.color = color
-		end
+	if not vstorage.team and color then
+		vstorage.color = color
 	end
-
 	vstorage.color = vstorage.color or Color3.fromRGB(176, 126, 215)
-
-	local function is_valid_npc(model)
-		if not model:IsA('Model') then return false end
-
-		local humanoid = model:FindFirstChildOfClass('Humanoid')
-		local root = model:FindFirstChild('HumanoidRootPart')
-		if not humanoid or not root then return false end
-
-		for _, plr in services.players:GetPlayers() do
-			if plr.Character == model then return false end
-		end
-
-		if model == stuff.owner_char then return false end
-
-		return true
-	end
 
 	if vstorage.enabled then
 		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
-			vstorage.screen_gui = Instance.new('ScreenGui')
-			stuff.rawrbxset(vstorage.screen_gui, 'Name', 'esp_gui')
-			stuff.rawrbxset(vstorage.screen_gui, 'ResetOnSpawn', false)
-			stuff.rawrbxset(vstorage.screen_gui, 'IgnoreGuiInset', true)
-			stuff.rawrbxset(vstorage.screen_gui, 'DisplayOrder', 999)
-			stuff.rawrbxset(vstorage.screen_gui, 'Parent', services.core_gui)
+			vstorage.screen_gui = esp_gui_()
+			stuff.rawrbxset(vstorage.screen_gui, 'Name', 'player_esp_gui')
 		end
-
-		if vstorage.include_npcs then
-			table.clear(vstorage.npcs)
-
-			for _, model in workspace:GetDescendants() do
-				if is_valid_npc(model) then
-					vstorage.npcs[model] = true
-				end
-			end
-
-			maid.remove('esp_npc_added')
-			maid.remove('esp_npc_removing')
-			maid.remove('esp_character_added')
-
-			maid.add('esp_npc_added', workspace.DescendantAdded, function(descendant)
-				if not vstorage.include_npcs then return end
-				if descendant:IsA('Model') then
-					task.defer(function()
-						if is_valid_npc(descendant) then
-							vstorage.npcs[descendant] = true
-						end
-					end)
-				end
-			end)
-
-			maid.add('esp_npc_removing', workspace.DescendantRemoving, function(descendant)
-				if vstorage.npcs[descendant] then
-					vstorage.npcs[descendant] = nil
-
-					if vstorage.billboards and vstorage.billboards[descendant] then
-						pcall(stuff.destroy, vstorage.billboards[descendant])
-						vstorage.billboards[descendant] = nil
-					end
-					if stuff.highlights[descendant] then
-						pcall(stuff.destroy, stuff.highlights[descendant])
-						stuff.highlights[descendant] = nil
-					end
-				end
-			end)
-
-			maid.add('esp_character_added', services.players.PlayerAdded, function(plr)
-				plr.CharacterAdded:Connect(function(char)
-					vstorage.npcs[char] = nil
-				end)
-			end)
-
-			for _, plr in services.players:GetPlayers() do
-				plr.CharacterAdded:Connect(function(char)
-					vstorage.npcs[char] = nil
-				end)
-			end
-		end
-
-		notify('esp', `esp enabled{vstorage.include_npcs and ' (with npcs)' or ''}`, 1)
+		notify('esp', 'player esp enabled', 1)
 	else
-		notify('esp', 'esp disabled', 1)
-
-		for _, billboard in vstorage.billboards do
-			pcall(stuff.destroy, billboard)
-		end
-
-		for _, highlight in stuff.highlights do
-			pcall(stuff.destroy, highlight)
-		end
-
-		if vstorage.screen_gui then
-			pcall(stuff.destroy, vstorage.screen_gui)
-			vstorage.screen_gui = nil
-		end
-
-		table.clear(vstorage.billboards)
-		table.clear(stuff.highlights)
-		table.clear(vstorage.npcs)
-
-		maid.remove('esp_npc_added')
-		maid.remove('esp_npc_removing')
-		maid.remove('esp_character_added')
+		cleanup_esp(vstorage)
+		notify('esp', 'player esp disabled', 1)
 	end
 end)
 
-maid.add('esp_player_removing', services.players.PlayerRemoving, function(plr)
-	local esp_vs = cmd_library.get_variable_storage('esp')
-	if esp_vs and esp_vs.billboards and esp_vs.billboards[plr] then
-		pcall(stuff.destroy, esp_vs.billboards[plr])
-		esp_vs.billboards[plr] = nil
-	end
-	if stuff.highlights[plr] then
-		pcall(stuff.destroy, stuff.highlights[plr])
-		stuff.highlights[plr] = nil
-	end
-end, true)
-
-maid.add('esp_update', services.run_service.RenderStepped, function()
-	local esp_vs = cmd_library.get_variable_storage('esp')
-	if not esp_vs or not esp_vs.enabled then return end
-	if not esp_vs.screen_gui or not esp_vs.screen_gui.Parent then return end
+maid.add('player_esp_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('esp')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.screen_gui or not vstorage.screen_gui.Parent then return end
 
 	local camera = workspace.CurrentCamera
-	local entities = {}
+	local active = {}
 
 	for _, plr in services.players:GetPlayers() do
-		if plr ~= stuff.owner and plr.Character then
-			table.insert(entities, {
-				name = plr.Name,
-				character = plr.Character,
-				player = plr,
-				is_npc = false
-			})
-		end
-	end
+		if plr == stuff.owner or not plr.Character then continue end
 
-	if esp_vs.include_npcs then
-		for model in esp_vs.npcs do
-			if model.Parent and model:FindFirstChild('HumanoidRootPart') then
-				table.insert(entities, {
-					name = model.Name,
-					character = model,
-					player = model,
-					is_npc = true
-				})
-			end
-		end
-	end
-
-	local active_players = {}
-	for _, entity in entities do
-		active_players[entity.player] = true
-	end
-
-	for player, billboard in esp_vs.billboards do
-		if not active_players[player] then
-			pcall(stuff.destroy, billboard)
-			esp_vs.billboards[player] = nil
-			if stuff.highlights[player] then
-				pcall(stuff.destroy, stuff.highlights[player])
-				stuff.highlights[player] = nil
-			end
-		end
-	end
-
-	for _, entity in entities do
-		local char = entity.character
+		local char = plr.Character
 		local hrp = char:FindFirstChild('HumanoidRootPart')
 		local humanoid = char:FindFirstChildOfClass('Humanoid')
+		if not hrp then continue end
 
-		if hrp then
-			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
-			local _, on_screen = camera:WorldToViewportPoint(hrp_pos)
+		active[plr] = true
 
-			local esp_frame = esp_vs.billboards[entity.player]
+		local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+		local _, on_screen = camera:WorldToViewportPoint(hrp_pos)
 
-			if not on_screen then
-				if esp_frame then
-					stuff.rawrbxset(esp_frame, 'Visible', false)
-				end
-				local highlight = stuff.highlights[entity.player]
-				if highlight then
-					stuff.rawrbxset(highlight, 'Enabled', false)
-				end
-				continue
+		local esp_frame = vstorage.frames[plr]
+		local highlight = vstorage.highlights[plr]
+
+		if not on_screen then
+			if esp_frame then stuff.rawrbxset(esp_frame, 'Visible', false) end
+			if highlight then stuff.rawrbxset(highlight, 'Enabled', false) end
+			continue
+		end
+
+		local cf, size = char:GetBoundingBox()
+		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size)
+
+		if not esp_frame or not esp_frame.Parent then
+			if esp_frame then pcall(stuff.destroy, esp_frame) end
+			esp_frame = esp_frame_(vstorage.screen_gui)
+			vstorage.frames[plr] = esp_frame
+		end
+
+		local esp_color = vstorage.color
+		if vstorage.team and plr.Team then
+			esp_color = plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
+		end
+
+		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or 0
+
+		local health_data = humanoid and get_health_data(humanoid) or nil
+
+		local tool_names = {}
+		for _, tool in char:GetChildren() do
+			if tool:IsA('Tool') then
+				table.insert(tool_names, stuff.rawrbxget(tool, 'Name'))
 			end
+		end
 
-			local cf, size = char:GetBoundingBox()
-			local half_size = size / 1.8 -- actually not half the size but who cares
+		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, esp_color, plr.Name, distance, health_data, #tool_names > 0 and table.concat(tool_names, '\n') or nil, true)
 
-			local corners = {
-				(cf * CFrame.new(half_size.X, half_size.Y, half_size.Z)).Position,
-				(cf * CFrame.new(-half_size.X, half_size.Y, half_size.Z)).Position,
-				(cf * CFrame.new(half_size.X, -half_size.Y, half_size.Z)).Position,
-				(cf * CFrame.new(-half_size.X, -half_size.Y, half_size.Z)).Position,
-				(cf * CFrame.new(half_size.X, half_size.Y, -half_size.Z)).Position,
-				(cf * CFrame.new(-half_size.X, half_size.Y, -half_size.Z)).Position,
-				(cf * CFrame.new(half_size.X, -half_size.Y, -half_size.Z)).Position,
-				(cf * CFrame.new(-half_size.X, -half_size.Y, -half_size.Z)).Position
-			}
+		if not highlight or not highlight.Parent then
+			if highlight then pcall(stuff.destroy, highlight) end
+			highlight = highlight_(char, esp_color)
+			vstorage.highlights[plr] = highlight
+		else
+			update_highlight(highlight, char, esp_color)
+		end
+	end
 
-			local min_x, min_y = math.huge, math.huge
-			local max_x, max_y = -math.huge, -math.huge
-
-			for _, corner in corners do
-				local screen_pos = camera:WorldToViewportPoint(corner)
-				min_x = math.min(min_x, screen_pos.X)
-				min_y = math.min(min_y, screen_pos.Y)
-				max_x = math.max(max_x, screen_pos.X)
-				max_y = math.max(max_y, screen_pos.Y)
-			end
-
-			local box_width = max_x - min_x
-			local box_height = max_y - min_y
-			local box_center_x = (min_x + max_x) / 2
-			local box_center_y = (min_y + max_y) / 2
-
-			if not esp_frame or not esp_frame.Parent then
-				if esp_frame then
-					pcall(stuff.destroy, esp_frame)
-				end
-
-				esp_frame = Instance.new('Frame')
-				stuff.rawrbxset(esp_frame, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(esp_frame, 'BorderSizePixel', 0)
-				stuff.rawrbxset(esp_frame, 'AnchorPoint', Vector2.new(0.5, 0.5))
-				stuff.rawrbxset(esp_frame, 'Parent', esp_vs.screen_gui)
-				esp_vs.billboards[entity.player] = esp_frame
-
-				local top = Instance.new('Frame')
-				stuff.rawrbxset(top, 'Name', 'top')
-				stuff.rawrbxset(top, 'Size', UDim2.new(1, 0, 0, 1))
-				stuff.rawrbxset(top, 'Position', UDim2.new(0, 0, 0, 0))
-				stuff.rawrbxset(top, 'BorderSizePixel', 0)
-				stuff.rawrbxset(top, 'Parent', esp_frame)
-
-				local bottom = Instance.new('Frame')
-				stuff.rawrbxset(bottom, 'Name', 'bottom')
-				stuff.rawrbxset(bottom, 'Size', UDim2.new(1, 0, 0, 1))
-				stuff.rawrbxset(bottom, 'Position', UDim2.new(0, 0, 1, -1))
-				stuff.rawrbxset(bottom, 'BorderSizePixel', 0)
-				stuff.rawrbxset(bottom, 'Parent', esp_frame)
-
-				local left = Instance.new('Frame')
-				stuff.rawrbxset(left, 'Name', 'left')
-				stuff.rawrbxset(left, 'Size', UDim2.new(0, 1, 1, 0))
-				stuff.rawrbxset(left, 'Position', UDim2.new(0, 0, 0, 0))
-				stuff.rawrbxset(left, 'BorderSizePixel', 0)
-				stuff.rawrbxset(left, 'Parent', esp_frame)
-
-				local right = Instance.new('Frame')
-				stuff.rawrbxset(right, 'Name', 'right')
-				stuff.rawrbxset(right, 'Size', UDim2.new(0, 1, 1, 0))
-				stuff.rawrbxset(right, 'Position', UDim2.new(1, -1, 0, 0))
-				stuff.rawrbxset(right, 'BorderSizePixel', 0)
-				stuff.rawrbxset(right, 'Parent', esp_frame)
-
-				local name_label = Instance.new('TextLabel')
-				stuff.rawrbxset(name_label, 'Name', 'name')
-				stuff.rawrbxset(name_label, 'Size', UDim2.new(1, 0, 0, 18))
-				stuff.rawrbxset(name_label, 'Position', UDim2.new(0, 0, 0, -20))
-				stuff.rawrbxset(name_label, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(name_label, 'BorderSizePixel', 0)
-				stuff.rawrbxset(name_label, 'TextSize', 14)
-				stuff.rawrbxset(name_label, 'Font', Enum.Font.Code)
-				stuff.rawrbxset(name_label, 'TextStrokeTransparency', 0.5)
-				stuff.rawrbxset(name_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
-				stuff.rawrbxset(name_label, 'TextYAlignment', Enum.TextYAlignment.Bottom)
-				stuff.rawrbxset(name_label, 'Parent', esp_frame)
-
-				local distance_label = Instance.new('TextLabel')
-				stuff.rawrbxset(distance_label, 'Name', 'distance')
-				stuff.rawrbxset(distance_label, 'Size', UDim2.new(1, 0, 0, 14))
-				stuff.rawrbxset(distance_label, 'Position', UDim2.new(0, 0, 1, 2))
-				stuff.rawrbxset(distance_label, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(distance_label, 'BorderSizePixel', 0)
-				stuff.rawrbxset(distance_label, 'TextSize', 12)
-				stuff.rawrbxset(distance_label, 'Font', Enum.Font.Code)
-				stuff.rawrbxset(distance_label, 'TextStrokeTransparency', 0.5)
-				stuff.rawrbxset(distance_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
-				stuff.rawrbxset(distance_label, 'TextYAlignment', Enum.TextYAlignment.Top)
-				stuff.rawrbxset(distance_label, 'Parent', esp_frame)
-
-				local health_bg = Instance.new('Frame')
-				stuff.rawrbxset(health_bg, 'Name', 'health_bg')
-				stuff.rawrbxset(health_bg, 'Size', UDim2.new(0, 3, 1, 0))
-				stuff.rawrbxset(health_bg, 'Position', UDim2.new(1, 4, 0, 0))
-				stuff.rawrbxset(health_bg, 'BackgroundColor3', Color3.new(0.1, 0.1, 0.1))
-				stuff.rawrbxset(health_bg, 'BorderSizePixel', 0)
-				stuff.rawrbxset(health_bg, 'Parent', esp_frame)
-
-				local health_bar = Instance.new('Frame')
-				stuff.rawrbxset(health_bar, 'Name', 'health_bar')
-				stuff.rawrbxset(health_bar, 'Size', UDim2.new(1, 0, 1, 0))
-				stuff.rawrbxset(health_bar, 'Position', UDim2.new(0, 0, 1, 0))
-				stuff.rawrbxset(health_bar, 'AnchorPoint', Vector2.new(0, 1))
-				stuff.rawrbxset(health_bar, 'BackgroundColor3', Color3.fromRGB(0, 255, 0))
-				stuff.rawrbxset(health_bar, 'BorderSizePixel', 0)
-				stuff.rawrbxset(health_bar, 'Parent', health_bg)
-
-				local health_text = Instance.new('TextLabel')
-				stuff.rawrbxset(health_text, 'Name', 'health_text')
-				stuff.rawrbxset(health_text, 'Size', UDim2.new(0, 30, 0, 14))
-				stuff.rawrbxset(health_text, 'Position', UDim2.new(1, 5, 1, -14))
-				stuff.rawrbxset(health_text, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(health_text, 'BorderSizePixel', 0)
-				stuff.rawrbxset(health_text, 'TextSize', 12)
-				stuff.rawrbxset(health_text, 'Font', Enum.Font.Code)
-				stuff.rawrbxset(health_text, 'TextStrokeTransparency', 0.5)
-				stuff.rawrbxset(health_text, 'TextStrokeColor3', Color3.new(0, 0, 0))
-				stuff.rawrbxset(health_text, 'TextXAlignment', Enum.TextXAlignment.Left)
-				stuff.rawrbxset(health_text, 'Parent', health_bg)
-
-				local tool_label = Instance.new('TextLabel')
-				stuff.rawrbxset(tool_label, 'Name', 'tool')
-				stuff.rawrbxset(tool_label, 'Size', UDim2.new(0, 100, 0, 50))
-				stuff.rawrbxset(tool_label, 'Position', UDim2.new(0, -104, 0, 0))
-				stuff.rawrbxset(tool_label, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(tool_label, 'BorderSizePixel', 0)
-				stuff.rawrbxset(tool_label, 'TextSize', 12)
-				stuff.rawrbxset(tool_label, 'Font', Enum.Font.Code)
-				stuff.rawrbxset(tool_label, 'TextStrokeTransparency', 0.5)
-				stuff.rawrbxset(tool_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
-				stuff.rawrbxset(tool_label, 'TextXAlignment', Enum.TextXAlignment.Right)
-				stuff.rawrbxset(tool_label, 'TextYAlignment', Enum.TextYAlignment.Top)
-				stuff.rawrbxset(tool_label, 'TextWrapped', false)
-				stuff.rawrbxset(tool_label, 'Parent', esp_frame)
-			end
-
-			stuff.rawrbxset(esp_frame, 'Visible', true)
-			stuff.rawrbxset(esp_frame, 'Size', UDim2.new(0, box_width, 0, box_height))
-			stuff.rawrbxset(esp_frame, 'Position', UDim2.new(0, box_center_x, 0, box_center_y))
-
-			local top = esp_frame:FindFirstChild('top')
-			local bottom = esp_frame:FindFirstChild('bottom')
-			local left = esp_frame:FindFirstChild('left')
-			local right = esp_frame:FindFirstChild('right')
-			local name_label = esp_frame:FindFirstChild('name')
-			local distance_label = esp_frame:FindFirstChild('distance')
-			local health_bg = esp_frame:FindFirstChild('health_bg')
-			local health_bar = health_bg:FindFirstChild('health_bar')
-			local health_text = health_bg:FindFirstChild('health_text')
-			local tool_label = esp_frame:FindFirstChild('tool')
-
-			local esp_color = esp_vs.color
-			if not entity.is_npc and esp_vs.team and entity.player.Team then
-				esp_color = entity.player.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
-			elseif entity.is_npc then
-				esp_color = Color3.fromRGB(255, 255, 130)
-			end
-
-			stuff.rawrbxset(top, 'BackgroundColor3', esp_color)
-			stuff.rawrbxset(bottom, 'BackgroundColor3', esp_color)
-			stuff.rawrbxset(left, 'BackgroundColor3', esp_color)
-			stuff.rawrbxset(right, 'BackgroundColor3', esp_color)
-
-			local display_name = entity.name
-			if entity.is_npc then
-				display_name = `[npc] {entity.name}`
-			end
-			stuff.rawrbxset(name_label, 'Text', display_name)
-			stuff.rawrbxset(name_label, 'TextColor3', esp_color)
-
-			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			if owner_hrp then
-				local owner_pos = stuff.rawrbxget(owner_hrp, 'Position')
-				local distance = math.floor((owner_pos - hrp_pos).Magnitude)
-				stuff.rawrbxset(distance_label, 'Text', `[{distance}m]`)
-				stuff.rawrbxset(distance_label, 'TextColor3', Color3.fromRGB(200, 200, 200))
-			end
-
-			local tool_names = {}
-			for _, tool in char:GetChildren() do
-				if tool:IsA('Tool') then
-					table.insert(tool_names, stuff.rawrbxget(tool, 'Name'))
-				end
-			end
-
-			stuff.rawrbxset(tool_label, 'Text', #tool_names > 0 and table.concat(tool_names, '\n') or '')
-			stuff.rawrbxset(tool_label, 'TextColor3', Color3.fromRGB(200, 200, 200))
-
-			if humanoid then
-				local health = stuff.rawrbxget(humanoid, 'Health')
-				local max_health = stuff.rawrbxget(humanoid, 'MaxHealth')
-				local health_percent = math.clamp(health / max_health, 0, 1)
-
-				stuff.rawrbxset(health_bar, 'Size', UDim2.new(1, 0, health_percent, 0))
-
-				local health_color = Color3.fromRGB(
-					math.floor(255 * (1 - health_percent)),
-					math.floor(255 * health_percent),
-					0
-				)
-				stuff.rawrbxset(health_bar, 'BackgroundColor3', health_color)
-				stuff.rawrbxset(health_text, 'Text', math.floor(health))
-				stuff.rawrbxset(health_text, 'TextColor3', health_color)
-			end
-
-			local highlight = stuff.highlights[entity.player]
-			if not highlight or not highlight.Parent then
-				if highlight then
-					pcall(stuff.destroy, highlight)
-				end
-
-				highlight = Instance.new('Highlight')
-				stuff.rawrbxset(highlight, 'Adornee', char)
-				stuff.rawrbxset(highlight, 'FillColor', esp_color)
-				stuff.rawrbxset(highlight, 'FillTransparency', 0.75)
-				stuff.rawrbxset(highlight, 'OutlineColor', esp_color)
-				stuff.rawrbxset(highlight, 'OutlineTransparency', 0.5)
-				stuff.rawrbxset(highlight, 'DepthMode', Enum.HighlightDepthMode.AlwaysOnTop)
-				stuff.rawrbxset(highlight, 'Parent', services.core_gui)
-				stuff.highlights[entity.player] = highlight
-			else
-				stuff.rawrbxset(highlight, 'Enabled', true)
-				if stuff.rawrbxget(highlight, 'Adornee') ~= char then
-					stuff.rawrbxset(highlight, 'Adornee', char)
-				end
-				stuff.rawrbxset(highlight, 'FillColor', esp_color)
-				stuff.rawrbxset(highlight, 'OutlineColor', esp_color)
+	for plr, frame in vstorage.frames do
+		if not active[plr] then
+			pcall(stuff.destroy, frame)
+			vstorage.frames[plr] = nil
+			if vstorage.highlights[plr] then
+				pcall(stuff.destroy, vstorage.highlights[plr])
+				vstorage.highlights[plr] = nil
 			end
 		end
 	end
 end, true)
 
-cmd_library.add({'tracers', 'toggletracers'}, 'toggles tracers', {
-	{'color', 'color3'},
-	{'mode', 'string'},
-	{'include_npcs', 'boolean'}
-}, function(vstorage, color, mode, include_npcs)
+maid.add('player_esp_removing', services.players.PlayerRemoving, function(plr)
+	local vstorage = cmd_library.get_variable_storage('esp')
+	if not vstorage then return end
+
+	if vstorage.frames and vstorage.frames[plr] then
+		pcall(stuff.destroy, vstorage.frames[plr])
+		vstorage.frames[plr] = nil
+	end
+	if vstorage.highlights and vstorage.highlights[plr] then
+		pcall(stuff.destroy, vstorage.highlights[plr])
+		vstorage.highlights[plr] = nil
+	end
+end, true)
+
+cmd_library.add({'npcesp', 'npc'}, 'toggles npc esp', {
+	{'color', 'color3'}
+}, function(vstorage, color)
 	vstorage.enabled = not vstorage.enabled
-	vstorage.team = color == 'team'
-	vstorage.include_npcs = include_npcs or false
+	vstorage.frames = vstorage.frames or {}
+	vstorage.highlights = vstorage.highlights or {}
 	vstorage.npcs = vstorage.npcs or {}
 
-	if not vstorage.team then
-		if color then
-			vstorage.color = color
+	if color then
+		vstorage.color = color
+	end
+	vstorage.color = vstorage.color or Color3.fromRGB(255, 255, 130)
+
+	if vstorage.enabled then
+		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
+			vstorage.screen_gui = esp_gui_()
+			stuff.rawrbxset(vstorage.screen_gui, 'Name', 'npc_esp_gui')
+		end
+
+		table.clear(vstorage.npcs)
+
+		for _, model in workspace:GetDescendants() do
+			if is_valid_npc(model) then
+				vstorage.npcs[model] = true
+			end
+		end
+
+		maid.add('npcesp_added', workspace.DescendantAdded, function(descendant)
+			if descendant:IsA('Model') then
+				task.defer(function()
+					if is_valid_npc(descendant) then
+						vstorage.npcs[descendant] = true
+					end
+				end)
+			end
+		end)
+
+		maid.add('npcesp_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.npcs[descendant] then
+				vstorage.npcs[descendant] = nil
+				if vstorage.frames[descendant] then
+					pcall(stuff.destroy, vstorage.frames[descendant])
+					vstorage.frames[descendant] = nil
+				end
+				if vstorage.highlights[descendant] then
+					pcall(stuff.destroy, vstorage.highlights[descendant])
+					vstorage.highlights[descendant] = nil
+				end
+			end
+		end)
+
+		maid.add('npcesp_char_added', services.players.PlayerAdded, function(plr)
+			plr.CharacterAdded:Connect(function(char)
+				vstorage.npcs[char] = nil
+			end)
+		end)
+
+		for _, plr in services.players:GetPlayers() do
+			plr.CharacterAdded:Connect(function(char)
+				vstorage.npcs[char] = nil
+			end)
+		end
+
+		notify('npcesp', 'npc esp enabled', 1)
+	else
+		cleanup_esp(vstorage)
+		table.clear(vstorage.npcs)
+		maid.remove('npcesp_added')
+		maid.remove('npcesp_removing')
+		maid.remove('npcesp_char_added')
+		notify('npcesp', 'npc esp disabled', 1)
+	end
+end)
+
+maid.add('npc_esp_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('npcesp')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.screen_gui or not vstorage.screen_gui.Parent then return end
+
+	local camera = workspace.CurrentCamera
+	local active = {}
+
+	for model in vstorage.npcs do
+		if not model.Parent then continue end
+
+		local hrp = model:FindFirstChild('HumanoidRootPart')
+		local humanoid = model:FindFirstChildOfClass('Humanoid')
+		if not hrp then continue end
+
+		active[model] = true
+
+		local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+		local _, on_screen = camera:WorldToViewportPoint(hrp_pos)
+
+		local esp_frame = vstorage.frames[model]
+		local highlight = vstorage.highlights[model]
+
+		if not on_screen then
+			if esp_frame then stuff.rawrbxset(esp_frame, 'Visible', false) end
+			if highlight then stuff.rawrbxset(highlight, 'Enabled', false) end
+			continue
+		end
+
+		local cf, size = model:GetBoundingBox()
+		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size)
+
+		if not esp_frame or not esp_frame.Parent then
+			if esp_frame then pcall(stuff.destroy, esp_frame) end
+			esp_frame = esp_frame_(vstorage.screen_gui)
+			vstorage.frames[model] = esp_frame
+		end
+
+		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or 0
+
+		local health_data = humanoid and get_health_data(humanoid) or nil
+
+		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, `[npc] {model.Name}`, distance, health_data, nil, true)
+
+		if not highlight or not highlight.Parent then
+			if highlight then pcall(stuff.destroy, highlight) end
+			highlight = highlight_(model, vstorage.color)
+			vstorage.highlights[model] = highlight
+		else
+			update_highlight(highlight, model, vstorage.color)
 		end
 	end
 
+	for model, frame in vstorage.frames do
+		if not active[model] then
+			pcall(stuff.destroy, frame)
+			vstorage.frames[model] = nil
+			if vstorage.highlights[model] then
+				pcall(stuff.destroy, vstorage.highlights[model])
+				vstorage.highlights[model] = nil
+			end
+		end
+	end
+end, true)
+
+cmd_library.add({'itemesp', 'itemsesp', 'toolesp'}, 'toggles item esp', {
+	{'color', 'color3'}
+}, function(vstorage, color)
+	vstorage.enabled = not vstorage.enabled
+	vstorage.frames = vstorage.frames or {}
+	vstorage.highlights = vstorage.highlights or {}
+	vstorage.items = vstorage.items or {}
+
+	if color then
+		vstorage.color = color
+	end
+	vstorage.color = vstorage.color or Color3.fromRGB(130, 200, 255)
+
+	if vstorage.enabled then
+		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
+			vstorage.screen_gui = esp_gui_()
+			stuff.rawrbxset(vstorage.screen_gui, 'Name', 'item_esp_gui')
+		end
+
+		table.clear(vstorage.items)
+
+		for _, obj in workspace:GetDescendants() do
+			if is_valid_item(obj) then
+				vstorage.items[obj] = true
+			end
+		end
+
+		maid.add('itemesp_added', workspace.DescendantAdded, function(descendant)
+			task.defer(function()
+				if is_valid_item(descendant) then
+					vstorage.items[descendant] = true
+				end
+			end)
+		end)
+
+		maid.add('itemesp_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.items[descendant] then
+				vstorage.items[descendant] = nil
+				if vstorage.frames[descendant] then
+					pcall(stuff.destroy, vstorage.frames[descendant])
+					vstorage.frames[descendant] = nil
+				end
+				if vstorage.highlights[descendant] then
+					pcall(stuff.destroy, vstorage.highlights[descendant])
+					vstorage.highlights[descendant] = nil
+				end
+			end
+		end)
+
+		notify('itemesp', 'item esp enabled', 1)
+	else
+		cleanup_esp(vstorage)
+		table.clear(vstorage.items)
+		maid.remove('itemesp_added')
+		maid.remove('itemesp_removing')
+		notify('itemesp', 'item esp disabled', 1)
+	end
+end)
+
+maid.add('item_esp_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('itemesp')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.screen_gui or not vstorage.screen_gui.Parent then return end
+
+	local camera = workspace.CurrentCamera
+	local active = {}
+
+	for item in vstorage.items do
+		if not item.Parent or item.Parent ~= workspace then
+			vstorage.items[item] = nil
+			continue
+		end
+
+		local handle = item:IsA('Tool') and item:FindFirstChild('Handle') or item:FindFirstChild('Handle')
+		if not handle then continue end
+
+		active[item] = true
+
+		local handle_pos = stuff.rawrbxget(handle, 'Position')
+		local _, on_screen = camera:WorldToViewportPoint(handle_pos)
+
+		local esp_frame = vstorage.frames[item]
+		local highlight = vstorage.highlights[item]
+
+		if not on_screen then
+			if esp_frame then stuff.rawrbxset(esp_frame, 'Visible', false) end
+			if highlight then stuff.rawrbxset(highlight, 'Enabled', false) end
+			continue
+		end
+
+		local cf = stuff.rawrbxget(handle, 'CFrame')
+		local size = stuff.rawrbxget(handle, 'Size')
+		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size * 2)
+
+		box_width = math.max(box_width, 30)
+		box_height = math.max(box_height, 30)
+
+		if not esp_frame or not esp_frame.Parent then
+			if esp_frame then pcall(stuff.destroy, esp_frame) end
+			esp_frame = esp_frame_(vstorage.screen_gui)
+			vstorage.frames[item] = esp_frame
+		end
+
+		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - handle_pos).Magnitude) or 0
+
+		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, item.Name, distance, nil, nil, false)
+
+		if not highlight or not highlight.Parent then
+			if highlight then pcall(stuff.destroy, highlight) end
+			highlight = highlight_(item, vstorage.color)
+			vstorage.highlights[item] = highlight
+		else
+			update_highlight(highlight, item, vstorage.color)
+		end
+	end
+
+	for item, frame in vstorage.frames do
+		if not active[item] then
+			pcall(stuff.destroy, frame)
+			vstorage.frames[item] = nil
+			if vstorage.highlights[item] then
+				pcall(stuff.destroy, vstorage.highlights[item])
+				vstorage.highlights[item] = nil
+			end
+		end
+	end
+end, true)
+
+cmd_library.add({'tracers', 'playertracers'}, 'toggles player tracers', {
+	{'color', 'color3'},
+	{'mode', 'string'}
+}, function(vstorage, color, mode)
+	vstorage.enabled = not vstorage.enabled
+	vstorage.team = color == 'team'
+	vstorage.lines = vstorage.lines or {}
+	vstorage.arrows = vstorage.arrows or {}
+
+	if not vstorage.team and color then
+		vstorage.color = color
+	end
 	vstorage.color = vstorage.color or Color3.fromRGB(176, 126, 215)
 	vstorage.thickness = vstorage.thickness or 1
 	vstorage.transparency = vstorage.transparency or 0
@@ -11398,136 +11725,26 @@ cmd_library.add({'tracers', 'toggletracers'}, 'toggles tracers', {
 		vstorage.mode = vstorage.mode or 'bottom'
 	end
 
-	local function is_valid_npc(model)
-		if not model:IsA('Model') then return false end
-
-		local humanoid = model:FindFirstChildOfClass('Humanoid')
-		local root = model:FindFirstChild('HumanoidRootPart')
-		if not humanoid or not root then return false end
-
-		for _, plr in services.players:GetPlayers() do
-			if plr.Character == model then return false end
-		end
-
-		if model == stuff.owner_char then return false end
-
-		return true
-	end
-
 	if vstorage.enabled then
 		if not vstorage.gui or not vstorage.gui.Parent then
-			local gui = Instance.new('ScreenGui')
-			stuff.rawrbxset(gui, 'Name', 'tracers_gui')
-			stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
-			stuff.rawrbxset(gui, 'ResetOnSpawn', false)
-			stuff.rawrbxset(gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
-			stuff.rawrbxset(gui, 'Parent', services.core_gui)
-			vstorage.gui = gui
+			vstorage.gui = Instance.new('ScreenGui')
+			stuff.rawrbxset(vstorage.gui, 'Name', 'player_tracers_gui')
+			stuff.rawrbxset(vstorage.gui, 'IgnoreGuiInset', true)
+			stuff.rawrbxset(vstorage.gui, 'ResetOnSpawn', false)
+			stuff.rawrbxset(vstorage.gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
+			stuff.rawrbxset(vstorage.gui, 'Parent', services.core_gui)
 		end
-
-		vstorage.lines = vstorage.lines or {}
-		vstorage.arrows = vstorage.arrows or {}
-
-		if vstorage.include_npcs then
-			table.clear(vstorage.npcs)
-
-			for _, model in workspace:GetDescendants() do
-				if is_valid_npc(model) then
-					vstorage.npcs[model] = true
-				end
-			end
-
-			maid.remove('tracers_npc_added')
-			maid.remove('tracers_npc_removing')
-			maid.remove('tracers_character_added')
-
-			maid.add('tracers_npc_added', workspace.DescendantAdded, function(descendant)
-				if not vstorage.include_npcs then return end
-				if descendant:IsA('Model') then
-					task.defer(function()
-						if is_valid_npc(descendant) then
-							vstorage.npcs[descendant] = true
-						end
-					end)
-				end
-			end)
-
-			maid.add('tracers_npc_removing', workspace.DescendantRemoving, function(descendant)
-				if vstorage.npcs[descendant] then
-					vstorage.npcs[descendant] = nil
-
-					if vstorage.lines and vstorage.lines[descendant] then
-						pcall(stuff.destroy, vstorage.lines[descendant])
-						vstorage.lines[descendant] = nil
-					end
-					if vstorage.arrows and vstorage.arrows[descendant] then
-						pcall(stuff.destroy, vstorage.arrows[descendant])
-						vstorage.arrows[descendant] = nil
-					end
-				end
-			end)
-
-			maid.add('tracers_character_added', services.players.PlayerAdded, function(plr)
-				plr.CharacterAdded:Connect(function(char)
-					vstorage.npcs[char] = nil
-				end)
-			end)
-
-			for _, plr in services.players:GetPlayers() do
-				plr.CharacterAdded:Connect(function(char)
-					vstorage.npcs[char] = nil
-				end)
-			end
-		end
-
-		notify('tracers', `enabled | mode: {vstorage.mode}{vstorage.include_npcs and ' | npcs: true' or ''}`, 1)
+		notify('tracers', `player tracers enabled | mode: {vstorage.mode}`, 1)
 	else
-		notify('tracers', 'tracers disabled', 1)
-
-		if vstorage.lines then
-			for _, line in vstorage.lines do
-				pcall(stuff.destroy, line)
-			end
-			table.clear(vstorage.lines)
-		end
-
-		if vstorage.arrows then
-			for _, arrow in vstorage.arrows do
-				pcall(stuff.destroy, arrow)
-			end
-			table.clear(vstorage.arrows)
-		end
-
-		if vstorage.gui then
-			pcall(stuff.destroy, vstorage.gui)
-			vstorage.gui = nil
-		end
-
-		table.clear(vstorage.npcs)
-		maid.remove('tracers_npc_added')
-		maid.remove('tracers_npc_removing')
-		maid.remove('tracers_character_added')
+		cleanup_tracers(vstorage)
+		notify('tracers', 'player tracers disabled', 1)
 	end
 end)
 
-maid.add('tracers_playerremoving', services.players.PlayerRemoving, function(plr)
-	local tracers_vs = cmd_library.get_variable_storage('tracers')
-	if not tracers_vs then return end
-
-	if tracers_vs.lines and tracers_vs.lines[plr] then
-		pcall(stuff.destroy, tracers_vs.lines[plr])
-		tracers_vs.lines[plr] = nil
-	end
-	if tracers_vs.arrows and tracers_vs.arrows[plr] then
-		pcall(stuff.destroy, tracers_vs.arrows[plr])
-		tracers_vs.arrows[plr] = nil
-	end
-end, true)
-
-maid.add('tracers_update', services.run_service.RenderStepped, function()
-	local tracers_vs = cmd_library.get_variable_storage('tracers')
-	if not tracers_vs or not tracers_vs.enabled then return end
-	if not tracers_vs.gui or not tracers_vs.gui.Parent then return end
+maid.add('player_tracers_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('tracers')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.gui or not vstorage.gui.Parent then return end
 
 	local camera = workspace.CurrentCamera
 	if not camera then return end
@@ -11535,177 +11752,401 @@ maid.add('tracers_update', services.run_service.RenderStepped, function()
 	local viewport = camera.ViewportSize
 	local center_x = viewport.X / 2
 	local center_y = viewport.Y / 2
+	local mouse_pos = services.user_input_service:GetMouseLocation()
+	local start_x, start_y = get_tracer_start(vstorage.mode, viewport, mouse_pos)
 
-	local start_x, start_y
-	if tracers_vs.mode == 'center' then
-		start_x = center_x
-		start_y = center_y
-	elseif tracers_vs.mode == 'mouse' then
-		local mouse_pos = services.user_input_service:GetMouseLocation()
-		start_x = mouse_pos.X
-		start_y = mouse_pos.Y
-	else
-		start_x = center_x
-		start_y = viewport.Y
-	end
+	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
 
-	local entities = {}
 	local active = {}
 
 	for _, plr in services.players:GetPlayers() do
-		if plr ~= stuff.owner and plr.Character then
-			table.insert(entities, {
-				player = plr,
-				character = plr.Character,
-				is_npc = false
-			})
-		end
-	end
+		if plr == stuff.owner or not plr.Character then continue end
 
-	if tracers_vs.include_npcs and tracers_vs.npcs then
-		for model in tracers_vs.npcs do
-			if model.Parent and model:FindFirstChild('HumanoidRootPart') then
-				table.insert(entities, {
-					player = model,
-					character = model,
-					is_npc = true
-				})
-			end
-		end
-	end
-
-	for _, entity in entities do
-		active[entity.player] = true
-
-		local char = entity.character
-		local hrp = char:FindFirstChild('HumanoidRootPart')
+		local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
 		if not hrp then continue end
+
+		active[plr] = true
 
 		local hrp_pos = stuff.rawrbxget(hrp, 'Position')
 		local screen_pos, on_screen = camera:WorldToViewportPoint(hrp_pos)
 
-		local tracer_color = tracers_vs.color
-		if not entity.is_npc and tracers_vs.team and entity.player.Team then
-			tracer_color = entity.player.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
-		elseif entity.is_npc then
-			tracer_color = Color3.fromRGB(255, 255, 130)
+		local tracer_color = vstorage.color
+		if vstorage.team and plr.Team then
+			tracer_color = plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
 		end
 
-		local line = tracers_vs.lines[entity.player]
-		local arrow = tracers_vs.arrows[entity.player]
+		local line = vstorage.lines[plr]
+		local arrow = vstorage.arrows[plr]
 
 		if on_screen and screen_pos.Z > 0 then
 			if not line or not line.Parent then
 				if line then pcall(stuff.destroy, line) end
-
-				line = Instance.new('Frame')
-				stuff.rawrbxset(line, 'Name', 'tracer')
-				stuff.rawrbxset(line, 'BorderSizePixel', 0)
-				stuff.rawrbxset(line, 'AnchorPoint', Vector2.new(0.5, 0.5))
-				stuff.rawrbxset(line, 'Parent', tracers_vs.gui)
-				tracers_vs.lines[entity.player] = line
-
-				local outline = Instance.new('UIStroke')
-				stuff.rawrbxset(outline, 'Color', Color3.new(0, 0, 0))
-				stuff.rawrbxset(outline, 'Thickness', 1)
-				stuff.rawrbxset(outline, 'Transparency', 0.5)
-				stuff.rawrbxset(outline, 'Parent', line)
+				line = tracer_line_(vstorage.gui)
+				vstorage.lines[plr] = line
 			end
 
-			local end_x = screen_pos.X
-			local end_y = screen_pos.Y
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, tracer_color, vstorage.thickness, vstorage.transparency)
 
-			local dx = end_x - start_x
-			local dy = end_y - start_y
-			local distance = math.sqrt(dx * dx + dy * dy)
-			local angle = math.deg(math.atan2(dy, dx))
-
-			stuff.rawrbxset(line, 'BackgroundColor3', tracer_color)
-			stuff.rawrbxset(line, 'BackgroundTransparency', tracers_vs.transparency)
-			stuff.rawrbxset(line, 'Size', UDim2.new(0, distance, 0, tracers_vs.thickness))
-			stuff.rawrbxset(line, 'Position', UDim2.new(0, (start_x + end_x) / 2, 0, (start_y + end_y) / 2))
-			stuff.rawrbxset(line, 'Rotation', angle)
-			stuff.rawrbxset(line, 'Visible', true)
-
-			if arrow then
-				stuff.rawrbxset(arrow, 'Visible', false)
-			end
+			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
 		else
-			if line then
-				stuff.rawrbxset(line, 'Visible', false)
-			end
-
-			local direction = (hrp_pos - camera.CFrame.Position).Unit
-			local screen_direction = Vector2.new(
-				direction:Dot(camera.CFrame.RightVector),
-				-direction:Dot(camera.CFrame.UpVector)
-			).Unit
-
-			local arrow_dist = math.min(center_x, center_y) - tracers_vs.arrow_distance
-			local arrow_x = center_x + screen_direction.X * arrow_dist
-			local arrow_y = center_y + screen_direction.Y * arrow_dist
-			local arrow_angle = math.deg(math.atan2(screen_direction.Y, screen_direction.X)) + 90
+			if line then stuff.rawrbxset(line, 'Visible', false) end
 
 			if not arrow or not arrow.Parent then
 				if arrow then pcall(stuff.destroy, arrow) end
-
-				arrow = Instance.new('ImageLabel')
-				stuff.rawrbxset(arrow, 'Name', 'arrow')
-				stuff.rawrbxset(arrow, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(arrow, 'AnchorPoint', Vector2.new(0.5, 0.5))
-				stuff.rawrbxset(arrow, 'Size', UDim2.new(0, tracers_vs.arrow_size, 0, tracers_vs.arrow_size))
-				stuff.rawrbxset(arrow, 'Image', 'rbxassetid://3926305904')
-				stuff.rawrbxset(arrow, 'ImageRectOffset', Vector2.new(924, 724))
-				stuff.rawrbxset(arrow, 'ImageRectSize', Vector2.new(36, 36))
-				stuff.rawrbxset(arrow, 'Parent', tracers_vs.gui)
-				tracers_vs.arrows[entity.player] = arrow
-
-				local distance_label = Instance.new('TextLabel')
-				stuff.rawrbxset(distance_label, 'Name', 'distance')
-				stuff.rawrbxset(distance_label, 'BackgroundTransparency', 1)
-				stuff.rawrbxset(distance_label, 'Size', UDim2.new(0, 50, 0, 14))
-				stuff.rawrbxset(distance_label, 'Position', UDim2.new(0.5, 0, 1, 2))
-				stuff.rawrbxset(distance_label, 'AnchorPoint', Vector2.new(0.5, 0))
-				stuff.rawrbxset(distance_label, 'Font', Enum.Font.Code)
-				stuff.rawrbxset(distance_label, 'TextSize', 10)
-				stuff.rawrbxset(distance_label, 'TextStrokeTransparency', 0.5)
-				stuff.rawrbxset(distance_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
-				stuff.rawrbxset(distance_label, 'Parent', arrow)
+				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+				vstorage.arrows[plr] = arrow
 			end
 
-			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			local dist_text = ''
-			if owner_hrp then
-				local owner_pos = stuff.rawrbxget(owner_hrp, 'Position')
-				local dist = math.floor((owner_pos - hrp_pos).Magnitude)
-				dist_text = `{dist}m`
-			end
-
-			local distance_label = arrow:FindFirstChild('distance')
-			if distance_label then
-				stuff.rawrbxset(distance_label, 'Text', dist_text)
-				stuff.rawrbxset(distance_label, 'TextColor3', tracer_color)
-				stuff.rawrbxset(distance_label, 'Rotation', -arrow_angle)
-			end
-
-			stuff.rawrbxset(arrow, 'ImageColor3', tracer_color)
-			stuff.rawrbxset(arrow, 'Position', UDim2.new(0, arrow_x, 0, arrow_y))
-			stuff.rawrbxset(arrow, 'Rotation', arrow_angle)
-			stuff.rawrbxset(arrow, 'Visible', true)
+			update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, tracer_color, vstorage.arrow_distance)
 		end
 	end
 
-	for player, line in tracers_vs.lines do
-		if not active[player] then
+	for plr, line in vstorage.lines do
+		if not active[plr] then
 			pcall(stuff.destroy, line)
-			tracers_vs.lines[player] = nil
+			vstorage.lines[plr] = nil
 		end
 	end
 
-	for player, arrow in tracers_vs.arrows do
-		if not active[player] then
+	for plr, arrow in vstorage.arrows do
+		if not active[plr] then
 			pcall(stuff.destroy, arrow)
-			tracers_vs.arrows[player] = nil
+			vstorage.arrows[plr] = nil
+		end
+	end
+end, true)
+
+maid.add('player_tracers_removing', services.players.PlayerRemoving, function(plr)
+	local vstorage = cmd_library.get_variable_storage('tracers')
+	if not vstorage then return end
+
+	if vstorage.lines and vstorage.lines[plr] then
+		pcall(stuff.destroy, vstorage.lines[plr])
+		vstorage.lines[plr] = nil
+	end
+	if vstorage.arrows and vstorage.arrows[plr] then
+		pcall(stuff.destroy, vstorage.arrows[plr])
+		vstorage.arrows[plr] = nil
+	end
+end, true)
+
+cmd_library.add({'npctracers', 'npct'}, 'toggles npc tracers', {
+	{'color', 'color3'},
+	{'mode', 'string'}
+}, function(vstorage, color, mode)
+	vstorage.enabled = not vstorage.enabled
+	vstorage.lines = vstorage.lines or {}
+	vstorage.arrows = vstorage.arrows or {}
+	vstorage.npcs = vstorage.npcs or {}
+
+	if color then
+		vstorage.color = color
+	end
+	vstorage.color = vstorage.color or Color3.fromRGB(255, 255, 130)
+	vstorage.thickness = vstorage.thickness or 1
+	vstorage.transparency = vstorage.transparency or 0
+	vstorage.arrow_size = vstorage.arrow_size or 12
+	vstorage.arrow_distance = vstorage.arrow_distance or 50
+
+	if mode then
+		local valid_modes = {bottom = true, center = true, mouse = true}
+		if valid_modes[mode:lower()] then
+			vstorage.mode = mode:lower()
+		else
+			notify('npctracers', `invalid mode '{mode}', using 'bottom'. valid: bottom, center, mouse`, 2)
+			vstorage.mode = 'bottom'
+		end
+	else
+		vstorage.mode = vstorage.mode or 'bottom'
+	end
+
+	if vstorage.enabled then
+		if not vstorage.gui or not vstorage.gui.Parent then
+			vstorage.gui = Instance.new('ScreenGui')
+			stuff.rawrbxset(vstorage.gui, 'Name', 'npc_tracers_gui')
+			stuff.rawrbxset(vstorage.gui, 'IgnoreGuiInset', true)
+			stuff.rawrbxset(vstorage.gui, 'ResetOnSpawn', false)
+			stuff.rawrbxset(vstorage.gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
+			stuff.rawrbxset(vstorage.gui, 'Parent', services.core_gui)
+		end
+
+		table.clear(vstorage.npcs)
+
+		for _, model in workspace:GetDescendants() do
+			if is_valid_npc(model) then
+				vstorage.npcs[model] = true
+			end
+		end
+
+		maid.add('npctracers_added', workspace.DescendantAdded, function(descendant)
+			if descendant:IsA('Model') then
+				task.defer(function()
+					if is_valid_npc(descendant) then
+						vstorage.npcs[descendant] = true
+					end
+				end)
+			end
+		end)
+
+		maid.add('npctracers_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.npcs[descendant] then
+				vstorage.npcs[descendant] = nil
+				if vstorage.lines[descendant] then
+					pcall(stuff.destroy, vstorage.lines[descendant])
+					vstorage.lines[descendant] = nil
+				end
+				if vstorage.arrows[descendant] then
+					pcall(stuff.destroy, vstorage.arrows[descendant])
+					vstorage.arrows[descendant] = nil
+				end
+			end
+		end)
+
+		maid.add('npctracers_char_added', services.players.PlayerAdded, function(plr)
+			plr.CharacterAdded:Connect(function(char)
+				vstorage.npcs[char] = nil
+			end)
+		end)
+
+		for _, plr in services.players:GetPlayers() do
+			plr.CharacterAdded:Connect(function(char)
+				vstorage.npcs[char] = nil
+			end)
+		end
+
+		notify('npctracers', `npc tracers enabled | mode: {vstorage.mode}`, 1)
+	else
+		cleanup_tracers(vstorage)
+		table.clear(vstorage.npcs)
+		maid.remove('npctracers_added')
+		maid.remove('npctracers_removing')
+		maid.remove('npctracers_char_added')
+		notify('npctracers', 'npc tracers disabled', 1)
+	end
+end)
+
+maid.add('npc_tracers_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('npctracers')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.gui or not vstorage.gui.Parent then return end
+
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	local viewport = camera.ViewportSize
+	local center_x = viewport.X / 2
+	local center_y = viewport.Y / 2
+	local mouse_pos = services.user_input_service:GetMouseLocation()
+	local start_x, start_y = get_tracer_start(vstorage.mode, viewport, mouse_pos)
+
+	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
+
+	local active = {}
+
+	for model in vstorage.npcs do
+		if not model.Parent then continue end
+
+		local hrp = model:FindFirstChild('HumanoidRootPart')
+		if not hrp then continue end
+
+		active[model] = true
+
+		local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+		local screen_pos, on_screen = camera:WorldToViewportPoint(hrp_pos)
+
+		local line = vstorage.lines[model]
+		local arrow = vstorage.arrows[model]
+
+		if on_screen and screen_pos.Z > 0 then
+			if not line or not line.Parent then
+				if line then pcall(stuff.destroy, line) end
+				line = tracer_line_(vstorage.gui)
+				vstorage.lines[model] = line
+			end
+
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, vstorage.thickness, vstorage.transparency)
+
+			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
+		else
+			if line then stuff.rawrbxset(line, 'Visible', false) end
+
+			if not arrow or not arrow.Parent then
+				if arrow then pcall(stuff.destroy, arrow) end
+				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+				vstorage.arrows[model] = arrow
+			end
+
+			update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+		end
+	end
+
+	for model, line in vstorage.lines do
+		if not active[model] then
+			pcall(stuff.destroy, line)
+			vstorage.lines[model] = nil
+		end
+	end
+
+	for model, arrow in vstorage.arrows do
+		if not active[model] then
+			pcall(stuff.destroy, arrow)
+			vstorage.arrows[model] = nil
+		end
+	end
+end, true)
+
+cmd_library.add({'itemtracers', 'itemst', 'tooltracers'}, 'toggles item tracers', {
+	{'color', 'color3'},
+	{'mode', 'string'}
+}, function(vstorage, color, mode)
+	vstorage.enabled = not vstorage.enabled
+	vstorage.lines = vstorage.lines or {}
+	vstorage.arrows = vstorage.arrows or {}
+	vstorage.items = vstorage.items or {}
+
+	if color then
+		vstorage.color = color
+	end
+	vstorage.color = vstorage.color or Color3.fromRGB(130, 200, 255)
+	vstorage.thickness = vstorage.thickness or 1
+	vstorage.transparency = vstorage.transparency or 0
+	vstorage.arrow_size = vstorage.arrow_size or 12
+	vstorage.arrow_distance = vstorage.arrow_distance or 50
+
+	if mode then
+		local valid_modes = {bottom = true, center = true, mouse = true}
+		if valid_modes[mode:lower()] then
+			vstorage.mode = mode:lower()
+		else
+			notify('itemtracers', `invalid mode '{mode}', using 'bottom'. valid: bottom, center, mouse`, 2)
+			vstorage.mode = 'bottom'
+		end
+	else
+		vstorage.mode = vstorage.mode or 'bottom'
+	end
+
+	if vstorage.enabled then
+		if not vstorage.gui or not vstorage.gui.Parent then
+			vstorage.gui = Instance.new('ScreenGui')
+			stuff.rawrbxset(vstorage.gui, 'Name', 'item_tracers_gui')
+			stuff.rawrbxset(vstorage.gui, 'IgnoreGuiInset', true)
+			stuff.rawrbxset(vstorage.gui, 'ResetOnSpawn', false)
+			stuff.rawrbxset(vstorage.gui, 'ZIndexBehavior', Enum.ZIndexBehavior.Global)
+			stuff.rawrbxset(vstorage.gui, 'Parent', services.core_gui)
+		end
+
+		table.clear(vstorage.items)
+
+		for _, obj in workspace:GetDescendants() do
+			if is_valid_item(obj) then
+				vstorage.items[obj] = true
+			end
+		end
+
+		maid.add('itemtracers_added', workspace.DescendantAdded, function(descendant)
+			task.defer(function()
+				if is_valid_item(descendant) then
+					vstorage.items[descendant] = true
+				end
+			end)
+		end)
+
+		maid.add('itemtracers_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.items[descendant] then
+				vstorage.items[descendant] = nil
+				if vstorage.lines[descendant] then
+					pcall(stuff.destroy, vstorage.lines[descendant])
+					vstorage.lines[descendant] = nil
+				end
+				if vstorage.arrows[descendant] then
+					pcall(stuff.destroy, vstorage.arrows[descendant])
+					vstorage.arrows[descendant] = nil
+				end
+			end
+		end)
+
+		notify('itemtracers', `item tracers enabled | mode: {vstorage.mode}`, 1)
+	else
+		cleanup_tracers(vstorage)
+		table.clear(vstorage.items)
+		maid.remove('itemtracers_added')
+		maid.remove('itemtracers_removing')
+		notify('itemtracers', 'item tracers disabled', 1)
+	end
+end)
+
+maid.add('item_tracers_update', services.run_service.RenderStepped, function()
+	local vstorage = cmd_library.get_variable_storage('itemtracers')
+	if not vstorage or not vstorage.enabled then return end
+	if not vstorage.gui or not vstorage.gui.Parent then return end
+
+	local camera = workspace.CurrentCamera
+	if not camera then return end
+
+	local viewport = camera.ViewportSize
+	local center_x = viewport.X / 2
+	local center_y = viewport.Y / 2
+	local mouse_pos = services.user_input_service:GetMouseLocation()
+	local start_x, start_y = get_tracer_start(vstorage.mode, viewport, mouse_pos)
+
+	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
+
+	local active = {}
+
+	for item in vstorage.items do
+		if not item.Parent or item.Parent ~= workspace then
+			vstorage.items[item] = nil
+			continue
+		end
+
+		local handle = item:IsA('Tool') and item:FindFirstChild('Handle') or item:FindFirstChild('Handle')
+		if not handle then continue end
+
+		active[item] = true
+
+		local handle_pos = stuff.rawrbxget(handle, 'Position')
+		local screen_pos, on_screen = camera:WorldToViewportPoint(handle_pos)
+
+		local line = vstorage.lines[item]
+		local arrow = vstorage.arrows[item]
+
+		if on_screen and screen_pos.Z > 0 then
+			if not line or not line.Parent then
+				if line then pcall(stuff.destroy, line) end
+				line = tracer_line_(vstorage.gui)
+				vstorage.lines[item] = line
+			end
+
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, vstorage.thickness, vstorage.transparency)
+
+			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
+		else
+			if line then stuff.rawrbxset(line, 'Visible', false) end
+
+			if not arrow or not arrow.Parent then
+				if arrow then pcall(stuff.destroy, arrow) end
+				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+				vstorage.arrows[item] = arrow
+			end
+
+			update_tracer_arrow(arrow, camera, center_x, center_y, handle_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+		end
+	end
+
+	for item, line in vstorage.lines do
+		if not active[item] then
+			pcall(stuff.destroy, line)
+			vstorage.lines[item] = nil
+		end
+	end
+
+	for item, arrow in vstorage.arrows do
+		if not active[item] then
+			pcall(stuff.destroy, arrow)
+			vstorage.arrows[item] = nil
 		end
 	end
 end, true)
