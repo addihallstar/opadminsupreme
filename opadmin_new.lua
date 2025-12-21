@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.3.3',
+	ver = '3.3.4',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1948,6 +1948,30 @@ hook_lib.presets.freegamepass = function()
 		end,
 
 		functions = functions
+	}
+end
+
+hook_lib.presets.property_spoof = function(instance, properties)
+	return {
+		index = function(self, key)
+			if self == instance and properties[key] ~= nil then
+				return properties[key]
+			end
+		end,
+
+		namecall = function(self, ...)
+			local method = getnamecallmethod()
+
+			if self == instance then
+				if method == 'GetPropertyChangedSignal' then
+					local args = {...}
+					if properties[args[1]] ~= nil then
+						local signal = Instance.new('BindableEvent')
+						return signal.Event
+					end
+				end
+			end
+		end
 	}
 end
 
