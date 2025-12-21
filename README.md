@@ -1,6 +1,6 @@
 # opadmin
 
-another admin script yes, currently we have 251 commands
+another admin script yes, currently we have 255 commands
 
 ## features
 
