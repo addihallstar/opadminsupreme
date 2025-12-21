@@ -2863,10 +2863,11 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 								stuff.rawrbxset(hrp, 'CFrame', CFrame.new(hrp_pos))
 							end
 						end
+					elseif vstorage.filter and vstorage.filter:lower() == "proximityprompt"  or vstorage.filter and vstorage.filter:lower() == "prompt" then
+						if item:FindFirstChildOfClass("ProximityPrompt") then
+							fireproximityprompt(item:FindFirstChildOfClass("ProximityPrompt"))
+						end
 					end
-				end
-				if item:FindFirstChildOfClass('ProximityPrompt') then
-					fireproximityprompt(item)
 				end
 			end
 		end)
