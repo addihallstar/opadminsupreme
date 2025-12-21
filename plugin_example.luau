@@ -142,12 +142,12 @@ export type command_library = {
 
 
 export type plugin_api = {
-	add_command: (names: {string}, description: string, args: {string}, fn: () -> ()) -> (),
-	notify: (text: string, level: number) -> (),
+	add_command: (names: {string}, description: string, args: {command_arg_definition}, fn: (vars: {[string]: any}, ...any) -> ()) -> (),
+	notify: (title: string, text: string, duration: number?) -> (),
 	get_maid: () -> maid,
 	get_stuff: () -> stuff,
-	get_cmd_library: () -> cmd_lib,
-	gey_hook_libraty: () -> hook_lib
+	get_cmd_library: () -> command_library,
+	get_hook_library: () -> hook_lib
 }
 
 local plugin = {
@@ -159,115 +159,117 @@ local plugin = {
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
 		local maid = api.get_maid()
+		local run_service = game:GetService('RunService')
 
-		api.add_command({'backflip', 'bflip'}, 'do a backflip', {
-			{'speed', 'number'},
-			{'flips', 'number'}
-		}, function(vars, speed, flips)
+		local shared_vars = {
+			flipping = false,
+			original_autorotate = true
+		}
+
+		local function do_flip(direction: string, speed: number, flips: number)
 			local character = stuff.owner_char
 			if not character then
-				return api.notify('no character found', 2)
+				return api.notify('flip', 'no character found', 2)
 			end
 
 			local humanoid = character:FindFirstChildOfClass('Humanoid')
 			local hrp = character:FindFirstChild('HumanoidRootPart')
 			if not humanoid or not hrp then
-				return api.notify('missing humanoid or rootpart', 2)
+				return api.notify('flip', 'missing humanoid or rootpart', 2)
 			end
 
-			if vars.flipping then
-				return api.notify('already flipping', 2)
+			if shared_vars.flipping then
+				return api.notify('flip', 'already flipping', 2)
 			end
 
-			vars.flipping = true
-			speed = speed or 8
-			flips = flips or 1
+			shared_vars.flipping = true
+			shared_vars.original_autorotate = humanoid.AutoRotate
+			humanoid.AutoRotate = false
 
 			local total_rotation = 360 * flips
-			local rotation_speed = speed * 60
-			local duration = total_rotation / rotation_speed
-
-			local original_autorotate = humanoid.AutoRotate
-			humanoid.AutoRotate = false
+			local duration = total_rotation / (speed * 60)
 
 			local start_time = tick()
 			local start_cframe = hrp.CFrame
-			local rotation_axis = start_cframe.RightVector
 
-			maid.add('backflip_loop', game:GetService('RunService').RenderStepped, function()
-				if not vars.flipping then return end
+			local rotation_axis
+			local angle_multiplier = 1
+
+			if direction == 'back' then
+				rotation_axis = start_cframe.RightVector
+				angle_multiplier = 1
+			elseif direction == 'front' then
+				rotation_axis = start_cframe.RightVector
+				angle_multiplier = -1
+			elseif direction == 'left' then
+				rotation_axis = start_cframe.LookVector
+				angle_multiplier = 1
+			elseif direction == 'right' then
+				rotation_axis = start_cframe.LookVector
+				angle_multiplier = -1
+			end
+
+			maid.add('flip_loop', run_service.RenderStepped, function()
+				if not shared_vars.flipping then return end
+
+				local new_character = stuff.owner_char
+				if not new_character then
+					shared_vars.flipping = false
+					maid.remove('flip_loop')
+					return
+				end
+
+				local new_hrp = new_character:FindFirstChild('HumanoidRootPart')
+				local new_humanoid = new_character:FindFirstChildOfClass('Humanoid')
+				if not new_hrp or not new_humanoid then
+					shared_vars.flipping = false
+					maid.remove('flip_loop')
+					return
+				end
 
 				local elapsed = tick() - start_time
 				local progress = math.clamp(elapsed / duration, 0, 1)
 
 				local eased_progress = 1 - math.pow(1 - progress, 2)
-				local current_angle = math.rad(total_rotation * eased_progress)
+				local current_angle = math.rad(total_rotation * eased_progress) * angle_multiplier
 
-				local new_cframe = start_cframe * CFrame.fromAxisAngle(rotation_axis, -current_angle)
-				hrp.CFrame = CFrame.new(hrp.Position) * (new_cframe - new_cframe.Position)
+				local rotation = CFrame.fromAxisAngle(rotation_axis, current_angle)
+				local rotated_cframe = start_cframe * rotation
+
+				new_hrp.CFrame = CFrame.new(new_hrp.Position) * (rotated_cframe - rotated_cframe.Position)
+
+				if new_humanoid:GetState() == Enum.HumanoidStateType.Freefall then
+					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+				end
 
 				if progress >= 1 then
-					vars.flipping = false
-					humanoid.AutoRotate = original_autorotate
-					maid.remove('backflip_loop')
-					api.notify(`completed {flips} backflip{flips > 1 and 's' or ''}`, 1)
+					shared_vars.flipping = false
+					new_humanoid.AutoRotate = shared_vars.original_autorotate
+					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+					maid.remove('flip_loop')
+
+					local flip_name = direction == 'left' or direction == 'right' 
+						and `{direction} sideflip` 
+						or `{direction}flip`
+					api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 2)
 				end
 			end)
+		end
+
+		api.add_command({'backflip', 'bflip'}, 'do a backflip', {
+			{'speed', 'number'},
+			{'flips', 'number'}
+		}, function(vars, speed, flips)
+			do_flip('back', speed or 8, flips or 1)
 		end)
 
 		api.add_command({'frontflip', 'fflip'}, 'do a frontflip', {
 			{'speed', 'number'},
 			{'flips', 'number'}
 		}, function(vars, speed, flips)
-			local character = stuff.owner_char
-			if not character then
-				return api.notify('no character found', 2)
-			end
-
-			local humanoid = character:FindFirstChildOfClass('Humanoid')
-			local hrp = character:FindFirstChild('HumanoidRootPart')
-			if not humanoid or not hrp then
-				return api.notify('missing humanoid or rootpart', 2)
-			end
-
-			if vars.flipping then
-				return api.notify('already flipping', 2)
-			end
-
-			vars.flipping = true
-			speed = speed or 8
-			flips = flips or 1
-
-			local total_rotation = 360 * flips
-			local rotation_speed = speed * 60
-			local duration = total_rotation / rotation_speed
-
-			local original_autorotate = humanoid.AutoRotate
-			humanoid.AutoRotate = false
-
-			local start_time = tick()
-			local start_cframe = hrp.CFrame
-			local rotation_axis = start_cframe.RightVector
-
-			maid.add('frontflip_loop', game:GetService('RunService').RenderStepped, function()
-				if not vars.flipping then return end
-
-				local elapsed = tick() - start_time
-				local progress = math.clamp(elapsed / duration, 0, 1)
-
-				local eased_progress = 1 - math.pow(1 - progress, 2)
-				local current_angle = math.rad(total_rotation * eased_progress)
-
-				local new_cframe = start_cframe * CFrame.fromAxisAngle(rotation_axis, current_angle)
-				hrp.CFrame = CFrame.new(hrp.Position) * (new_cframe - new_cframe.Position)
-
-				if progress >= 1 then
-					vars.flipping = false
-					humanoid.AutoRotate = original_autorotate
-					maid.remove('frontflip_loop')
-					api.notify(`completed {flips} frontflip{flips > 1 and 's' or ''}`, 1)
-				end
-			end)
+			do_flip('front', speed or 8, flips or 1)
 		end)
 
 		api.add_command({'sideflip', 'sflip'}, 'do a sideflip', {
@@ -275,96 +277,32 @@ local plugin = {
 			{'speed', 'number'},
 			{'flips', 'number'}
 		}, function(vars, direction, speed, flips)
-			local character = stuff.owner_char
-			if not character then
-				return api.notify('no character found', 2)
-			end
-
-			local humanoid = character:FindFirstChildOfClass('Humanoid')
-			local hrp = character:FindFirstChild('HumanoidRootPart')
-			if not humanoid or not hrp then
-				return api.notify('missing humanoid or rootpart', 2)
-			end
-
-			if vars.flipping then
-				return api.notify('already flipping', 2)
-			end
-
-			vars.flipping = true
 			direction = (direction or 'left'):lower()
-			speed = speed or 8
-			flips = flips or 1
-
-			local total_rotation = 360 * flips
-			local rotation_speed = speed * 60
-			local duration = total_rotation / rotation_speed
-
-			local original_autorotate = humanoid.AutoRotate
-			humanoid.AutoRotate = false
-
-			local start_time = tick()
-			local start_cframe = hrp.CFrame
-			local rotation_axis = start_cframe.LookVector
-			local direction_mult = direction == 'right' and 1 or -1
-
-			maid.add('sideflip_loop', game:GetService('RunService').RenderStepped, function()
-				if not vars.flipping then return end
-
-				local elapsed = tick() - start_time
-				local progress = math.clamp(elapsed / duration, 0, 1)
-
-				local eased_progress = 1 - math.pow(1 - progress, 2)
-				local current_angle = math.rad(total_rotation * eased_progress) * direction_mult
-
-				local new_cframe = start_cframe * CFrame.fromAxisAngle(rotation_axis, current_angle)
-				hrp.CFrame = CFrame.new(hrp.Position) * (new_cframe - new_cframe.Position)
-
-				if progress >= 1 then
-					vars.flipping = false
-					humanoid.AutoRotate = original_autorotate
-					maid.remove('sideflip_loop')
-					api.notify(`completed {flips} {direction} sideflip{flips > 1 and 's' or ''}`, 1)
-				end
-			end)
+			if direction ~= 'left' and direction ~= 'right' then
+				return api.notify('flip', 'direction must be left or right', 2)
+			end
+			do_flip(direction, speed or 8, flips or 1)
 		end)
 
 		api.add_command({'stopflip', 'unflip'}, 'stops current flip', {}, function(vars)
-			local backflip_vars = api.get_cmd_library().get_variable_storage('backflip')
-			local frontflip_vars = api.get_cmd_library().get_variable_storage('frontflip')
-			local sideflip_vars = api.get_cmd_library().get_variable_storage('sideflip')
-
-			local stopped = false
-
-			if backflip_vars and backflip_vars.flipping then
-				backflip_vars.flipping = false
-				maid.remove('backflip_loop')
-				stopped = true
+			if not shared_vars.flipping then
+				return api.notify('flip', 'not flipping', 2)
 			end
 
-			if frontflip_vars and frontflip_vars.flipping then
-				frontflip_vars.flipping = false
-				maid.remove('frontflip_loop')
-				stopped = true
-			end
+			shared_vars.flipping = false
+			maid.remove('flip_loop')
 
-			if sideflip_vars and sideflip_vars.flipping then
-				sideflip_vars.flipping = false
-				maid.remove('sideflip_loop')
-				stopped = true
-			end
-
-			if stopped then
-				local character = stuff.owner_char
-				if character then
-					local humanoid = character:FindFirstChildOfClass('Humanoid')
-					if humanoid then
-						humanoid.AutoRotate = true
-					end
+			local character = stuff.owner_char
+			if character then
+				local humanoid = character:FindFirstChildOfClass('Humanoid')
+				if humanoid then
+					humanoid.AutoRotate = shared_vars.original_autorotate
+					humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
+					humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
 				end
-				api.notify('flip stopped', 1)
-			else
-				api.notify('not flipping', 2)
 			end
+
+			api.notify('flip', 'flip stopped', 2)
 		end)
 
 		return true
