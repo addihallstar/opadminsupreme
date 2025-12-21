@@ -143,28 +143,29 @@ export type command_library = {
 
 export type plugin_api = {
 	add_command: (names: {string}, description: string, args: {command_arg_definition}, fn: (vars: {[string]: any}, ...any) -> ()) -> (),
-	notify: (title: string, text: string, level: number?) -> (),
+	notify: (log: string, text: string, log_type: number?) -> (),
 	get_maid: () -> maid,
 	get_stuff: () -> stuff,
 	get_cmd_library: () -> command_library,
-	get_hook_library: () -> hook_lib
+	get_hook_library: () -> hook_lib,
+	config: any
 }
 
 local plugin = {
 	name = 'flips',
-	version = '1.0',
+	version = '1.1',
 	author = 'pro',
 	description = 'adds flips to opadmin',
 
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
 		local maid = api.get_maid()
-		local run_service = game:GetService('RunService')
 
 		local shared_vars = {
-			flipping = false,
-			original_autorotate = true
+			flipping = false
 		}
+
+		local h = 0.0174533
 
 		local function do_flip(direction: string, speed: number, flips: number)
 			local character = stuff.owner_char
@@ -183,78 +184,69 @@ local plugin = {
 			end
 
 			shared_vars.flipping = true
-			shared_vars.original_autorotate = humanoid.AutoRotate
-			humanoid.AutoRotate = false
 
-			local total_rotation = 360 * flips
-			local duration = total_rotation / (speed * 60)
+			local total_degrees = 360 * flips
+			local delay_divisor = 720 / speed
 
-			local start_time = tick()
-			local start_cframe = hrp.CFrame
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 
-			local rotation_axis
-			local angle_multiplier = 1
+			task.wait()
+
+			humanoid.Sit = true
+
+			local angle_x, angle_z = 0, 0
 
 			if direction == 'back' then
-				rotation_axis = start_cframe.RightVector
-				angle_multiplier = 1
+				angle_x = h
 			elseif direction == 'front' then
-				rotation_axis = start_cframe.RightVector
-				angle_multiplier = -1
+				angle_x = -h
 			elseif direction == 'left' then
-				rotation_axis = start_cframe.LookVector
-				angle_multiplier = 1
+				angle_z = -h
 			elseif direction == 'right' then
-				rotation_axis = start_cframe.LookVector
-				angle_multiplier = -1
+				angle_z = h
 			end
 
-			maid.add('flip_loop', run_service.RenderStepped, function()
-				if not shared_vars.flipping then return end
+			for i = 1, total_degrees do
+				task.delay(i / delay_divisor, function()
+					if not shared_vars.flipping then return end
 
-				local new_character = stuff.owner_char
-				if not new_character then
-					shared_vars.flipping = false
-					maid.remove('flip_loop')
-					return
+					local char = stuff.owner_char
+					if not char then
+						shared_vars.flipping = false
+						return
+					end
+
+					local hum = char:FindFirstChildOfClass('Humanoid')
+					local root = char:FindFirstChild('HumanoidRootPart')
+					if not hum or not root then
+						shared_vars.flipping = false
+						return
+					end
+
+					hum.Sit = true
+					root.CFrame = root.CFrame * CFrame.Angles(angle_x, 0, angle_z)
+				end)
+			end
+
+			task.delay(total_degrees / delay_divisor + 0.05, function()
+				shared_vars.flipping = false
+
+				local char = stuff.owner_char
+				if char then
+					local hum = char:FindFirstChildOfClass('Humanoid')
+					if hum then
+						hum.Sit = false
+					end
 				end
 
-				local new_hrp = new_character:FindFirstChild('HumanoidRootPart')
-				local new_humanoid = new_character:FindFirstChildOfClass('Humanoid')
-				if not new_hrp or not new_humanoid then
-					shared_vars.flipping = false
-					maid.remove('flip_loop')
-					return
+				local flip_name
+				if direction == 'left' or direction == 'right' then
+					flip_name = `{direction} sideflip`
+				else
+					flip_name = `{direction}flip`
 				end
 
-				local elapsed = tick() - start_time
-				local progress = math.clamp(elapsed / duration, 0, 1)
-
-				local eased_progress = 1 - math.pow(1 - progress, 2)
-				local current_angle = math.rad(total_rotation * eased_progress) * angle_multiplier
-
-				local rotation = CFrame.fromAxisAngle(rotation_axis, current_angle)
-				local rotated_cframe = start_cframe * rotation
-
-				new_hrp.CFrame = CFrame.new(new_hrp.Position) * (rotated_cframe - rotated_cframe.Position)
-
-				if new_humanoid:GetState() == Enum.HumanoidStateType.Freefall then
-					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
-					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
-				end
-
-				if progress >= 1 then
-					shared_vars.flipping = false
-					new_humanoid.AutoRotate = shared_vars.original_autorotate
-					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-					new_humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
-					maid.remove('flip_loop')
-
-					local flip_name = direction == 'left' or direction == 'right' 
-						and `{direction} sideflip` 
-						or `{direction}flip`
-					api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 1)
-				end
+				api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 1)
 			end)
 		end
 
@@ -262,14 +254,14 @@ local plugin = {
 			{'speed', 'number'},
 			{'flips', 'number'}
 		}, function(vars, speed, flips)
-			do_flip('back', speed or 8, flips or 1)
+			do_flip('back', speed or 1, flips or 1)
 		end)
 
 		api.add_command({'frontflip', 'fflip'}, 'do a frontflip', {
 			{'speed', 'number'},
 			{'flips', 'number'}
 		}, function(vars, speed, flips)
-			do_flip('front', speed or 8, flips or 1)
+			do_flip('front', speed or 1, flips or 1)
 		end)
 
 		api.add_command({'sideflip', 'sflip'}, 'do a sideflip', {
@@ -281,7 +273,7 @@ local plugin = {
 			if direction ~= 'left' and direction ~= 'right' then
 				return api.notify('flip', 'direction must be left or right', 2)
 			end
-			do_flip(direction, speed or 8, flips or 1)
+			do_flip(direction, speed or 1, flips or 1)
 		end)
 
 		api.add_command({'stopflip', 'unflip'}, 'stops current flip', {}, function(vars)
@@ -290,15 +282,12 @@ local plugin = {
 			end
 
 			shared_vars.flipping = false
-			maid.remove('flip_loop')
 
 			local character = stuff.owner_char
 			if character then
 				local humanoid = character:FindFirstChildOfClass('Humanoid')
 				if humanoid then
-					humanoid.AutoRotate = shared_vars.original_autorotate
-					humanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, true)
-					humanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, true)
+					humanoid.Sit = false
 				end
 			end
 
