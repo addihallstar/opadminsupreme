@@ -159,7 +159,6 @@ local plugin = {
 
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
-		local maid = api.get_maid()
 
 		local shared_vars = {
 			flipping = false
@@ -167,7 +166,7 @@ local plugin = {
 
 		local h = 0.0174533
 
-		local function do_flip(direction: string, speed: number, flips: number)
+		local function do_flip(direction: string)
 			local character = stuff.owner_char
 			if not character then
 				return api.notify('flip', 'no character found', 2)
@@ -184,16 +183,9 @@ local plugin = {
 			end
 
 			shared_vars.flipping = true
-
-			local total_degrees = 360 * flips
-			local delay_divisor = 720 / speed
-
 			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
-
 			task.wait()
-
 			humanoid.Sit = true
-
 			local angle_x, angle_z = 0, 0
 
 			if direction == 'back' then
@@ -206,8 +198,8 @@ local plugin = {
 				angle_z = h
 			end
 
-			for i = 1, total_degrees do
-				task.delay(i / delay_divisor, function()
+			for i = 1, 360 do
+				task.delay(i / 720, function()
 					if not shared_vars.flipping then return end
 
 					local char = stuff.owner_char
@@ -228,7 +220,7 @@ local plugin = {
 				end)
 			end
 
-			task.delay(total_degrees / delay_divisor + 0.05, function()
+			task.delay(0.55, function()
 				shared_vars.flipping = false
 
 				local char = stuff.owner_char
@@ -238,60 +230,25 @@ local plugin = {
 						hum.Sit = false
 					end
 				end
-
-				local flip_name
-				if direction == 'left' or direction == 'right' then
-					flip_name = `{direction} sideflip`
-				else
-					flip_name = `{direction}flip`
-				end
-
-				api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 1)
 			end)
 		end
 
-		api.add_command({'backflip', 'bflip'}, 'do a backflip', {
-			{'speed', 'number'},
-			{'flips', 'number'}
-		}, function(vars, speed, flips)
-			do_flip('back', speed or 1, flips or 1)
+		api.add_command({'backflip', 'bflip'}, 'do a backflip', {}, function(vars)
+			do_flip('back')
 		end)
 
-		api.add_command({'frontflip', 'fflip'}, 'do a frontflip', {
-			{'speed', 'number'},
-			{'flips', 'number'}
-		}, function(vars, speed, flips)
-			do_flip('front', speed or 1, flips or 1)
+		api.add_command({'frontflip', 'fflip'}, 'do a frontflip', {}, function(vars)
+			do_flip('front')
 		end)
 
 		api.add_command({'sideflip', 'sflip'}, 'do a sideflip', {
-			{'direction', 'string'},
-			{'speed', 'number'},
-			{'flips', 'number'}
-		}, function(vars, direction, speed, flips)
+			{'direction', 'string'}
+		}, function(vars, direction)
 			direction = (direction or 'left'):lower()
 			if direction ~= 'left' and direction ~= 'right' then
 				return api.notify('flip', 'direction must be left or right', 2)
 			end
-			do_flip(direction, speed or 1, flips or 1)
-		end)
-
-		api.add_command({'stopflip', 'unflip'}, 'stops current flip', {}, function(vars)
-			if not shared_vars.flipping then
-				return api.notify('flip', 'not flipping', 2)
-			end
-
-			shared_vars.flipping = false
-
-			local character = stuff.owner_char
-			if character then
-				local humanoid = character:FindFirstChildOfClass('Humanoid')
-				if humanoid then
-					humanoid.Sit = false
-				end
-			end
-
-			api.notify('flip', 'flip stopped', 1)
+			do_flip(direction)
 		end)
 
 		return true
