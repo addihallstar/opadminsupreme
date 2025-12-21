@@ -27,7 +27,14 @@ getgenv = getgenv or function() return {} end
 cloneref = cloneref or function(v) return v end
 gethui = gethui or function() return cloneref(game:GetService('CoreGui')) end
 setreadonly = setreadonly or function() end
-newcclosure = newcclosure or function(f) return f end
+newcclosure = newcclosure or function(f)
+	return coroutine.wrap(function(...)
+		local args = {...}
+		while true do
+			args = {coroutine.yield(f(unpack(args)))}
+		end
+	end)
+end
 Drawing = Drawing or {}
 
 local env = getgenv() or shared or _G
@@ -56,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.1.1',
+	ver = '3.2.2',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1188,7 +1195,7 @@ local config = {
 		ui_asset = "rbxassetid://121800440973428",
 		aliases = {},
 		binds = {},
-		auto_plugins = {}
+		saved_plugins = {}
 	},
 	current_settings = {}
 }
@@ -2791,9 +2798,9 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 
 	notify('plugin', `plugin '{plugin_data.name}' loaded successfully`, 1)
 
-	local auto_plugins = config.get('auto_plugins') or {}
-	auto_plugins[plugin_data.name] = url
-	config.set('auto_plugins', auto_plugins)
+	local saved_plugins = config.get('saved_plugins') or {}
+	saved_plugins[plugin_data.name] = url
+	config.set('saved_plugins', saved_plugins)
 end)
 
 cmd_library.add({'pluginunload', 'punload'}, 'unload a plugin', {
@@ -2803,9 +2810,9 @@ cmd_library.add({'pluginunload', 'punload'}, 'unload a plugin', {
 	if success then
 		notify('plugin', `plugin '{plugin_name}' unloaded`, 1)
 
-		local auto_plugins = config.get('auto_plugins') or {}
-		auto_plugins[plugin_name] = nil
-		config.set('auto_plugins', auto_plugins)
+		local saved_plugins = config.get('saved_plugins') or {}
+		saved_plugins[plugin_name] = nil
+		config.set('saved_plugins', saved_plugins)
 	else
 		notify('plugin', `failed to unload plugin: {err}`, 2)
 	end
@@ -2821,8 +2828,8 @@ cmd_library.add({'pluginreload', 'preload'}, 'reload a plugin', {
 		return
 	end
 
-	local auto_plugins = config.get('auto_plugins') or {}
-	local url = auto_plugins[plugin_name]
+	local saved_plugins = config.get('saved_plugins') or {}
+	local url = saved_plugins[plugin_name]
 
 	if not url then
 		notify('plugin', `no url saved for plugin '{plugin_name}'. use pluginload instead.`, 3)
@@ -4614,178 +4621,176 @@ end)
 
 cmd_library.add({'hitbox', 'headsize', 'expandhitbox'}, 'makes head hitbox bigger', {
 	{'size', 'number'},
-	{'bypass_mode', 'boolean'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, size, bypass, et)
-	if et and vstorage.enabled then
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, size, bypass)
+	if vstorage.enabled then
 		cmd_library.execute('unhitbox')
 		return
 	end
 
-	size = size or 10
-
-	if vstorage.enabled then
-		return notify('hitbox', 'hitbox already enabled', 2)
-	end
+	size = math.clamp(size or 10, 1, 50)
 
 	vstorage.enabled = true
 	vstorage.size = size
-	vstorage.bypass = bypass
+	vstorage.bypass = bypass or false
 	vstorage.original_properties = {}
 
-	notify('hitbox', `hitbox size set to {size}{bypass and ' (bypass)' or ''}`, 1)
+	local function store_original(head)
+		if vstorage.original_properties[head] then return end
 
-	local function store_original_properties(head)
-		local head_id = tostring(head)
-		if not vstorage.original_properties[head_id] then
-			vstorage.original_properties[head_id] = {
-				size = stuff.rawrbxget(head, 'Size'),
-				transparency = stuff.rawrbxget(head, 'Transparency'),
-				can_collide = stuff.rawrbxget(head, 'CanCollide'),
-				brick_color = stuff.rawrbxget(head, 'BrickColor')
-			}
-		end
+		vstorage.original_properties[head] = {
+			size = stuff.rawrbxget(head, 'Size'),
+			transparency = stuff.rawrbxget(head, 'Transparency'),
+			can_collide = stuff.rawrbxget(head, 'CanCollide'),
+			massless = stuff.rawrbxget(head, 'Massless')
+		}
+	end
+
+	local function expand_head(head)
+		store_original(head)
+
+		stuff.rawrbxset(head, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
+		stuff.rawrbxset(head, 'Transparency', 0.75)
+		stuff.rawrbxset(head, 'CanCollide', false)
+		stuff.rawrbxset(head, 'Massless', true)
 	end
 
 	if bypass then
 		hook_lib.create_hook('hitbox_bypass', {
 			index = function(self, key)
-				if self:IsA('BasePart') and self.Name == 'Head' then
-					local head_id = tostring(self)
-					local original = vstorage.original_properties[head_id]
+				if not self:IsA('BasePart') or self.Name ~= 'Head' then return end
 
-					if original then
-						if key == 'Size' then
-							return original.size
-						elseif key == 'Transparency' then
-							return original.transparency
-						elseif key == 'CanCollide' then
-							return original.can_collide
-						elseif key == 'BrickColor' then
-							return original.brick_color
-						end
-					end
+				local original = vstorage.original_properties[self]
+				if not original then return end
+
+				if key == 'Size' then
+					return original.size
+				elseif key == 'Transparency' then
+					return original.transparency
+				elseif key == 'CanCollide' then
+					return original.can_collide
 				end
 			end,
 
 			newindex = function(self, key, value)
-				if self:IsA('BasePart') and self.Name == 'Head' then
-					local head_id = tostring(self)
+				if not self:IsA('BasePart') or self.Name ~= 'Head' then return end
+				if not vstorage.original_properties[self] then return end
 
-					if vstorage.original_properties[head_id] then
-						if key == 'Size' or key == 'Transparency' or key == 'CanCollide' or key == 'BrickColor' then
-							return
-						end
-					end
+				local blocked = {Size = true, Transparency = true, CanCollide = true}
+				if blocked[key] then
+					return false
 				end
 			end,
 
 			namecall = function(self, ...)
 				local method = getnamecallmethod()
-				local args = {...}
 
-				if self:IsA('BasePart') and self.Name == 'Head' then
-					local head_id = tostring(self)
+				if not self:IsA('BasePart') or self.Name ~= 'Head' then return end
+				if not vstorage.original_properties[self] then return end
 
-					if vstorage.original_properties[head_id] and method == 'GetPropertyChangedSignal' then
-						if args[1] == 'Size' or args[1] == 'Transparency' or args[1] == 'CanCollide' or args[1] == 'BrickColor' then
-							return Instance.new('BindableEvent').Event
-						end
+				if method == 'GetPropertyChangedSignal' then
+					local prop = ...
+					local blocked = {Size = true, Transparency = true, CanCollide = true}
+					if blocked[prop] then
+						return Instance.new('BindableEvent').Event
 					end
 				end
 			end
 		})
 	end
-	local color_cooldown = false
-	maid.add('hitbox_connection', services.run_service.Heartbeat, function()
-		for _, plr in pairs(services.players:GetPlayers()) do
-			if plr ~= stuff.owner and plr.Character then
-				local head = plr.Character:FindFirstChild('Head')
-				if head then
-					store_original_properties(head)
 
-					stuff.rawrbxset(head, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
-					stuff.rawrbxset(head, 'Transparency', 0.75)
-					if color_cooldown == false then
-					stuff.rawrbxset(head, 'BrickColor', BrickColor.random())
-					color_cooldown = true
-					task.delay(0.5,function()
-						color_cooldown = false
-					end)
-					end
-					stuff.rawrbxset(head, 'CanCollide', false)
-				end
+	maid.add('hitbox_update', services.run_service.Heartbeat, function()
+		if not vstorage.enabled then return end
+
+		for _, plr in services.players:GetPlayers() do
+			if plr == stuff.owner then continue end
+			if not plr.Character then continue end
+
+			local head = plr.Character:FindFirstChild('Head')
+			if not head then continue end
+
+			if not vstorage.original_properties[head] then
+				expand_head(head)
+			else
+				stuff.rawrbxset(head, 'Size', Vector3.new(vstorage.size, vstorage.size, vstorage.size))
+				stuff.rawrbxset(head, 'Transparency', 0.75)
+				stuff.rawrbxset(head, 'CanCollide', false)
 			end
 		end
 	end)
+
+	local function on_character_added(player)
+		if player == stuff.owner then return end
+
+		return function(character)
+			if not vstorage.enabled then return end
+
+			task.wait(0.1)
+
+			local head = character:FindFirstChild('Head')
+			if head then
+				expand_head(head)
+			end
+		end
+	end
 
 	maid.add('hitbox_player_added', services.players.PlayerAdded, function(player)
 		if not vstorage.enabled then return end
-
-		maid.add(`hitbox_char_added_{player.UserId}`, player.CharacterAdded, function(character)
-			if not vstorage.enabled then return end
-			if player == stuff.owner then return end
-
-			task.wait(0.5)
-			local head = character:FindFirstChild('Head')
-			if head then
-				store_original_properties(head)
-			end
-		end)
+		maid.add(`hitbox_char_{player.UserId}`, player.CharacterAdded, on_character_added(player))
 	end)
 
-	for _, player in pairs(services.players:GetPlayers()) do
+	for _, player in services.players:GetPlayers() do
 		if player ~= stuff.owner then
-			maid.add(`hitbox_char_added_{player.UserId}`, player.CharacterAdded, function(character)
-				if not vstorage.enabled then return end
-
-				task.wait(0.5)
-				local head = character:FindFirstChild('Head')
-				if head then
-					store_original_properties(head)
-				end
-			end)
+			maid.add(`hitbox_char_{player.UserId}`, player.CharacterAdded, on_character_added(player))
 		end
 	end
+
+	maid.add('hitbox_player_removing', services.players.PlayerRemoving, function(player)
+		if player.Character then
+			local head = player.Character:FindFirstChild('Head')
+			if head then
+				vstorage.original_properties[head] = nil
+			end
+		end
+		maid.remove(`hitbox_char_{player.UserId}`)
+	end)
+
+	notify('hitbox', `enabled | size: {size}{bypass and ' | bypass: on' or ''}`, 1)
 end)
 
-cmd_library.add({'unhitbox', 'untorsosize', 'unexpandhitbox'}, 'disables hitbox expansion', {}, function(vstorage)
+cmd_library.add({'unhitbox', 'unheadsize', 'unexpandhitbox'}, 'disables hitbox expansion', {}, function()
 	local vstorage = cmd_library.get_variable_storage('hitbox')
 
-	if not vstorage.enabled then
+	if not vstorage or not vstorage.enabled then
 		return notify('hitbox', 'hitbox not enabled', 2)
 	end
 
 	vstorage.enabled = false
-	maid.remove('hitbox_connection')
+
+	maid.remove('hitbox_update')
+	maid.remove('hitbox_player_added')
+	maid.remove('hitbox_player_removing')
 
 	if vstorage.bypass then
 		hook_lib.destroy_hook('hitbox_bypass')
 	end
 
-	for head_id, original in pairs(vstorage.original_properties) do
-		for _, player in pairs(services.players:GetPlayers()) do
-			if player.Character then
-				local head = player.Character:FindFirstChild('Head')
-				if head and tostring(head) == head_id then
-					pcall(stuff.rawrbxset, head, 'Size', original.size)
-					pcall(stuff.rawrbxset, head, 'Transparency', original.transparency)
-					pcall(stuff.rawrbxset, head, 'CanCollide', original.can_collide)
-					pcall(stuff.rawrbxset, head, 'BrickColor', original.brick_color)
-				end
-			end
+	for head, original in vstorage.original_properties do
+		if head and head.Parent then
+			pcall(stuff.rawrbxset, head, 'Size', original.size)
+			pcall(stuff.rawrbxset, head, 'Transparency', original.transparency)
+			pcall(stuff.rawrbxset, head, 'CanCollide', original.can_collide)
+			pcall(stuff.rawrbxset, head, 'Massless', original.massless)
 		end
 	end
 
-	vstorage.original_properties = {}
+	table.clear(vstorage.original_properties)
 
-	for _, player in pairs(services.players:GetPlayers()) do
-		maid.remove(`hitbox_char_added_{player.UserId}`)
+	for _, player in services.players:GetPlayers() do
+		maid.remove(`hitbox_char_{player.UserId}`)
 	end
 
-	maid.remove('hitbox_player_added')
-
-	notify('hitbox', 'hitbox disabled', 1)
+	notify('hitbox', 'disabled', 1)
 end)
 
 cmd_library.add({'age', 'accountage'}, 'shows account age', {
@@ -12586,10 +12591,10 @@ end)
 
 -- preload
 
-task.spawn(function()
-	local auto_plugins = config.get('auto_plugins') or {}
+task.delay(5, function()
+	local saved_plugins = config.get('saved_plugins') or {}
 
-	for plugin_name, url in auto_plugins do
+	for plugin_name, url in saved_plugins do
 		task.spawn(function()
 			notify('plugin', `loading '{plugin_name}'...`, 4)
 			cmd_library.execute('pluginload', url)
