@@ -1974,6 +1974,40 @@ hook_lib.presets.property_spoof = function(instance, properties)
 		end
 	end)
 
+	pcall(function()
+		local changed = instance.Changed
+		if changed and changed.Connect then
+			functions[changed.Connect] = function(old, self, callback)
+				if self == changed then
+					return old(self, function(prop)
+						if spoofed_values[prop] ~= nil then
+							return
+						end
+						return callback(prop)
+					end)
+				end
+				return old(self, callback)
+			end
+		end
+	end)
+
+	pcall(function()
+		local changed = instance.Changed
+		if changed and changed.Wait then
+			functions[changed.Wait] = function(old, self)
+				if self == changed then
+					while true do
+						local prop = old(self)
+						if spoofed_values[prop] == nil then
+							return prop
+						end
+					end
+				end
+				return old(self)
+			end
+		end
+	end)
+
 	return {
 		index = function(self, key)
 			if self == instance and spoofed_values[key] ~= nil then
@@ -1995,12 +2029,8 @@ hook_lib.presets.property_spoof = function(instance, properties)
 			end
 
 			if typeof(self) == 'RBXScriptSignal' then
-				if method == 'Connect' or method == 'Wait' then
-					local signal_name = tostring(self)
-					if signal_name:find('Changed') and self == instance.Changed then
-						if method == 'Wait' then
-							return coroutine.yield()
-						end
+				if self == instance.Changed then
+					if method == 'Connect' then
 						local args = {...}
 						local callback = args[1]
 						if callback then
@@ -2010,6 +2040,13 @@ hook_lib.presets.property_spoof = function(instance, properties)
 								end
 								return callback(prop)
 							end)
+						end
+					elseif method == 'Wait' then
+						while true do
+							local prop = instance.Changed:Wait()
+							if spoofed_values[prop] == nil then
+								return prop
+							end
 						end
 					end
 				end
