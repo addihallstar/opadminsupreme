@@ -58,7 +58,12 @@ local services = {
 }
 
 local stuff = {
-	ver = 'dudu-is-gay',
+	ver = '3.1.0',
+	--[[   ^ ^ ^
+		   | | | hot-fix
+		   | | 
+		   | 
+	]]
 
 	empty_function = function() end,
 	destroy = game.Destroy,
@@ -894,7 +899,9 @@ end
 local cmd_library = {
 	_commands = {},
 	_command_map = {},
-	_plugins = {}
+	_plugins = {},
+	_on_command_added = nil,
+	_on_command_removed = nil
 }
 
 function cmd_library.parse_command(input)
@@ -940,6 +947,10 @@ function cmd_library.add(names, description, args, fn)
 
 	for _, name in names do
 		cmd_library._command_map[name:lower()] = cmd_data
+	end
+
+	if cmd_library._on_command_added then
+		cmd_library._on_command_added(cmd_data)
 	end
 
 	return cmd_data
@@ -1009,6 +1020,11 @@ function cmd_library.remove_plugin(plugin_name)
 			for _, name in ipairs(cmd.names) do
 				cmd_library._command_map[name:lower()] = nil
 			end
+
+			if cmd_library._on_command_removed then
+				cmd_library._on_command_removed(cmd)
+			end
+
 			table.remove(cmd_library._commands, i)
 		end
 	end
@@ -1031,6 +1047,10 @@ function cmd_library.remove(name)
 
 	for i, cmd in cmd_library._commands do
 		if cmd == cmd_data then
+			if cmd_library._on_command_removed then
+				cmd_library._on_command_removed(cmd_data)
+			end
+
 			table.remove(cmd_library._commands, i)
 			break
 		end
@@ -3962,52 +3982,84 @@ cmd_library.add({'clearchatlogs', 'clearcl', 'ccl'}, 'clears the chatlogs', {}, 
 	notify('chatlogs', 'chatlogs not enabled', 2)
 end)
 
-cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {
-	{'update_list', 'boolean'}
-}, function(vstorage, update)
-	if update or not vstorage.loaded_commands then
-		for _, child in pairs(stuff.ui_cmdlist_commandlist:GetChildren()) do
-			if child:IsA('TextLabel') and child ~= stuff.ui_cmdlist_template then
-				stuff.destroy(child)
+cmd_library.add({'help', 'cmds', 'commands'}, 'shows you this menu', {}, function(vstorage)
+	vstorage.labels = vstorage.labels or {}
+
+	local function format_command(cmd_info)
+		local names_str = table.concat(cmd_info.names, ', ')
+
+		local args_str = ''
+		if cmd_info.args and #cmd_info.args > 0 then
+			local arg_parts = {}
+			for _, arg_data in cmd_info.args do
+				if arg_data[3] == 'hidden' then
+					continue
+				end
+
+				if arg_data['...'] then
+					table.insert(arg_parts, `...: {arg_data['...']}`)
+				else
+					table.insert(arg_parts, `{arg_data[1]}: {arg_data[2]}`)
+				end
+			end
+			if #arg_parts > 0 then
+				args_str = ` [{table.concat(arg_parts, ', ')}]`
 			end
 		end
 
-		vstorage.loaded_commands = true
+		return `{names_str}{args_str} - {cmd_info.description}`
+	end
+
+	local function create_label(cmd_info)
+		local primary_name = cmd_info.names[1]:lower()
+
+		if vstorage.labels[primary_name] then
+			return vstorage.labels[primary_name]
+		end
+
+		local newframe = stuff.clone(stuff.ui_cmdlist_template)
+		newframe.Name = primary_name
+		newframe.Visible = true
+		newframe.Parent = stuff.ui_cmdlist_commandlist
+		newframe.TextWrapped = true
+		newframe.AutomaticSize = Enum.AutomaticSize.Y
+		newframe.Text = format_command(cmd_info)
+
+		vstorage.labels[primary_name] = newframe
+
+		return newframe
+	end
+
+	local function remove_label(cmd_data)
+		local primary_name = cmd_data.names[1]:lower()
+		local label = vstorage.labels[primary_name]
+
+		if label then
+			stuff.destroy(label)
+			vstorage.labels[primary_name] = nil
+		end
+	end
+
+	if not vstorage.initialized then
+		vstorage.initialized = true
 
 		local all_commands = cmd_library.help()
-
 		for _, cmd_info in all_commands do
-			local newframe = stuff.clone(stuff.ui_cmdlist_template)
-			newframe.Visible = true
-			newframe.Parent = stuff.ui_cmdlist_commandlist
-			newframe.TextWrapped = true
-			newframe.AutomaticSize = Enum.AutomaticSize.Y
-
-			local names_str = table.concat(cmd_info.names, ', ')
-
-			local args_str = ''
-			if cmd_info.args and #cmd_info.args > 0 then
-				local arg_parts = {}
-				for _, arg_data in cmd_info.args do
-					if arg_data[3] == 'hidden' then
-						continue
-					end
-
-					if arg_data['...'] then
-						table.insert(arg_parts, `...: {arg_data['...']}`)
-					else
-						table.insert(arg_parts, `{arg_data[1]}: {arg_data[2]}`)
-					end
-				end
-				if #arg_parts > 0 then
-					args_str = ` [{table.concat(arg_parts, ', ')}]`
-				end
-			end
-
-			newframe.Text = `{names_str}{args_str} - {cmd_info.description}`
+			create_label(cmd_info)
 		end
 
-		notify('help', update and 'command list updated' or 'command list loaded', 1)
+		cmd_library._on_command_added = function(cmd_data)
+			create_label({
+				names = cmd_data.names,
+				description = cmd_data.description,
+				args = cmd_data.args,
+				plugin = cmd_data.plugin
+			})
+		end
+
+		cmd_library._on_command_removed = function(cmd_data)
+			remove_label(cmd_data)
+		end
 	end
 
 	stuff.ui_cmdlist.Enabled = true
@@ -10194,27 +10246,14 @@ end)
 cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling', {
 	{'player', 'player'},
 	{'torso_mode', 'boolean'},
-	{'kill_mode', 'boolean'},
-}, function(vstorage, targets, torso_mode,kill_mode)
+	{'orbit_closer', 'boolean'},
+}, function(vstorage, targets, torso_mode,orbit_closer)
 	if not targets or #targets == 0 then
 		targets = {stuff.owner}
 	end
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
-
-	local r = false
-	maid.add('partwalkfling_died', stuff.owner_char.Humanoid.Died, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unpartwalkfling')
-	end)
-
-	maid.add('partwalkfling_char_added', stuff.owner.CharacterAdded, function()
-		if r then return end
-		r = true
-		cmd_library.execute('unpartwalkfling')
-	end)
-
+	
 	for _, target in pairs(targets) do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 		local old_cframe = stuff.rawrbxget(hrp, 'CFrame')
@@ -10236,11 +10275,24 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 		stuff.rawrbxset(new_hrp, 'CFrame', old_cframe)
 		stuff.rawrbxset(workspace, 'CurrentCamera', cam)
 		task.wait(0.2)
+		
+		local r = false
+		maid.add('partwalkfling_died', target.Character.Humanoid.Died, function()
+			if r then return end
+			r = true
+			cmd_library.execute('unpartwalkfling')
+		end)
 
+		maid.add('partwalkfling_char_added', target.CharacterAdded, function()
+			if r then return end
+			r = true
+			cmd_library.execute('unpartwalkfling')
+		end)
+		
 		local parts = {}
 		local cycle_duration = 3
 		local distance = 18
-		if kill_mode == true then
+		if orbit_closer == true then
 			distance = 8
 		end
 		local cycle_progress = 0
@@ -12706,4 +12758,4 @@ stuff.ui_notifications_template = ui_notifications_template
 stuff.ui_notifications_main_container = ui_notifications_main_container
 
 notify('info', 'join the discord .gg/StHSWMjcnk', 4)
-notify('info', `opadmin loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
+notify('info', `opadmin v{stuff.ver} loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
