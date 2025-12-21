@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.4.5',
+	ver = '3.5.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -5892,13 +5892,13 @@ end)
 
 cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your tool', {
 	{'reach', 'number'},
+	{'use_handle','boolean'},
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, reach, bypass, et)
+}, function(vstorage, reach, use_handle, bypass, et)
 	if not firetouchinterest then
 		return notify('touchreach', 'firetouchinterest not found', 2)
 	end
-
 	if et and vstorage.enabled then
 		cmd_library.execute('untouchreach')
 		return
@@ -5935,19 +5935,42 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 	maid.add('touchreach_loop', services.run_service.Heartbeat, function()
 		pcall(function()
 			if not vstorage.enabled then return end
+			if use_handle ~= true then
+				local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
 
-			local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
+				for _, v in pairs(workspace:GetDescendants()) do
+					if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
+						local char = v.Parent
+						if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
+							local humanoid = char:FindFirstChildOfClass('Humanoid')
+							if humanoid and humanoid.Health > 0 then
+								local v_pos = stuff.rawrbxget(v, 'Position')
+								if (handle_pos - v_pos).Magnitude <= reach then
+									firetouchinterest(v, tool_handle, 0)
+									firetouchinterest(v, tool_handle, 1)
+								end
+							end
+						end
+					end
+				end
+			else
+				local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
 
-			for _, v in pairs(workspace:GetDescendants()) do
-				if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
-					local char = v.Parent
-					if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
-						local humanoid = char:FindFirstChildOfClass('Humanoid')
-						if humanoid and humanoid.Health > 0 then
-							local v_pos = stuff.rawrbxget(v, 'Position')
-							if (handle_pos - v_pos).Magnitude <= reach then
-								firetouchinterest(v, tool_handle, 0)
-								firetouchinterest(v, tool_handle, 1)
+				for _, v in pairs(workspace:GetDescendants()) do
+					if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
+						local char = v.Parent
+						if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
+							local humanoid = char:FindFirstChildOfClass('Humanoid')
+							if humanoid and humanoid.Health > 0 then
+								local v_pos = stuff.rawrbxget(v, 'Position')
+								if (handle_pos - v_pos).Magnitude <= reach then
+									for _, tool_part in ipairs(tool:GetDescendants()) do
+										if tool_part:IsA("BasePart") or tool_part:IsA("Part") or tool_part:IsA("MeshPart") or tool_part:IsA("UnionOperation") then
+											firetouchinterest(v, tool_part, 0)
+											firetouchinterest(v, tool_part, 1)
+										end
+									end
+								end
 							end
 						end
 					end
@@ -12830,7 +12853,6 @@ cmd_library.add({'clientgodmode', 'cgodmode', 'cgod', 'god'}, 'sets your health 
 		end
 	end)
 end)
-
 cmd_library.add({'unclientgodmode', 'uncgodmode', 'uncgod', 'ungod'}, 'disables client godmode', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('clientgodmode')
 
