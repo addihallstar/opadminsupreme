@@ -52,17 +52,15 @@ local services = {
 	gui_service = cloneref(game:GetService('GuiService')),
 	marketplace_service = cloneref(game:GetService('MarketplaceService')),
 	network_client = cloneref(game:GetService('NetworkClient')),
-	sound_service = cloneref(game:GetService('SoundService')),
-	workspace = cloneref(game:GetService('Workspace')),
-	stats = cloneref(game:GetService('Stats'))
+	sound_service = cloneref(game:GetService('SoundService'))
 }
 
 local stuff = {
-	ver = '3.1.0',
+	ver = '3.1.1',
 	--[[   ^ ^ ^
 		   | | | hot-fix
-		   | | 
-		   | 
+		   | | update
+		   | big update
 	]]
 
 	empty_function = function() end,
