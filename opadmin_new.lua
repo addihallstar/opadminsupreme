@@ -2665,6 +2665,42 @@ end)
 
 -- c2: utility
 
+cmd_library.add({'loadstring', 'run', 'script', 'execute', 'ls'}, 'run given lua code', {
+	{'...', 'string'}
+}, function(vars, ...)
+	local code = table.concat({...}, ' ')
+	
+	vars.script_folder = vars.script_folder or Instance.new('Folder', services.core_gui)
+	vars.script_folder.Name = 'opadmin_scripts'
+	
+	local script = Instance.new('LocalScript')
+	script.Enabled = false
+	script.Source = code
+	script.Name = `{#vars.script_folder:GetChildren() + 1}.script`
+	script.Parent = vars.script_folder
+	
+	local success, ls = pcall(loadstring, code)
+	if not success then
+		return notify('loadstring', `error when calling loadstring: {ls}`, 2)
+	end
+	
+	if not ls then
+		return notify('loadstring', 'loadstring did not return anything', 2)
+	end
+	
+	local ls_env = getfenv(ls)
+	ls_env.script = script
+	
+	local success2, ls_ret = pcall(ls)
+	if not success2 then
+		return notify('loadstring', `error when executing script: {ls_ret}`, 2)
+	end
+	
+	if ls_ret then
+		notify('loadstring', `loadstring returned {ls_ret}`, 1)
+	end
+end)
+
 cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 	{'url', 'string'}
 }, function(vars, url)
@@ -2727,6 +2763,12 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 		get_hook_library = function() return hook_lib end,
 		config = config
 	})
+	
+	export type plugin_api = {
+		add_command: (names: {string}, description: string, args: {string}, fn: () -> ()) -> (),
+		notify: (text: string, level: number) -> (),
+		maid: 
+	}
 
 	if not success4 then
 		cmd_library.remove_plugin(plugin_data.name)
@@ -2797,6 +2839,18 @@ cmd_library.add({'plugininfo', 'pinfo'}, 'show plugin information', {
 		for _, cmd in plugin.commands do
 			notify('plugin', `{table.concat(cmd.names, ', ')} - {cmd.description}`, 1)
 		end
+	end
+end)
+
+cmd_library.add({'plugins'}, 'show loaded plugins', {}, function()
+	local plugins = {}
+	for _, plugin in cmd_library._plugins do
+		table.insert(plugins, plugin.name)
+	end
+	if #plugins > 0 then
+		notify('plugins', `loaded {#plugins} plugins: {table.concat(plugins, ', ')}`, 1)
+	else
+		notify('plugins', 'no plugins loaded', 1)
 	end
 end)
 
@@ -7741,7 +7795,7 @@ cmd_library.add({'togglefreegamepass', 'tfreegp', 'freegp'}, 'makes the client t
 	end
 end)
 
-cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots when crosshair is on enemy', {
+cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim at a player', {
 	{'delay', 'number'},
 	{'head_only', 'boolean'},
 	{'wallcheck', 'boolean'}
@@ -9565,6 +9619,29 @@ cmd_library.add({'unpartstorm', 'unpstorm', 'unpartrain'}, 'stops the part storm
 	notify('partstorm', 'partstorm stopped', 1)
 end)
 
+cmd_library.add({"deletetool"}, "gives you a tool to delete unanchored parts on serverside", {}, function()
+	local tool = Instance.new("Tool",stuff.owner:FindFirstChildOfClass("Backpack"))
+	stuff.rawrbxset(tool,"Name","delete")
+	stuff.rawrbxset(tool,"RequiresHandle",false)
+	stuff.rawrbxset(tool,"CanBeDropped",false)
+	tool.Activated:Connect(function()
+		if stuff.owner:GetMouse().Target ~= nil then
+			if stuff.owner:GetMouse().Target:IsA("Part") or stuff.owner:GetMouse().Target:IsA("MeshPart") or stuff.owner:GetMouse().Target:IsA("UnionOperation") or stuff.owner:GetMouse().Target:IsA("BasePart") then
+				local target = stuff.owner:GetMouse().Target
+				if target.Anchored == false and network_check(target) == true and #target:GetConnectedParts() == 1 then
+					target.CFrame = CFrame.new(target.Position.X,workspace.FallenPartsDestroyHeight+10+target.Size.Y,target.Position.Z)
+					target.CanCollide = false
+					target.Velocity = Vector3.new(0,-20,0)
+				else
+					if network_check(target) == false and target.Anchored == false and #target:GetConnectedParts() == 1 then
+						notify("deletetool","you must own this part's networkowner to be able to delete it; \nmaybe try reloadnet or getting closer to it",3)
+					end
+				end
+			end
+		end
+	end)
+end)
+
 cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far more undetectable and works in collisions off', {
 	{'player', 'player'},
 	{'velocity', 'number'}
@@ -9717,7 +9794,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			end
 		end)
 	end
-
+	
 	if not targets or #targets == 0 then
 		return notify('partfling', 'player not found', 2)
 	end
@@ -10565,7 +10642,7 @@ cmd_library.add({'xray'}, 'makes walls transparent', {
 	end
 end)
 
-cmd_library.add({'crosshair', 'cross', 'xhair'}, 'custom crosshair', {
+cmd_library.add({'crosshair', 'cross', 'xhair'}, 'custom crosshair (styles: cross, dot, circle, crossdot, square, diamond)', {
 	{'style', 'string'},
 	{'size', 'number'},
 	{'thickness', 'number'},
@@ -10579,93 +10656,158 @@ cmd_library.add({'crosshair', 'cross', 'xhair'}, 'custom crosshair', {
 
 	vstorage.enabled = true
 	vstorage.style = (style or 'cross'):lower()
-	vstorage.size = size or 10
-	vstorage.thickness = thickness or 2
-	vstorage.gap = gap or 4
+	vstorage.size = math.clamp(size or 10, 1, 100)
+	vstorage.thickness = math.clamp(thickness or 2, 1, 10)
+	vstorage.gap = math.clamp(gap or 4, 0, 50)
 	vstorage.color = color or Color3.fromRGB(176, 126, 215)
 	vstorage.outline = outline ~= false
 	vstorage.drawings = {}
 
-	local center = workspace.CurrentCamera.ViewportSize / 2
+	local valid_styles = {
+		cross = true,
+		dot = true,
+		circle = true,
+		crossdot = true,
+		square = true,
+		triangle = true,
+		diamond = true
+	}
 
-	if vstorage.style == 'cross' then
-		local lines = {
-			{Vector2.new(center.X, center.Y - vstorage.gap - vstorage.size), Vector2.new(center.X, center.Y - vstorage.gap)},
-			{Vector2.new(center.X, center.Y + vstorage.gap), Vector2.new(center.X, center.Y + vstorage.gap + vstorage.size)},
-			{Vector2.new(center.X - vstorage.gap - vstorage.size, center.Y), Vector2.new(center.X - vstorage.gap, center.Y)},
-			{Vector2.new(center.X + vstorage.gap, center.Y), Vector2.new(center.X + vstorage.gap + vstorage.size, center.Y)}
-		}
+	if not valid_styles[vstorage.style] then
+		vstorage.enabled = false
+		return notify('crosshair', `invalid style '{vstorage.style}'. valid: cross, dot, circle, crossdot, square, diamond`, 2)
+	end
 
-		for i, data in lines do
-			if vstorage.outline then
-				local outline_line = Drawing.new('Line')
-				outline_line.From = data[1]
-				outline_line.To = data[2]
-				outline_line.Thickness = vstorage.thickness + 2
-				outline_line.Color = Color3.new(0, 0, 0)
-				outline_line.Visible = true
-				table.insert(vstorage.drawings, outline_line)
-			end
+	local function line(from, to, is_outline)
+		local line = Drawing.new('Line')
+		line.From = from
+		line.To = to
+		line.Thickness = is_outline and vstorage.thickness + 2 or vstorage.thickness
+		line.Color = is_outline and Color3.new(0, 0, 0) or vstorage.color
+		line.Transparency = is_outline and 0.5 or 1
+		line.Visible = true
+		table.insert(vstorage.drawings, line)
+		return line
+	end
 
-			local line = Drawing.new('Line')
-			line.From = data[1]
-			line.To = data[2]
-			line.Thickness = vstorage.thickness
-			line.Color = vstorage.color
-			line.Visible = true
-			table.insert(vstorage.drawings, line)
-		end
-	elseif vstorage.style == 'dot' then
-		if vstorage.outline then
-			local outline_dot = Drawing.new('Circle')
-			outline_dot.Position = center
-			outline_dot.Radius = vstorage.size / 2 + 1
-			outline_dot.Filled = true
-			outline_dot.Color = Color3.new(0, 0, 0)
-			outline_dot.Visible = true
-			table.insert(vstorage.drawings, outline_dot)
-		end
-
-		local dot = Drawing.new('Circle')
-		dot.Position = center
-		dot.Radius = vstorage.size / 2
-		dot.Filled = true
-		dot.Color = vstorage.color
-		dot.NumSides = 16
-		dot.Visible = true
-		table.insert(vstorage.drawings, dot)
-	elseif vstorage.style == 'circle' then
-		if vstorage.outline then
-			local outline_circle = Drawing.new('Circle')
-			outline_circle.Position = center
-			outline_circle.Radius = vstorage.size
-			outline_circle.Filled = false
-			outline_circle.Thickness = vstorage.thickness + 2
-			outline_circle.Color = Color3.new(0, 0, 0)
-			outline_circle.NumSides = 32
-			outline_circle.Visible = true
-			table.insert(vstorage.drawings, outline_circle)
-		end
-
+	local function circle(pos, radius, filled, is_outline)
 		local circle = Drawing.new('Circle')
-		circle.Position = center
-		circle.Radius = vstorage.size
-		circle.Filled = false
-		circle.Thickness = vstorage.thickness
-		circle.Color = vstorage.color
+		circle.Position = pos
+		circle.Radius = is_outline and radius + 1 or radius
+		circle.Filled = filled
+		circle.Thickness = filled and 0 or (is_outline and vstorage.thickness + 2 or vstorage.thickness)
+		circle.Color = is_outline and Color3.new(0, 0, 0) or vstorage.color
+		circle.Transparency = is_outline and 0.5 or 1
 		circle.NumSides = 32
 		circle.Visible = true
 		table.insert(vstorage.drawings, circle)
-	else
-		return notify('crosshair', 'invalid style, must be one of: lines, dot, circle', 2)
+		return circle
 	end
 
-	notify('crosshair', `enabled | style: {vstorage.style} | size: {vstorage.size}`, 1)
+	local function square(pos, size, filled, is_outline)
+		local square = Drawing.new('Square')
+		local half = size / 2
+		square.Position = Vector2.new(pos.X - half, pos.Y - half)
+		square.Size = Vector2.new(size, size)
+		square.Filled = filled
+		square.Thickness = filled and 0 or (is_outline and vstorage.thickness + 2 or vstorage.thickness)
+		square.Color = is_outline and Color3.new(0, 0, 0) or vstorage.color
+		square.Transparency = is_outline and 0.5 or 1
+		square.Visible = true
+		table.insert(vstorage.drawings, square)
+		return square
+	end
+
+	local function build_crosshair(center)
+		for _, drawing in vstorage.drawings do
+			if drawing.Remove then drawing:Remove() end
+		end
+		table.clear(vstorage.drawings)
+
+		if vstorage.style == 'cross' or vstorage.style == 'crossdot' then
+			local lines = {
+				{Vector2.new(center.X, center.Y - vstorage.gap - vstorage.size), Vector2.new(center.X, center.Y - vstorage.gap)},
+				{Vector2.new(center.X, center.Y + vstorage.gap), Vector2.new(center.X, center.Y + vstorage.gap + vstorage.size)},
+				{Vector2.new(center.X - vstorage.gap - vstorage.size, center.Y), Vector2.new(center.X - vstorage.gap, center.Y)},
+				{Vector2.new(center.X + vstorage.gap, center.Y), Vector2.new(center.X + vstorage.gap + vstorage.size, center.Y)}
+			}
+
+			for _, data in lines do
+				if vstorage.outline then
+					line(data[1], data[2], true)
+				end
+				line(data[1], data[2], false)
+			end
+
+			if vstorage.style == 'crossdot' then
+				if vstorage.outline then
+					circle(center, vstorage.thickness, true, true)
+				end
+				circle(center, vstorage.thickness, true, false)
+			end
+
+		elseif vstorage.style == 'dot' then
+			if vstorage.outline then
+				circle(center, vstorage.size / 2, true, true)
+			end
+			circle(center, vstorage.size / 2, true, false)
+
+		elseif vstorage.style == 'circle' then
+			if vstorage.outline then
+				circle(center, vstorage.size, false, true)
+			end
+			circle(center, vstorage.size, false, false)
+
+		elseif vstorage.style == 'square' then
+			if vstorage.outline then
+				square(center, vstorage.size, false, true)
+			end
+			square(center, vstorage.size, false, false)
+
+		elseif vstorage.style == 'diamond' then
+			local half = vstorage.size / 2
+			local points = {
+				{Vector2.new(center.X, center.Y - half), Vector2.new(center.X + half, center.Y)},
+				{Vector2.new(center.X + half, center.Y), Vector2.new(center.X, center.Y + half)},
+				{Vector2.new(center.X, center.Y + half), Vector2.new(center.X - half, center.Y)},
+				{Vector2.new(center.X - half, center.Y), Vector2.new(center.X, center.Y - half)}
+			}
+
+			for _, data in points do
+				if vstorage.outline then
+					line(data[1], data[2], true)
+				end
+				line(data[1], data[2], false)
+			end
+		end
+	end
+
+	vstorage.build = build_crosshair
+
+	local gui_inset = services.gui_service:GetGuiInset()
+	local viewport = workspace.CurrentCamera.ViewportSize
+	local center = Vector2.new(viewport.X / 2, (viewport.Y / 2) - gui_inset.Y)
+
+	build_crosshair(center)
+	vstorage.last_viewport = viewport
+
+	maid.add('crosshair_update', services.run_service.RenderStepped, function()
+		if not vstorage.enabled then return end
+
+		local new_viewport = workspace.CurrentCamera.ViewportSize
+		if new_viewport ~= vstorage.last_viewport then
+			vstorage.last_viewport = new_viewport
+			local new_center = Vector2.new(new_viewport.X / 2, (new_viewport.Y / 2) - gui_inset.Y)
+			build_crosshair(new_center)
+		end
+	end)
+
+	notify('crosshair', `enabled | style: {vstorage.style} | size: {vstorage.size} | gap: {vstorage.gap}`, 1)
 end)
 
 cmd_library.add({'uncrosshair', 'uncross', 'unxhair'}, 'disables crosshair', {}, function()
 	local vs = cmd_library.get_variable_storage('crosshair')
-	if not vs.enabled then
+	if not vs or not vs.enabled then
 		return notify('crosshair', 'not enabled', 2)
 	end
 
@@ -10674,15 +10816,17 @@ cmd_library.add({'uncrosshair', 'uncross', 'unxhair'}, 'disables crosshair', {},
 	for _, drawing in vs.drawings or {} do
 		if drawing.Remove then drawing:Remove() end
 	end
-	vs.drawings = {}
+	table.clear(vs.drawings)
+
+	maid.remove('crosshair_update')
 
 	notify('crosshair', 'disabled', 1)
 end)
 
 cmd_library.add({'esp', 'playeresp', 'toggleesp'}, 'toggles esp', {
-	{'color', 'color3'},
-	{'include_npcs', 'boolean'}
-}, function(vstorage, color, include_npcs)
+	{'include_npcs', 'boolean'},
+	{'color', 'color3'}
+}, function(vstorage, include_npcs, color)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.team = color == 'team'
 	vstorage.include_npcs = include_npcs or false
