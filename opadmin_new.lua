@@ -134,17 +134,17 @@ local function get_plr(name)
 		['@random'] = function() return {all_plrs[math.random(#all_plrs)]} end,
 		['@rand'] = function() return {all_plrs[math.random(#all_plrs)]} end,
 		['@r'] = function() return {all_plrs[math.random(#all_plrs)]} end,
-		
+
 		['@self'] = function() return {stuff.owner} end,
 		['@me'] = function() return {stuff.owner} end,
 		['@s'] = function() return {stuff.owner} end,
 		['@m'] = function() return {stuff.owner} end,
-		
+
 		['@everyone'] = function() return all_plrs end,
 		['@all'] = function() return all_plrs end,
 		['@e'] = function() return all_plrs end,
 		['@a'] = function() return all_plrs end,
-		
+
 		['@others'] = function()
 			local others = {}
 			for _, plr in all_plrs do
@@ -156,7 +156,7 @@ local function get_plr(name)
 		end,
 		['@other'] = function() return special_selectors['@others']() end,
 		['@o'] = function() return special_selectors['@others']() end,
-		
+
 		['@view'] = function()
 			local subject = workspace.CurrentCamera.CameraSubject
 			if subject and subject.Parent then
@@ -165,7 +165,7 @@ local function get_plr(name)
 			return {}
 		end,
 		['@v'] = function() return special_selectors['@view']() end,
-		
+
 		['@nearest'] = function()
 			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 			if not owner_hrp then return {} end
@@ -186,7 +186,7 @@ local function get_plr(name)
 			return nearest and {nearest} or {}
 		end,
 		['@n'] = function() return special_selectors['@nearest']() end,
-		
+
 		['@enemies'] = function()
 			local enemies = {}
 			for _, plr in all_plrs do
@@ -198,7 +198,7 @@ local function get_plr(name)
 			end
 			return enemies
 		end,
-		
+
 		['@team'] = function()
 			local teammates = {}
 			for _, plr in all_plrs do
@@ -446,7 +446,7 @@ local function get_target_part(character, part_name)
 	return character:FindFirstChild('Head') or character:FindFirstChild('HumanoidRootPart')
 end
 
-local function is_valid_target(player, ignore_team)
+local function is_target(player, ignore_team)
 	if not player or player == stuff.owner then return false end
 	if not ignore_team and player.Team and player.Team == stuff.owner.Team then return false end
 
@@ -1030,7 +1030,7 @@ local function get_tracer_start(mode, viewport, mouse_pos)
 	end
 end
 
-local function is_valid_npc(model)
+local function is_npc(model)
 	if not model:IsA('Model') then return false end
 
 	local humanoid = model:FindFirstChildOfClass('Humanoid')
@@ -1046,7 +1046,7 @@ local function is_valid_npc(model)
 	return true
 end
 
-local function is_valid_item(obj)
+local function is_item(obj)
 	if obj:IsA('Tool') and obj.Parent == workspace then
 		return true
 	end
@@ -1210,7 +1210,7 @@ do
 	local con = stuff.connect(game.Changed, stuff.empty_function)
 	stuff.disconnect = con.Disconnect
 	pcall(stuff.disconnect, con)
-	
+
 	stuff.rawrbxset = function(obj, key, value)
 		obj[key] = value
 	end
@@ -1231,7 +1231,7 @@ do
 	--		return obj[key]
 	--	end
 	--end) -- murder
-	
+
 	stuff.rawrbxset = function(obj, key, value)
 		obj[key] = value
 	end
@@ -1617,10 +1617,10 @@ function config.save()
 		local success = pcall(function()
 			writefile(config.file_name, services.http:JSONEncode(config.current_settings))
 		end)
-		
+
 		return success
 	end
-	
+
 	return false
 end
 
@@ -1720,7 +1720,7 @@ local function load_ui()
 	if ui then
 		return ui:Clone()
 	end
-	
+
 	return nil
 end
 
@@ -1919,7 +1919,7 @@ hook_lib.presets.freegamepass = function()
 					local success, result = pcall(function(...)
 						return self[method](self, ...)
 					end, ...)
-					
+
 					if success and result then
 						result.IsOwned = true
 						result.IsForSale = true
@@ -1953,7 +1953,7 @@ end
 
 hook_lib.presets.property_spoof = function(instance, properties)
 	local spoofed_values = {}
-	
+
 	for prop, value in pairs(properties) do
 		spoofed_values[prop] = value
 	end
@@ -3201,33 +3201,33 @@ cmd_library.add({'loadstring', 'run', 'script', 'execute', 'ls'}, 'run given lua
 	{'...', 'string'}
 }, function(vars, ...)
 	local code = table.concat({...}, ' ')
-	
+
 	vars.script_folder = vars.script_folder or Instance.new('Folder', services.core_gui)
 	vars.script_folder.Name = 'opadmin_scripts'
-	
+
 	local script = Instance.new('LocalScript')
 	script.Enabled = false
 	script.Source = code
 	script.Name = `{#vars.script_folder:GetChildren() + 1}.script`
 	script.Parent = vars.script_folder
-	
+
 	local success, ls = pcall(loadstring, code)
 	if not success then
 		return notify('loadstring', `error when calling loadstring: {ls}`, 2)
 	end
-	
+
 	if not ls then
 		return notify('loadstring', 'loadstring did not return anything', 2)
 	end
-	
+
 	local ls_env = getfenv(ls)
 	ls_env.script = script
-	
+
 	local success2, ls_ret = pcall(ls)
 	if not success2 then
 		return notify('loadstring', `error when executing script: {ls_ret}`, 2)
 	end
-	
+
 	if ls_ret then
 		notify('loadstring', `loadstring returned {ls_ret}`, 1)
 	end
@@ -3296,7 +3296,7 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 		get_hook_library = function() return hook_lib end,
 		config = config
 	})
-	
+
 	if not success4 then
 		cmd_library.remove_plugin(plugin_data.name)
 		notify('plugin', `plugin initialization failed: {err2}`, 2)
@@ -8450,7 +8450,7 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 		return nil, nil
 	end
 
-	local function is_valid_body_part(part)
+	local function is_body_part(part)
 		local name_lower = part.Name:lower()
 
 		if vstorage.head_only then
@@ -8512,8 +8512,8 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 		end
 
 		if not player then return end
-		if not is_valid_target(player) then return end
-		if not is_valid_body_part(target) then return end
+		if not is_target(player) then return end
+		if not is_body_part(target) then return end
 
 		if vstorage.wallcheck and hit_position then
 			local camera = workspace.CurrentCamera
@@ -9861,7 +9861,7 @@ cmd_library.add({'silentaim', 'sa'}, 'silently redirects shots to enemies', {
 		local best_dist = vstorage.fov_radius
 
 		for _, player in services.players:GetPlayers() do
-			if not is_valid_target(player) then continue end
+			if not is_target(player) then continue end
 
 			local char = player.Character
 			local part = get_target_part(char, vstorage.target_part)
@@ -10392,7 +10392,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 			end
 		end)
 	end
-	
+
 	if not targets or #targets == 0 then
 		return notify('partfling', 'player not found', 2)
 	end
@@ -10650,7 +10650,7 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 		return false
 	end
 
-	local is_valid_part = function(part)
+	local is_part = function(part)
 		local anchored = stuff.rawrbxget(part, 'Anchored')
 		if anchored or is_player_part(part) or part:IsDescendantOf(stuff.owner_char) then
 			return false
@@ -10662,13 +10662,13 @@ cmd_library.add({'flingaura', 'faura', 'fa'}, 'fling nearby players with parts',
 	end
 
 	for _, part in workspace:GetDescendants() do
-		if part:IsA('BasePart') and is_valid_part(part) then
+		if part:IsA('BasePart') and is_part(part) then
 			table.insert(parts, part)
 		end
 	end
 
 	local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
-		if part:IsA('BasePart') and is_valid_part(part) then
+		if part:IsA('BasePart') and is_part(part) then
 			table.insert(parts, part)
 		end
 	end)
@@ -10763,7 +10763,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 	end
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
-	
+
 	for _, target in pairs(targets) do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 		local old_cframe = stuff.rawrbxget(hrp, 'CFrame')
@@ -10785,7 +10785,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 		stuff.rawrbxset(new_hrp, 'CFrame', old_cframe)
 		stuff.rawrbxset(workspace, 'CurrentCamera', cam)
 		task.wait(0.2)
-		
+
 		local r = false
 		maid.add('partwalkfling_died', target.Character.Humanoid.Died, function()
 			if r then return end
@@ -10798,7 +10798,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			r = true
 			cmd_library.execute('unpartwalkfling')
 		end)
-		
+
 		local parts = {}
 		local cycle_duration = 3
 		local distance = 18
@@ -10816,7 +10816,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 			return false
 		end
 
-		local is_valid_part = function(part)
+		local is_part = function(part)
 			local anchored = stuff.rawrbxget(part, 'Anchored')
 			if anchored or is_player_part(part) or part:IsDescendantOf(stuff.owner_char) then
 				return false
@@ -10828,13 +10828,13 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 		end
 
 		for _, part in workspace:GetDescendants() do
-			if part:IsA('BasePart') and is_valid_part(part) then
+			if part:IsA('BasePart') and is_part(part) then
 				table.insert(parts, part)
 			end
 		end
 
 		local desc_added_conn = workspace.DescendantAdded:Connect(function(part)
-			if part:IsA('BasePart') and is_valid_part(part) then
+			if part:IsA('BasePart') and is_part(part) then
 				table.insert(parts, part)
 			end
 		end)
@@ -11561,7 +11561,7 @@ cmd_library.add({'npcesp', 'npc'}, 'toggles npc esp', {
 		table.clear(vstorage.npcs)
 
 		for _, model in workspace:GetDescendants() do
-			if is_valid_npc(model) then
+			if is_npc(model) then
 				vstorage.npcs[model] = true
 			end
 		end
@@ -11569,7 +11569,7 @@ cmd_library.add({'npcesp', 'npc'}, 'toggles npc esp', {
 		maid.add('npcesp_added', workspace.DescendantAdded, function(descendant)
 			if descendant:IsA('Model') then
 				task.defer(function()
-					if is_valid_npc(descendant) then
+					if is_npc(descendant) then
 						vstorage.npcs[descendant] = true
 					end
 				end)
@@ -11701,29 +11701,29 @@ cmd_library.add({'itemesp', 'itemsesp', 'toolesp'}, 'toggles item esp', {
 		table.clear(vstorage.items)
 
 		for _, obj in workspace:GetDescendants() do
-			if is_valid_item(obj) then
+			if is_item(obj) then
 				vstorage.items[obj] = true
 			end
 		end
 
-		maid.add('itemesp_added', workspace.DescendantAdded, function(descendant)
+		maid.add('itemesp_added', workspace.DescendantAdded, function(d)
 			task.defer(function()
-				if is_valid_item(descendant) then
-					vstorage.items[descendant] = true
+				if is_item(d) then
+					vstorage.items[d] = true
 				end
 			end)
 		end)
 
-		maid.add('itemesp_removing', workspace.DescendantRemoving, function(descendant)
-			if vstorage.items[descendant] then
-				vstorage.items[descendant] = nil
-				if vstorage.frames[descendant] then
-					pcall(stuff.destroy, vstorage.frames[descendant])
-					vstorage.frames[descendant] = nil
+		maid.add('itemesp_removing', workspace.DescendantRemoving, function(d)
+			if vstorage.items[d] then
+				vstorage.items[d] = nil
+				if vstorage.frames[d] then
+					pcall(stuff.destroy, vstorage.frames[d])
+					vstorage.frames[d] = nil
 				end
-				if vstorage.highlights[descendant] then
-					pcall(stuff.destroy, vstorage.highlights[descendant])
-					vstorage.highlights[descendant] = nil
+				if vstorage.highlights[d] then
+					pcall(stuff.destroy, vstorage.highlights[d])
+					vstorage.highlights[d] = nil
 				end
 			end
 		end)
@@ -11987,7 +11987,7 @@ cmd_library.add({'npctracers', 'npct'}, 'toggles npc tracers', {
 		table.clear(vstorage.npcs)
 
 		for _, model in workspace:GetDescendants() do
-			if is_valid_npc(model) then
+			if is_npc(model) then
 				vstorage.npcs[model] = true
 			end
 		end
@@ -11995,7 +11995,7 @@ cmd_library.add({'npctracers', 'npct'}, 'toggles npc tracers', {
 		maid.add('npctracers_added', workspace.DescendantAdded, function(descendant)
 			if descendant:IsA('Model') then
 				task.defer(function()
-					if is_valid_npc(descendant) then
+					if is_npc(descendant) then
 						vstorage.npcs[descendant] = true
 					end
 				end)
@@ -12153,14 +12153,14 @@ cmd_library.add({'itemtracers', 'itemst', 'tooltracers'}, 'toggles item tracers'
 		table.clear(vstorage.items)
 
 		for _, obj in workspace:GetDescendants() do
-			if is_valid_item(obj) then
+			if is_item(obj) then
 				vstorage.items[obj] = true
 			end
 		end
 
 		maid.add('itemtracers_added', workspace.DescendantAdded, function(descendant)
 			task.defer(function()
-				if is_valid_item(descendant) then
+				if is_item(descendant) then
 					vstorage.items[descendant] = true
 				end
 			end)
@@ -12563,331 +12563,6 @@ cmd_library.add({'untrail'}, 'removes trail from character', {}, function(vstora
 end)
 
 -- c7: player
-
-cmd_library.add({'antideath', 'antikill', 'autodeath'}, 'teleports away from danger when health is low', {
-	{'min_health', 'number'},
-	{'bypass_mode', 'boolean'},
-	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, min_health, bypass, et)
-	if et and vstorage.enabled then
-		cmd_library.execute('unantideath')
-		return
-	end
-
-	if vstorage.enabled then
-		return notify('antideath', 'anti-death already enabled', 2)
-	end
-
-	vstorage.enabled = true
-	vstorage.min_health = min_health or 20
-	vstorage.bypass = bypass
-	notify('antideath', `anti-death enabled | threshold: {vstorage.min_health} HP{bypass and ' (bypass)' or ''}`, 1)
-
-	local function setup_antideath()
-		local humanoid = stuff.owner_char:FindFirstChildOfClass('Humanoid')
-		if not humanoid then return end
-
-		vstorage.last_health = stuff.rawrbxget(humanoid, 'Health')
-		vstorage.safe_position = stuff.owner_char:GetPivot()
-		vstorage.damage_source = nil
-		vstorage.teleport_count = 0
-		vstorage.last_damage_tick = 0
-		vstorage.is_escaping = false
-		vstorage.last_teleport_time = 0
-
-		if bypass then
-			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			if hrp then
-				hook_lib.create_hook('antideath_bypass', {
-					newindex = function(self, key, value)
-						if vstorage.is_escaping then
-							if self == hrp and (key == 'CFrame' or key == 'Position') then
-								return false
-							end
-							if self:IsA('BasePart') and self:IsDescendantOf(stuff.owner_char) then
-								if key == 'Velocity' or key == 'AssemblyLinearVelocity' or key == 'AssemblyAngularVelocity' or key == 'RotVelocity' then
-									return false
-								end
-							end
-						end
-					end,
-
-					index = function(self, key)
-						if vstorage.is_escaping and self == humanoid then
-							if key == 'Health' then
-								return vstorage.last_health
-							end
-						end
-					end
-				})
-			end
-		end
-
-		local function find_damage_source()
-			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			if not hrp then return nil end
-
-			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
-			local sources = {}
-
-			for _, plr in pairs(services.players:GetPlayers()) do
-				if plr ~= stuff.owner and plr.Character and plr.Character:FindFirstChild('HumanoidRootPart') then
-					local plr_hrp = plr.Character.HumanoidRootPart
-					local plr_pos = stuff.rawrbxget(plr_hrp, 'Position')
-					local distance = (hrp_pos - plr_pos).Magnitude
-
-					if distance < 30 then
-						local has_tool = plr.Character:FindFirstChildOfClass('Tool')
-						table.insert(sources, {
-							type = 'player',
-							source = plr,
-							name = plr.Name,
-							distance = distance,
-							priority = has_tool and 1 or 2
-						})
-					end
-				end
-			end
-
-			for _, obj in pairs(workspace:GetDescendants()) do
-				if obj:IsA('BasePart') and obj.Parent ~= stuff.owner_char then
-					local obj_pos = stuff.rawrbxget(obj, 'Position')
-					local distance = (hrp_pos - obj_pos).Magnitude
-					local obj_name = obj.Name:lower()
-
-					if (obj_name:find('kill') or obj_name:find('damage') or obj_name:find('lava') or obj_name:find('death') or obj_name:find('fire') or obj_name:find('trap')) and distance < 25 then
-						table.insert(sources, {
-							type = 'hazard',
-							source = obj,
-							name = obj.Name,
-							distance = distance,
-							priority = 2
-						})
-					end
-
-					local velocity = stuff.rawrbxget(obj, 'AssemblyLinearVelocity')
-					if velocity.Magnitude > 60 and distance < 15 then
-						table.insert(sources, {
-							type = 'projectile',
-							source = obj,
-							name = obj.Name,
-							distance = distance,
-							priority = 1
-						})
-					end
-				end
-			end
-
-			table.sort(sources, function(a, b)
-				if a.priority == b.priority then
-					return a.distance < b.distance
-				end
-				return a.priority < b.priority
-			end)
-
-			return sources[1]
-		end
-
-		local function teleport_to_safety()
-			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			if not hrp then return end
-
-			if tick() - vstorage.last_teleport_time < 0.15 then return end
-			vstorage.last_teleport_time = tick()
-
-			vstorage.teleport_count = vstorage.teleport_count + 1
-			vstorage.is_escaping = true
-
-			local escape_pos
-			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
-
-			if vstorage.damage_source then
-				local source_pos
-
-				if vstorage.damage_source.type == 'player' and vstorage.damage_source.source.Character and vstorage.damage_source.source.Character:FindFirstChild('HumanoidRootPart') then
-					source_pos = stuff.rawrbxget(vstorage.damage_source.source.Character.HumanoidRootPart, 'Position')
-					notify('antideath', `escaping from {vstorage.damage_source.name}`, 1)
-				elseif vstorage.damage_source.source and vstorage.damage_source.source:IsA('BasePart') then
-					source_pos = stuff.rawrbxget(vstorage.damage_source.source, 'Position')
-					notify('antideath', `escaping from {vstorage.damage_source.type}`, 1)
-				end
-
-				if source_pos then
-					local escape_direction = (hrp_pos - source_pos).Unit
-					local escape_distance = vstorage.damage_source.type == 'player' and 70 or 50
-					escape_pos = hrp_pos + (escape_direction * escape_distance) + Vector3.new(0, 20, 0)
-				else
-					escape_pos = vstorage.safe_position.Position + Vector3.new(0, 10, 0)
-				end
-			else
-				if (vstorage.safe_position.Position - hrp_pos).Magnitude > 200 then
-					local random_offset = Vector3.new(
-						math.random(-80, 80),
-						math.random(20, 50),
-						math.random(-80, 80)
-					)
-					escape_pos = hrp_pos + random_offset
-					notify('antideath', 'escaping to random position', 1)
-				else
-					escape_pos = vstorage.safe_position.Position + Vector3.new(0, 15, 0)
-					notify('antideath', 'returning to safe position', 1)
-				end
-			end
-
-			for i = 1, 3 do
-				pcall(function()
-					stuff.owner_char:PivotTo(CFrame.new(escape_pos))
-
-					for _, part in pairs(stuff.owner_char:GetDescendants()) do
-						if part:IsA('BasePart') then
-							stuff.rawrbxset(part, 'Velocity', Vector3.zero)
-							stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
-							stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
-							stuff.rawrbxset(part, 'RotVelocity', Vector3.zero)
-						end
-					end
-				end)
-
-				if i < 3 then
-					task.wait(0.05)
-				end
-			end
-
-			task.delay(0.8, function()
-				vstorage.is_escaping = false
-			end)
-		end
-
-		maid.add('antideath_health_monitor', humanoid:GetPropertyChangedSignal('Health'), function()
-			if not vstorage.enabled then
-				maid.remove('antideath_health_monitor')
-				maid.remove('antideath_heartbeat')
-				return
-			end
-
-			pcall(function()
-				local current_health = stuff.rawrbxget(humanoid, 'Health')
-
-				if current_health <= 0 then
-					maid.remove('antideath_health_monitor')
-					maid.remove('antideath_heartbeat')
-					return
-				end
-
-				if current_health < vstorage.last_health then
-					vstorage.last_damage_tick = tick()
-					vstorage.damage_source = find_damage_source()
-
-					if current_health <= vstorage.min_health then
-						teleport_to_safety()
-					end
-				end
-
-				vstorage.last_health = current_health
-			end)
-		end)
-
-		maid.add('antideath_heartbeat', services.run_service.Heartbeat, function()
-			if not vstorage.enabled then
-				maid.remove('antideath_health_monitor')
-				maid.remove('antideath_heartbeat')
-				return
-			end
-
-			pcall(function()
-				local current_health = stuff.rawrbxget(humanoid, 'Health')
-
-				if current_health <= 0 then
-					maid.remove('antideath_health_monitor')
-					maid.remove('antideath_heartbeat')
-					return
-				end
-
-				if current_health > vstorage.min_health + 40 and current_health >= vstorage.last_health and not vstorage.is_escaping then
-					local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
-					if hrp then
-						local hrp_pos = stuff.rawrbxget(hrp, 'Position')
-						if hrp_pos.Y > workspace.FallenPartsDestroyHeight + 50 then
-							vstorage.safe_position = stuff.owner_char:GetPivot()
-						end
-					end
-				end
-
-				if tick() - vstorage.last_damage_tick < 2 and current_health <= vstorage.min_health then
-					if not vstorage.is_escaping then
-						local health_before = current_health
-						task.wait(0.15)
-
-						if stuff.rawrbxget(humanoid, 'Health') < health_before and stuff.rawrbxget(humanoid, 'Health') > 0 then
-							vstorage.damage_source = find_damage_source()
-							teleport_to_safety()
-						end
-					end
-				end
-
-				if tick() - vstorage.last_damage_tick > 5 then
-					vstorage.teleport_count = 0
-				end
-
-				if vstorage.teleport_count >= 10 then
-					notify('antideath', 'excessive damage - returning to safe spawn', 3)
-					vstorage.teleport_count = 0
-
-					local spawn = workspace:FindFirstChild('SpawnLocation') or workspace:FindFirstChildOfClass('SpawnLocation')
-					if spawn then
-						local spawn_cf = stuff.rawrbxget(spawn, 'CFrame')
-						stuff.owner_char:PivotTo(spawn_cf + Vector3.new(0, 5, 0))
-					else
-						stuff.owner_char:PivotTo(CFrame.new(0, 100, 0))
-					end
-
-					for _, part in pairs(stuff.owner_char:GetDescendants()) do
-						if part:IsA('BasePart') then
-							stuff.rawrbxset(part, 'Velocity', Vector3.zero)
-							stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
-							stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
-						end
-					end
-				end
-			end)
-		end)
-	end
-
-	setup_antideath()
-
-	maid.add('antideath_character_respawn', stuff.owner.CharacterAdded, function(character)
-		if not vstorage.enabled then
-			maid.remove('antideath_character_respawn')
-			return
-		end
-
-		task.wait(0.5)
-
-		if vstorage.enabled then
-			notify('antideath', 'reactivated after respawn', 1)
-			setup_antideath()
-		end
-	end)
-end)
-
-cmd_library.add({'unantideath', 'unantikill', 'stopantideath'}, 'disables anti-death', {}, function(vstorage)
-	local vstorage = cmd_library.get_variable_storage('antideath')
-
-	if not vstorage.enabled then
-		return notify('antideath', 'anti-death not enabled', 2)
-	end
-
-	vstorage.enabled = false
-	notify('antideath', 'anti-death disabled', 1)
-
-	maid.remove('antideath_health_monitor')
-	maid.remove('antideath_heartbeat')
-	maid.remove('antideath_character_respawn')
-
-	if vstorage.bypass then
-		hook_lib.destroy_hook('antideath_bypass')
-	end
-end)
 
 cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your humanoid on client', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
