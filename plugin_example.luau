@@ -143,7 +143,7 @@ export type command_library = {
 
 export type plugin_api = {
 	add_command: (names: {string}, description: string, args: {command_arg_definition}, fn: (vars: {[string]: any}, ...any) -> ()) -> (),
-	notify: (title: string, text: string, duration: number?) -> (),
+	notify: (title: string, text: string, level: number?) -> (),
 	get_maid: () -> maid,
 	get_stuff: () -> stuff,
 	get_cmd_library: () -> command_library,
@@ -253,7 +253,7 @@ local plugin = {
 					local flip_name = direction == 'left' or direction == 'right' 
 						and `{direction} sideflip` 
 						or `{direction}flip`
-					api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 2)
+					api.notify('flip', `completed {flips} {flip_name}{flips > 1 and 's' or ''}`, 1)
 				end
 			end)
 		end
@@ -302,7 +302,7 @@ local plugin = {
 				end
 			end
 
-			api.notify('flip', 'flip stopped', 2)
+			api.notify('flip', 'flip stopped', 1)
 		end)
 
 		return true
