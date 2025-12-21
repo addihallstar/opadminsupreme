@@ -2764,10 +2764,24 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 		config = config
 	})
 	
+	export type maid = {
+		_tasks: {[string]: {task: any, type: string}},
+		_protected: {[string]: {task: any, type: string}},
+		add: (self: maid, name: string?, task: any, important: number?) -> (),
+		remove: (self: maid, name: string) -> boolean,
+		remove_protected: (self: maid, name: string) -> boolean,
+		clean: (self: maid, keep_protected: boolean?) -> (),
+		get: (self: maid, name: string) -> any?,
+		exists: (self: maid, name: string) -> boolean
+	}
+	
+	export type hook_lib = {
+		
+	}
+	
 	export type plugin_api = {
 		add_command: (names: {string}, description: string, args: {string}, fn: () -> ()) -> (),
 		notify: (text: string, level: number) -> (),
-		maid: 
 	}
 
 	if not success4 then
