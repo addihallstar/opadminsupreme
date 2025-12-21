@@ -63,7 +63,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.3.4',
+	ver = '3.3.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1952,10 +1952,32 @@ hook_lib.presets.freegamepass = function()
 end
 
 hook_lib.presets.property_spoof = function(instance, properties)
+	local spoofed_values = {}
+	
+	for prop, value in pairs(properties) do
+		spoofed_values[prop] = value
+	end
+
+	local functions = {}
+
+	pcall(function()
+		local item_changed = game.ItemChanged
+		if item_changed and item_changed.Connect then
+			functions[item_changed.Connect] = function(old, self, callback)
+				return old(self, function(item, prop)
+					if item == instance and spoofed_values[prop] ~= nil then
+						return
+					end
+					return callback(item, prop)
+				end)
+			end
+		end
+	end)
+
 	return {
 		index = function(self, key)
-			if self == instance and properties[key] ~= nil then
-				return properties[key]
+			if self == instance and spoofed_values[key] ~= nil then
+				return spoofed_values[key]
 			end
 		end,
 
@@ -1965,13 +1987,43 @@ hook_lib.presets.property_spoof = function(instance, properties)
 			if self == instance then
 				if method == 'GetPropertyChangedSignal' then
 					local args = {...}
-					if properties[args[1]] ~= nil then
+					if spoofed_values[args[1]] ~= nil then
 						local signal = Instance.new('BindableEvent')
 						return signal.Event
 					end
 				end
 			end
-		end
+
+			if typeof(self) == 'RBXScriptSignal' then
+				if method == 'Connect' or method == 'Wait' then
+					local signal_name = tostring(self)
+					if signal_name:find('Changed') and self == instance.Changed then
+						if method == 'Wait' then
+							return coroutine.yield()
+						end
+						local args = {...}
+						local callback = args[1]
+						if callback then
+							return self:Connect(function(prop)
+								if spoofed_values[prop] ~= nil then
+									return
+								end
+								return callback(prop)
+							end)
+						end
+					end
+				end
+			end
+		end,
+
+		newindex = function(self, key, value)
+			if self == instance and spoofed_values[key] ~= nil then
+				spoofed_values[key] = value
+				return false
+			end
+		end,
+
+		functions = functions
 	}
 end
 
