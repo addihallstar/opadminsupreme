@@ -22,7 +22,7 @@ loadstring(game:HttpGet('https://raw.githubusercontent.com/addihallstar/opadmins
 
 ## usage
 
-open command bar (press 0 on your numpad) or use the chat with "!" prefix and type commands
+open command bar (press ] / RightBracket ) or use the chat with "!" prefix and type commands
 
 note: you don't need to use the prefix if typing into the command bar
 
