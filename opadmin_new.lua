@@ -2865,6 +2865,9 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 						end
 					end
 				end
+				if item:FindFirstChildOfClass('ProximityPrompt') then
+					fireproximityprompt(item)
+				end
 			end
 		end)
 	else
