@@ -24,9 +24,11 @@ writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
 getgenv = getgenv or function() return {} end
+getrenv = getrenv or function() return {} end
 cloneref = cloneref or function(v) return v end
 gethui = gethui or function() return cloneref(game:GetService('CoreGui')) end
 setreadonly = setreadonly or function() end
+getgc = getgc or (debug and debug.getgc)
 newcclosure = newcclosure or function(f)
 	return coroutine.wrap(function(...)
 		local args = {...}
@@ -35,6 +37,7 @@ newcclosure = newcclosure or function(f)
 		end
 	end)
 end
+debug_info = (getrenv().debug and getrenv().debug.info) or (debug and debug.info)
 Drawing = Drawing or {}
 
 local env = getgenv() or shared or _G
@@ -63,7 +66,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.5.5',
+	ver = '3.6.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -109,7 +112,9 @@ local stuff = {
 	frame_times = {},
 	last_frame_time = 0,
 	avg_fps = 60,
-	avg_ping = 0
+	avg_ping = 0,
+	
+	server_endpoint = nil
 }
 
 stuff.owner_char = stuff.owner.Character or stuff.owner.CharacterAdded:Wait()
@@ -243,17 +248,6 @@ local function protect_gui(gui)
 	else
 		stuff.rawrbxset(gui, 'Parent', services.core_gui)
 	end
-end
-
-local function lerp_color(c1, c2, t)
-	return Color3.new(
-		math.lerp(c1.R, c2.R, t),
-		math.lerp(c1.G, c2.G, t),
-		math.lerp(c1.B, c2.B, t))
-end
-
-local function get_rainbow(speed, saturation, value)
-	return Color3.fromHSV((tick() * (speed or 1)) % 1, saturation or 1, value or 1)
 end
 
 local function deep_copy(t)
@@ -494,6 +488,40 @@ local function get_closest_part()
 	end
 
 	return best_part
+end
+
+local function find_f3x()
+	local function search(container)
+		if not container then return nil, nil end
+		for _, item in pairs(container:GetChildren()) do
+			if item:IsA('Tool') then
+				for _, child in pairs(item:GetChildren()) do
+					if child:IsA('BindableFunction') and child.Name:find('SyncAPI') then
+						local endpoint = child:FindFirstChild('ServerEndpoint')
+						if endpoint then
+							return item, endpoint
+						end
+					end
+				end
+			end
+		end
+		return nil, nil
+	end
+	
+	local tool, endpoint = search(stuff.owner:FindFirstChild('Backpack'))
+	if tool then return tool, endpoint end
+	tool, endpoint = search(stuff.owner.Character)
+	if tool then return tool, endpoint end
+	return nil, nil
+end
+
+local function sync(action, ...)
+	local args = {...}
+	local success, result = pcall(function()
+		return stuff.server_endpoint:InvokeServer(action, unpack(args))
+	end)
+	if not success then return nil end
+	return result
 end
 
 local function fov_to_radius(fov)
@@ -1322,7 +1350,7 @@ function cmd_library.add(names, description, args, fn)
 	local primary_name = names[1]:lower()
 
 	if cmd_library._command_map[primary_name] then
-		return error(`command '{names[1]}' already exists`, 0)
+		return warn(`command '{names[1]}' already exists`, 0)
 	end
 
 	local cmd_data = {
@@ -3197,7 +3225,139 @@ end)
 
 -- c2: utility
 
-cmd_library.add({'loadstring', 'run', 'script', 'execute', 'ls'}, 'run given lua code', {
+cmd_library.add({'teleporttoplace', 'toplace', 'ttp'}, 'teleports you using placeid', {
+	{'place_id', 'number'}
+}, function(vstorage, place_id)
+	if not place_id then
+		notify('teleporttoplace', 'place id required', 2)
+		return
+	end
+	services.teleport_service:Teleport(place_id)
+end)
+
+cmd_library.add({'showbounds', 'hitboxes', 'boundingboxes'}, 'shows all bounding boxes', {}, function(vstorage)
+	settings():GetService('RenderSettings').ShowBoundingBoxes = true
+	notify('showbounds', 'enabled', 1)
+end)
+
+cmd_library.add({'unshowbounds', 'unhitboxes', 'unboundingboxes'}, 'hides bounding boxes', {}, function(vstorage)
+	settings():GetService('RenderSettings').ShowBoundingBoxes = false
+	notify('unshowbounds', 'disabled', 1)
+end)
+
+cmd_library.add({'droptools', 'dropall'}, 'drops all droppable tools', {}, function(vstorage)
+	local backpack = stuff.owner:FindFirstChildOfClass('Backpack')
+	if not stuff.owner_char then
+		return notify('droptools', 'character not found', 2)
+	end
+
+	local tool_queue = {}
+
+	local function collect_tools(container)
+		if not container then return end
+		for _, item in container:GetChildren() do
+			if item:IsA('Tool') and item.CanBeDropped then
+				table.insert(tool_queue, item)
+			end
+		end
+	end
+
+	collect_tools(stuff.owner_char)
+	collect_tools(backpack)
+
+	if #tool_queue == 0 then
+		notify('droptools', 'no droppable tools found', 3)
+		return
+	end
+
+	local dropped_count = 0
+	for _, tool in tool_queue do
+		if tool and tool.Parent then
+			if tool.Parent == backpack then
+				tool.Parent = stuff.owner_char
+				task.wait()
+			end
+			if tool.Parent == stuff.owner_char then
+				tool.Parent = workspace
+				dropped_count += 1
+				task.wait()
+			end
+		end
+	end
+
+	notify('droptools', `dropped {dropped_count} tool(s)`, 1)
+end)
+
+cmd_library.add({'notools', 'removetools', 'deletetools'}, 'removes all your tools', {}, function(vstorage)
+	local count = 0
+	local backpack = stuff.owner:FindFirstChildOfClass('Backpack')
+
+	if stuff.owner_char then
+		for _, item in stuff.owner_char:GetDescendants() do
+			if item:IsA('Tool') then
+				stuff.destroy(item)
+				count += 1
+			end
+		end
+	end
+
+	if backpack then
+		for _, item in backpack:GetDescendants() do
+			if item:IsA('Tool') then
+				stuff.destroy(item)
+				count += 1
+			end
+		end
+	end
+
+	notify('notools', `removed {count} tool(s)`, 1)
+end)
+
+cmd_library.add({'usetools', 'activatetools'}, 'equips all tools, activates them, then restores', {}, function(vstorage)
+	local backpack = stuff.owner:FindFirstChildOfClass('Backpack')
+	if not backpack or not stuff.owner_char then
+		notify('usetools', 'missing backpack or character', 2)
+		return
+	end
+
+	local previously_equipped = {}
+	for _, item in stuff.owner_char:GetChildren() do
+		if item:IsA('Tool') or item:IsA('HopperBin') or item:IsA('BackpackItem') then
+			table.insert(previously_equipped, item)
+		end
+	end
+
+	for _, item in backpack:GetChildren() do
+		if item:IsA('Tool') or item:IsA('HopperBin') or item:IsA('BackpackItem') and not table.find(previously_equipped, item) then
+			item.Parent = stuff.owner_char
+		end
+	end
+
+	for _, item in stuff.owner_char:GetChildren() do
+		if item:IsA('Tool') or item:IsA('HopperBin') or item:IsA('BackpackItem') then
+			task.spawn(function()
+				item:Activate()
+			end)
+		end
+	end
+
+	task.wait(1)
+
+	for _, item in stuff.owner_char:GetChildren() do
+		if item:IsA('Tool') or item:IsA('HopperBin') or item:IsA('BackpackItem') and not table.find(previously_equipped, item) then
+			item.Parent = backpack
+		end
+	end
+
+	for _, item in previously_equipped do
+		item.Parent = stuff.owner_char
+	end
+
+	notify('usetools', 'activated all tools', 1)
+end)
+
+
+cmd_library.add({'loadstring', 'run', 'script', 'execute', 'ls'}, 'run given luau code', {
 	{'...', 'string'}
 }, function(vars, ...)
 	local code = table.concat({...}, ' ')
@@ -4911,7 +5071,7 @@ cmd_library.add({'reloadnetwork', 'reloadnet', 'rnetwork', 'rnet'}, 'resets your
 	end)
 end)
 
-cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
+cmd_library.add({'antivoid', 'novoid'}, 'stops the void from killing you', {{'enable_toggling', 'boolean', 'hidden'}}, function(vstorage, et)
 	if et and vstorage.enabled then
 		cmd_library.execute('unantivoid')
 		return
@@ -4948,7 +5108,7 @@ cmd_library.add({'antivoid', 'antiv'}, 'stops the void from killing you', {{'ena
 	end)
 end)
 
-cmd_library.add({'unantivoid', 'unantiv'}, 'disables anti void', {}, function(vstorage)
+cmd_library.add({'unantivoid', 'unnovoid'}, 'disables anti void', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('antivoid')
 
 	if not vstorage.enabled then
@@ -4958,6 +5118,40 @@ cmd_library.add({'unantivoid', 'unantiv'}, 'disables anti void', {}, function(vs
 	vstorage.enabled = false
 	maid.remove('anti_void_connection')
 	notify('antivoid', 'disabled antivoid', 1)
+end)
+
+cmd_library.add({'antivoid2', 'novoid2'}, 'sets fallenpartsdestroyheight to -inf', {}, function(vstorage)
+	if vstorage.active then
+		if vstorage.original_height then
+			workspace.FallenPartsDestroyHeight = vstorage.original_height
+			vstorage.original_height = nil
+		end
+		vstorage.active = false
+		notify('antivoid2', 'disabled', 1)
+		return
+	end
+
+	vstorage.original_height = workspace.FallenPartsDestroyHeight
+	workspace.FallenPartsDestroyHeight = -9e9
+	vstorage.active = true
+	notify('antivoid2', 'enabled', 1)
+end)
+
+cmd_library.add({'unantivoid2', 'unnovoid2'}, 'reverts fallenpartsdestroyheight', {}, function(vstorage)
+	local antivoid_storage = cmd_library.get_variable_storage('antivoid')
+
+	if not antivoid_storage.active then
+		notify('unantivoid2', 'not active', 3)
+		return
+	end
+
+	if antivoid_storage.original_height then
+		workspace.FallenPartsDestroyHeight = antivoid_storage.original_height
+		antivoid_storage.original_height = nil
+	end
+
+	antivoid_storage.active = false
+	notify('unantivoid2', 'reverted', 1)
 end)
 
 cmd_library.add({'respawn', 'reset', 'die'}, 'reset your character', {}, function(vstorage)
@@ -5964,10 +6158,13 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 							if humanoid and humanoid.Health > 0 then
 								local v_pos = stuff.rawrbxget(v, 'Position')
 								if (handle_pos - v_pos).Magnitude <= reach then
-									for _, tool_part in ipairs(tool:GetDescendants()) do
-										if tool_part:IsA("BasePart") or tool_part:IsA("Part") or tool_part:IsA("MeshPart") or tool_part:IsA("UnionOperation") then
+									for _, tool_part in ipairs(tool:GetChildren()) do
+										if tool_part:IsA("BasePart") or tool_part:IsA("Part") or tool_part:IsA("MeshPart") or tool_part:IsA("UnionOperation") or tool_part.Name:lower() == "hitbox" then
 											firetouchinterest(v, tool_part, 0)
 											firetouchinterest(v, tool_part, 1)
+											if tool_part.Name:lower() == "hitbox" then
+												return
+											end
 										end
 									end
 								end
@@ -6153,152 +6350,248 @@ end)
 
 -- c3: fun/trolling
 
-cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
+cmd_library.add({'loopoof', 'oofloop'}, 'loops character sounds for all players', {}, function(vstorage)
+	if vstorage.active then
+		return notify('loopoof', 'already active', 3)
+	end
+
+	vstorage.active = true
+	notify('loopoof', 'enabled', 1)
+
+	local loop_thread = task.spawn(function()
+		while vstorage.active do
+			task.wait(0.1)
+			for _, plr in services.players:GetPlayers() do
+				local head = plr.Character and plr.Character:FindFirstChild('Head')
+				if head then
+					for _, child in head:GetChildren() do
+						if child:IsA('Sound') and not child.Playing then
+							child.Playing = true
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	maid.add('loopoof_task', loop_thread)
+end)
+
+cmd_library.add({'unloopoof', 'unoofloop'}, 'stops loopoof', {}, function(vstorage)
+	local oof_storage = cmd_library.get_variable_storage('loopoof')
+
+	if not oof_storage.active then
+		notify('unloopoof', 'not active', 3)
+		return
+	end
+
+	oof_storage.active = false
+	maid.remove('loopoof_task')
+	notify('unloopoof', 'disabled', 1)
+end)
+
+cmd_library.add({'split', 'removewaist'}, 'destroys waist joint (r15 only)', {}, function(vstorage)
+	local humanoid = stuff.owner_char and stuff.owner_char:FindFirstChildOfClass('Humanoid')
+	if not humanoid or humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+		notify('split', 'requires r15 rig', 2)
+		return
+	end
+
+	local upper_torso = stuff.owner_char:FindFirstChild('UpperTorso')
+	local waist = upper_torso and upper_torso:FindFirstChild('Waist')
+	if waist then
+		stuff.destroy(waist)
+		notify('split', 'waist joint removed', 1)
+	else
+		notify('split', 'waist joint not found', 2)
+	end
+end)
+
+cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'source engine style bunnyhop', {
 	{'max_speed', 'number'},
-	{'acceleration', 'number'},
 	{'air_accel', 'number'},
 	{'auto_hop', 'boolean'},
 	{'auto_strafe', 'boolean'},
 	{'scroll_jump', 'boolean'},
-	{'show_speed', 'boolean'},
-	{'ground_friction', 'number'}
-}, function(vstorage, max_speed, acceleration, air_accel, auto_hop, auto_strafe, scroll_jump, show_speed, ground_friction)
+	{'show_hud', 'boolean'},
+	{'custom_camera', 'boolean'}
+}, function(vstorage, max_speed, air_accel, auto_hop, auto_strafe, scroll_jump, show_hud, custom_camera)
 	if vstorage.enabled then
-		return notify('bhop', 'already enabled', 2)
+		return notify('bhop', 'already enabled', 3)
 	end
 
 	vstorage.enabled = true
-	vstorage.max_speed = math.clamp(max_speed or 80, 16, 300)
-	vstorage.acceleration = math.clamp(acceleration or 12, 1, 100)
-	vstorage.air_accel = math.clamp(air_accel or 100, 1, 500)
+	vstorage.max_speed = math.clamp(max_speed or 120, 16, 500)
+	vstorage.air_accel = math.clamp(air_accel or 800, 1, 2000)
 	vstorage.auto_hop = auto_hop ~= false
 	vstorage.auto_strafe = auto_strafe or false
 	vstorage.scroll_jump = scroll_jump ~= false
-	vstorage.show_speed = show_speed or false
-	vstorage.ground_friction = math.clamp(ground_friction or 4, 0, 20)
+	vstorage.show_hud = show_hud ~= false
+	vstorage.custom_camera = custom_camera ~= false
 
 	vstorage.holding_jump = false
-	vstorage.last_mouse_delta = 0
-	vstorage.was_grounded = true
-	vstorage.speed_label = nil
-	vstorage.last_scroll = 0
+	vstorage.last_mouse_x = 0
 	vstorage.scroll_queue = 0
+	vstorage.last_scroll = 0
+	vstorage.pre_hop_vel = Vector3.zero
+	vstorage.last_grounded = true
+	vstorage.velocity_dir = Vector3.zero
+	vstorage.jump_count = 0
+	vstorage.peak_speed = 0
+	vstorage.last_speed = 0
 
-	notify('bhop', `enabled | max: {vstorage.max_speed} | accel: {vstorage.acceleration} | air: {vstorage.air_accel} | auto hop: {vstorage.auto_hop} | auto strafe: {vstorage.auto_strafe}`, 1)
+	vstorage.camera_yaw = 0
+	vstorage.camera_pitch = 0
+	vstorage.camera_distance = 8
+	vstorage.camera_height_offset = 2
+	vstorage.camera_sensitivity = 1
+	vstorage.original_camera_type = nil
+	vstorage.mouse_locked = false
 
-	if vstorage.show_speed then
+	vstorage.hud_gui = nil
+
+	notify('bhop', `enabled | max: {vstorage.max_speed} | air accel: {vstorage.air_accel}`, 1)
+
+	if vstorage.custom_camera then
+		local camera = workspace.CurrentCamera
+		vstorage.original_camera_type = camera.CameraType
+		camera.CameraType = Enum.CameraType.Scriptable
+
+		services.user_input_service.MouseBehavior = Enum.MouseBehavior.LockCenter
+		vstorage.mouse_locked = true
+
+		local look = camera.CFrame.LookVector
+		vstorage.camera_yaw = math.atan2(-look.X, -look.Z)
+		vstorage.camera_pitch = math.clamp(math.asin(look.Y), -math.rad(60), math.rad(60))
+	end
+
+	if vstorage.show_hud then
 		local gui = Instance.new('ScreenGui')
 		gui.ResetOnSpawn = false
 		gui.IgnoreGuiInset = true
 
-		local label = Instance.new('TextLabel')
-		label.Name = 'speed'
-		label.Size = UDim2.new(0, 200, 0, 50)
-		label.Position = UDim2.new(0.5, -100, 0.85, 0)
-		label.BackgroundTransparency = 1
-		label.TextColor3 = Color3.new(1, 1, 1)
-		label.TextStrokeTransparency = 0.5
-		label.TextStrokeColor3 = Color3.new(0, 0, 0)
-		label.Font = Enum.Font.Code
-		label.TextSize = 24
-		label.Text = '0 u/s'
-		label.Parent = gui
+		local container = Instance.new('Frame')
+		container.Name = 'bhop_hud'
+		container.Size = UDim2.new(0, 120, 0, 32)
+		container.Position = UDim2.new(0.5, -60, 0.9, 0)
+		container.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		container.BackgroundTransparency = 0.5
+		container.BorderSizePixel = 0
+		container.Parent = gui
+
+		local speed_text = Instance.new('TextLabel')
+		speed_text.Name = 'speed'
+		speed_text.Size = UDim2.new(1, 0, 0, 18)
+		speed_text.Position = UDim2.new(0, 0, 0, 2)
+		speed_text.BackgroundTransparency = 1
+		speed_text.Font = Enum.Font.RobotoMono
+		speed_text.TextSize = 16
+		speed_text.TextColor3 = Color3.fromRGB(255, 255, 255)
+		speed_text.RichText = true
+		speed_text.Text = '<b>0</b>'
+		speed_text.Parent = container
+
+		local speed_bar_bg = Instance.new('Frame')
+		speed_bar_bg.Name = 'bar_bg'
+		speed_bar_bg.Size = UDim2.new(1, -8, 0, 2)
+		speed_bar_bg.Position = UDim2.new(0, 4, 1, -6)
+		speed_bar_bg.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		speed_bar_bg.BorderSizePixel = 0
+		speed_bar_bg.Parent = container
+
+		local speed_bar = Instance.new('Frame')
+		speed_bar.Name = 'bar'
+		speed_bar.Size = UDim2.new(0, 0, 1, 0)
+		speed_bar.BackgroundColor3 = Color3.fromRGB(100, 255, 100)
+		speed_bar.BorderSizePixel = 0
+		speed_bar.Parent = speed_bar_bg
 
 		protect_gui(gui)
-		vstorage.speed_label = label
-		vstorage.speed_gui = gui
+		vstorage.hud_gui = gui
+		vstorage.speed_text = speed_text
+		vstorage.speed_bar = speed_bar
 	end
 
-	local function is_grounded()
-		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-		if not hrp then return true end
-
+	local function raycast_ground(hrp)
 		local params = RaycastParams.new()
 		params.FilterDescendantsInstances = {stuff.owner_char}
 		params.FilterType = Enum.RaycastFilterType.Exclude
-
-		local result = workspace:Raycast(hrp.Position, Vector3.new(0, -3.2, 0), params)
-		return result ~= nil
+		return workspace:Raycast(hrp.Position, Vector3.new(0, -3.5, 0), params)
 	end
 
-	local function get_horizontal_speed(vel)
-		return Vector3.new(vel.X, 0, vel.Z).Magnitude
+	local function get_camera_vectors()
+		local yaw = vstorage.camera_yaw
+		local forward = Vector3.new(-math.sin(yaw), 0, -math.cos(yaw))
+		local side = Vector3.new(math.cos(yaw), 0, -math.sin(yaw))
+		return forward, side
 	end
 
-	local function get_move_direction()
-		local camera = workspace.CurrentCamera
-		local look = camera.CFrame.LookVector
-		local right = camera.CFrame.RightVector
-
-		local forward = Vector3.new(look.X, 0, look.Z)
-		if forward.Magnitude > 0 then forward = forward.Unit end
-
-		local side = Vector3.new(right.X, 0, right.Z)
-		if side.Magnitude > 0 then side = side.Unit end
-
-		local dir = Vector3.zero
+	local function get_input_keys()
 		local uis = services.user_input_service
-
-		if uis:IsKeyDown(Enum.KeyCode.W) then dir += forward end
-		if uis:IsKeyDown(Enum.KeyCode.S) then dir -= forward end
-		if uis:IsKeyDown(Enum.KeyCode.D) then dir += side end
-		if uis:IsKeyDown(Enum.KeyCode.A) then dir -= side end
-
-		return dir.Magnitude > 0 and dir.Unit or Vector3.zero
+		return {
+			w = uis:IsKeyDown(Enum.KeyCode.W),
+			a = uis:IsKeyDown(Enum.KeyCode.A),
+			s = uis:IsKeyDown(Enum.KeyCode.S),
+			d = uis:IsKeyDown(Enum.KeyCode.D)
+		}
 	end
 
-	local function get_strafe_direction()
-		local camera = workspace.CurrentCamera
-		local right = camera.CFrame.RightVector
-		local side = Vector3.new(right.X, 0, right.Z)
-		if side.Magnitude > 0 then side = side.Unit end
+	local function air_accelerate(vel, wish_dir, dt)
+		if wish_dir.Magnitude < 0.001 then return vel end
 
-		local uis = services.user_input_service
-		local dir = Vector3.zero
-
-		if uis:IsKeyDown(Enum.KeyCode.D) then dir += side end
-		if uis:IsKeyDown(Enum.KeyCode.A) then dir -= side end
-
-		return dir.Magnitude > 0 and dir.Unit or Vector3.zero
-	end
-
-	local function air_accelerate(velocity, wish_dir, wish_speed, dt)
-		if wish_dir.Magnitude == 0 then return velocity end
-
-		local current_speed = velocity:Dot(wish_dir)
+		local wish_speed = 30
+		local current_speed = vel:Dot(wish_dir)
 		local add_speed = wish_speed - current_speed
 
-		if add_speed <= 0 then return velocity end
+		if add_speed <= 0 then return vel end
 
-		local accel_speed = vstorage.air_accel * wish_speed * dt
+		local accel_speed = vstorage.air_accel * dt
 		if accel_speed > add_speed then
 			accel_speed = add_speed
 		end
 
-		return velocity + wish_dir * accel_speed
+		return vel + wish_dir * accel_speed
 	end
 
-	local function ground_accelerate(velocity, wish_dir, wish_speed, dt)
-		if wish_dir.Magnitude == 0 then
-			local speed = velocity.Magnitude
-			if speed < 0.1 then return Vector3.zero end
+	local function update_hud(speed, grounded)
+		if not vstorage.speed_text then return end
 
-			local drop = speed * vstorage.ground_friction * dt
-			local new_speed = math.max(speed - drop, 0)
-			return velocity.Unit * new_speed
+		local ratio = math.clamp(speed / vstorage.max_speed, 0, 1)
+
+		local speed_color
+		if ratio > 0.9 then
+			speed_color = 'rgb(255,70,70)'
+		elseif ratio > 0.7 then
+			speed_color = 'rgb(255,190,60)'
+		elseif ratio > 0.4 then
+			speed_color = 'rgb(70,255,100)'
+		else
+			speed_color = 'rgb(200,200,210)'
 		end
 
-		local current_speed = velocity:Dot(wish_dir)
-		local add_speed = wish_speed - current_speed
+		local state_color = grounded and 'rgb(80,160,255)' or 'rgb(255,160,80)'
+		local state_char = grounded and '▼' or '▲'
 
-		if add_speed <= 0 then return velocity end
+		vstorage.speed_text.Text = string.format(
+			'<font color="%s">%s</font> <font color="%s"><b>%.0f</b></font>',
+			state_color, state_char, speed_color, speed
+		)
 
-		local accel_speed = vstorage.acceleration * wish_speed * dt
-		if accel_speed > add_speed then
-			accel_speed = add_speed
+		if vstorage.speed_bar then
+			local bar_color
+			if ratio > 0.9 then
+				bar_color = Color3.fromRGB(255, 70, 70)
+			elseif ratio > 0.7 then
+				bar_color = Color3.fromRGB(255, 190, 60)
+			elseif ratio > 0.4 then
+				bar_color = Color3.fromRGB(70, 255, 100)
+			else
+				bar_color = Color3.fromRGB(80, 140, 255)
+			end
+
+			vstorage.speed_bar.Size = UDim2.new(ratio, 0, 1, 0)
+			vstorage.speed_bar.BackgroundColor3 = bar_color
 		end
-
-		return velocity + wish_dir * accel_speed
 	end
 
 	maid.add('bhop_input', services.user_input_service.InputBegan, function(input, gpe)
@@ -6320,9 +6613,50 @@ cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
 		end
 	end)
 
-	maid.add('bhop_mouse', services.user_input_service.InputChanged, function(input)
-		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			vstorage.last_mouse_delta = input.Delta.X
+	maid.add('bhop_camera', services.run_service.RenderStepped, function(dt)
+		if not vstorage.enabled or not stuff.owner_char then return end
+
+		local mouse_delta = services.user_input_service:GetMouseDelta()
+		vstorage.last_mouse_x = mouse_delta.X
+
+		if vstorage.custom_camera and vstorage.mouse_locked then
+			local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not hrp then return end
+
+			vstorage.camera_yaw -= mouse_delta.X * vstorage.camera_sensitivity * 0.005
+			vstorage.camera_pitch -= mouse_delta.Y * vstorage.camera_sensitivity * 0.003
+			vstorage.camera_pitch = math.clamp(vstorage.camera_pitch, -math.rad(70), math.rad(70))
+
+			local camera = workspace.CurrentCamera
+			local target_pos = hrp.Position + Vector3.new(0, vstorage.camera_height_offset, 0)
+
+			local offset_x = math.sin(vstorage.camera_yaw) * math.cos(vstorage.camera_pitch) * vstorage.camera_distance
+			local offset_y = math.sin(vstorage.camera_pitch) * vstorage.camera_distance
+			local offset_z = math.cos(vstorage.camera_yaw) * math.cos(vstorage.camera_pitch) * vstorage.camera_distance
+
+			local cam_pos = target_pos + Vector3.new(offset_x, offset_y, offset_z)
+
+			local params = RaycastParams.new()
+			params.FilterDescendantsInstances = {stuff.owner_char}
+			params.FilterType = Enum.RaycastFilterType.Exclude
+
+			local ray_result = workspace:Raycast(target_pos, cam_pos - target_pos, params)
+			if ray_result then
+				cam_pos = ray_result.Position + (target_pos - cam_pos).Unit * 0.5
+			end
+
+			camera.CFrame = CFrame.new(cam_pos, target_pos)
+
+			local hum = stuff.owner_char:FindFirstChildOfClass('Humanoid')
+			if hum then
+				hum.AutoRotate = false
+				local look_dir = -Vector3.new(offset_x, 0, offset_z)
+				if look_dir.Magnitude > 0.001 then
+					look_dir = look_dir.Unit
+					local target_cf = CFrame.new(hrp.Position, hrp.Position + look_dir)
+					hrp.CFrame = hrp.CFrame:Lerp(target_cf, 0.15)
+				end
+			end
 		end
 	end)
 
@@ -6333,72 +6667,102 @@ cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
 		local hrp = stuff.owner_char:FindFirstChild('HumanoidRootPart')
 		if not hum or not hrp then return end
 
-		local grounded = is_grounded()
 		local state = hum:GetState()
+		local grounded = raycast_ground(hrp) ~= nil
 		local in_air = state == Enum.HumanoidStateType.Freefall or state == Enum.HumanoidStateType.Jumping
 
 		local current_vel = hrp.AssemblyLinearVelocity
 		local horizontal_vel = Vector3.new(current_vel.X, 0, current_vel.Z)
 		local horizontal_speed = horizontal_vel.Magnitude
 
-		if vstorage.speed_label then
-			local color
-			if horizontal_speed > vstorage.max_speed * 0.8 then
-				color = Color3.fromRGB(255, 100, 100)
-			elseif horizontal_speed > vstorage.max_speed * 0.5 then
-				color = Color3.fromRGB(255, 255, 100)
-			else
-				color = Color3.fromRGB(100, 255, 100)
-			end
-			vstorage.speed_label.TextColor3 = color
-			vstorage.speed_label.Text = string.format('%.1f u/s', horizontal_speed)
+		if horizontal_speed > vstorage.peak_speed then
+			vstorage.peak_speed = horizontal_speed
 		end
 
-		local should_jump = false
+		if vstorage.show_hud then
+			update_hud(horizontal_speed, grounded)
+		end
+
+		local want_jump = false
 
 		if vstorage.auto_hop and vstorage.holding_jump then
-			should_jump = true
+			want_jump = true
 		end
 
 		if vstorage.scroll_jump and vstorage.scroll_queue > 0 then
-			if tick() - vstorage.last_scroll < 0.3 then
-				should_jump = true
+			if tick() - vstorage.last_scroll < 0.5 then
+				want_jump = true
 				vstorage.scroll_queue -= 1
 			else
 				vstorage.scroll_queue = 0
 			end
 		end
 
-		if should_jump and grounded and not vstorage.was_grounded then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
-		elseif should_jump and grounded and state ~= Enum.HumanoidStateType.Jumping then
-			hum:ChangeState(Enum.HumanoidStateType.Jumping)
+		if grounded and want_jump then
+			if state ~= Enum.HumanoidStateType.Jumping then
+				vstorage.pre_hop_vel = horizontal_vel
+				vstorage.jump_count += 1
+
+				if horizontal_vel.Magnitude > 0.1 then
+					vstorage.velocity_dir = horizontal_vel.Unit
+				else
+					local forward, _ = get_camera_vectors()
+					vstorage.velocity_dir = forward
+				end
+
+				hum:ChangeState(Enum.HumanoidStateType.Jumping)
+
+				task.defer(function()
+					if stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart') then
+						local new_hrp = stuff.owner_char.HumanoidRootPart
+						local preserved = vstorage.pre_hop_vel
+						if preserved.Magnitude > 0.1 then
+							local cur = new_hrp.AssemblyLinearVelocity
+							new_hrp.AssemblyLinearVelocity = Vector3.new(preserved.X, cur.Y, preserved.Z)
+						end
+					end
+				end)
+			end
 		end
 
-		vstorage.was_grounded = grounded
+		vstorage.last_grounded = grounded
 
 		if in_air then
-			local wish_dir
-			local wish_speed = vstorage.max_speed * 0.1
+			local keys = get_input_keys()
+			local forward, side = get_camera_vectors()
+			local mouse_delta = vstorage.last_mouse_x
 
-			if vstorage.auto_strafe and math.abs(vstorage.last_mouse_delta) > 1 then
-				local camera = workspace.CurrentCamera
-				local right = camera.CFrame.RightVector
-				local side = Vector3.new(right.X, 0, right.Z)
-				if side.Magnitude > 0 then side = side.Unit end
+			local has_strafe = keys.a or keys.d
+			local has_forward = keys.w or keys.s
 
-				wish_dir = side * math.sign(vstorage.last_mouse_delta)
-				wish_speed = vstorage.max_speed * 0.15
-			else
-				wish_dir = get_strafe_direction()
+			local new_vel = horizontal_vel
+			local wish_dir = Vector3.zero
+			local should_accelerate = false
 
-				if wish_dir.Magnitude == 0 then
-					wish_dir = get_move_direction()
-					wish_speed = vstorage.max_speed * 0.05
+			if vstorage.auto_strafe and math.abs(mouse_delta) > 0.25 then
+				if mouse_delta > 0 then
+					wish_dir = side
+				else
+					wish_dir = -side
+				end
+				should_accelerate = true
+			elseif has_strafe and math.abs(mouse_delta) > 0.25 then
+				if keys.d and not keys.a and mouse_delta > 0 then
+					wish_dir = side
+					should_accelerate = true
+				elseif keys.a and not keys.d and mouse_delta < 0 then
+					wish_dir = -side
+					should_accelerate = true
 				end
 			end
 
-			local new_vel = air_accelerate(horizontal_vel, wish_dir, wish_speed, dt)
+			if should_accelerate and wish_dir.Magnitude > 0.001 then
+				new_vel = air_accelerate(new_vel, wish_dir, dt)
+
+				if new_vel.Magnitude > 0.001 then
+					vstorage.velocity_dir = new_vel.Unit
+				end
+			end
 
 			local new_speed = new_vel.Magnitude
 			if new_speed > vstorage.max_speed then
@@ -6407,33 +6771,35 @@ cmd_library.add({'bhop', 'bunnyhop', 'strafe'}, 'bunnyhop yes', {
 
 			hrp.AssemblyLinearVelocity = Vector3.new(new_vel.X, current_vel.Y, new_vel.Z)
 		else
-			local wish_dir = get_move_direction()
-			local new_vel = ground_accelerate(horizontal_vel, wish_dir, vstorage.max_speed, dt)
-
-			local new_speed = new_vel.Magnitude
-			if new_speed > vstorage.max_speed then
-				new_vel = new_vel.Unit * vstorage.max_speed
+			if horizontal_vel.Magnitude > 0.1 then
+				vstorage.velocity_dir = horizontal_vel.Unit
 			end
-
-			hrp.AssemblyLinearVelocity = Vector3.new(new_vel.X, current_vel.Y, new_vel.Z)
 		end
-
-		vstorage.last_mouse_delta *= 0.85
 	end)
 
 	maid.add('bhop_respawn', stuff.owner.CharacterAdded, function(char)
 		if not vstorage.enabled then return end
 		char:WaitForChild('HumanoidRootPart')
-		task.wait(.1)
-		vstorage.was_grounded = true
+		task.wait(0.1)
 		vstorage.scroll_queue = 0
+		vstorage.pre_hop_vel = Vector3.zero
+		vstorage.velocity_dir = Vector3.zero
+		vstorage.last_grounded = true
+		vstorage.jump_count = 0
+		vstorage.peak_speed = 0
+
+		if vstorage.custom_camera then
+			workspace.CurrentCamera.CameraType = Enum.CameraType.Scriptable
+			services.user_input_service.MouseBehavior = Enum.MouseBehavior.LockCenter
+			vstorage.mouse_locked = true
+		end
 	end)
 end)
 
 cmd_library.add({'unbhop', 'unbunnyhop', 'unstrafe'}, 'disables bhop', {}, function()
 	local vs = cmd_library.get_variable_storage('bhop')
 	if not vs.enabled then
-		return notify('bhop', 'not enabled', 2)
+		return notify('bhop', 'not enabled', 3)
 	end
 
 	vs.enabled = false
@@ -6441,13 +6807,24 @@ cmd_library.add({'unbhop', 'unbunnyhop', 'unstrafe'}, 'disables bhop', {}, funct
 	maid.remove('bhop')
 	maid.remove('bhop_input')
 	maid.remove('bhop_input_end')
-	maid.remove('bhop_mouse')
+	maid.remove('bhop_camera')
 	maid.remove('bhop_respawn')
 
-	if vs.speed_gui then
-		vs.speed_gui:Destroy()
-		vs.speed_gui = nil
-		vs.speed_label = nil
+	if vs.custom_camera and vs.original_camera_type then
+		workspace.CurrentCamera.CameraType = vs.original_camera_type
+		services.user_input_service.MouseBehavior = Enum.MouseBehavior.Default
+
+		local hum = stuff.owner_char and stuff.owner_char:FindFirstChildOfClass('Humanoid')
+		if hum then
+			hum.AutoRotate = true
+		end
+	end
+
+	if vs.hud_gui then
+		stuff.destroy(vs.hud_gui)
+		vs.hud_gui = nil
+		vs.speed_text = nil
+		vs.speed_bar = nil
 	end
 
 	notify('bhop', 'disabled', 1)
@@ -7410,6 +7787,85 @@ end)
 
 -- c4: character
 
+cmd_library.add({'strengthen', 'dense'}, 'makes character more dense', {
+	{'density', 'number'}
+}, function(vstorage, density_val)
+	if not stuff.owner_char then
+		notify('strengthen', 'character not found', 2)
+		return
+	end
+
+	local density = density_val or 100
+	for _, part in stuff.owner_char:GetDescendants() do
+		if part:IsA('BasePart') then
+			part.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.5)
+		end
+	end
+	notify('strengthen', `density set to {density}`, 1)
+end)
+
+cmd_library.add({'weaken', 'light'}, 'makes character less dense', {
+	{'density', 'number'}
+}, function(vstorage, density_val)
+	if not stuff.owner_char then
+		notify('weaken', 'character not found', 2)
+		return
+	end
+
+	local density = density_val or 0
+	for _, part in stuff.owner_char:GetDescendants() do
+		if part:IsA('BasePart') then
+			part.CustomPhysicalProperties = PhysicalProperties.new(density, 0.3, 0.5)
+		end
+	end
+	notify('weaken', `density set to {density}`, 1)
+end)
+
+cmd_library.add({'unstrengthen', 'unweaken', 'undense', 'unlight'}, 'resets character physical properties', {}, function(vstorage)
+	if not stuff.owner_char then
+		notify('unstrengthen', 'character not found', 2)
+		return
+	end
+
+	for _, part in stuff.owner_char:GetDescendants() do
+		if part:IsA('BasePart') then
+			part.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.3, 0.5)
+		end
+	end
+	notify('unstrengthen', 'reset to default', 1)
+end)
+
+cmd_library.add({'tweento', 'tweengoto', 'tgoto'}, 'tween teleport to player', {
+	{'player', 'player'},
+	{'duration', 'number'}
+}, function(vstorage, target_plrs, duration)
+	if not target_plrs or #target_plrs == 0 then
+		return notify('tweento', 'player not found', 2)
+	end
+	
+	local target = target_plrs[1]
+	local tween_time = duration or 1
+	if target.Character and target.Character:FindFirstChild('HumanoidRootPart') then
+		local cf_value = Instance.new('CFrameValue')
+		
+		cf_value.Value = stuff.owner_char:GetPivot()
+		cf_value.Changed:Connect(function(new_cf)
+			stuff.owner_char:PivotTo(new_cf)
+		end)
+		
+		local tween_obj = services.tween_service:Create(cf_value, TweenInfo.new(tween_time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Value = target.Character:GetPivot()
+		})
+		
+		tween_obj:Play()
+		tween_obj.Completed:Connect(function()
+			stuff.destroy(cf_value)
+		end)
+	end
+	
+	notify('tweento', `tweening to {target.DisplayName}`, 1)
+end)
+
 cmd_library.add({'67'}, '67', {}, function(vstorage)
 	notify('67', '67', 1)
 	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
@@ -7911,28 +8367,6 @@ cmd_library.add({'enablecoreuis', 'showguis', 'enableuis'}, 'enables the coregui
 	game:GetService('StarterGui'):SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
 end)
 
-cmd_library.add({'droptools', 'dtools'}, 'drops all tools', {}, function(vstorage)
-	notify('droptools', 'tools dropped', 1)
-
-	pcall(function()
-		for _, tool in pairs(stuff.owner.Backpack:GetChildren()) do
-			stuff.rawrbxset(tool, 'Parent', stuff.owner_char)
-		end
-		task.delay(0.15, function()
-			for _, tool in pairs(stuff.owner_char:GetChildren()) do
-				if tool:IsA('Tool') then
-					stuff.rawrbxset(tool, 'CanBeDropped', true)
-					stuff.rawrbxset(tool, 'Parent', workspace)
-				end
-			end
-			task.delay(0.05, function()
-				local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-				humanoid:UnequipTools()
-			end)
-		end)
-	end)
-end)
-
 cmd_library.add({'equiptools', 'etools'}, 'equips all tools', {}, function(vstorage)
 	notify('equiptools', 'tools equipped', 1)
 
@@ -8119,7 +8553,190 @@ cmd_library.add({'visible', 'uninvis', 'uninvisible'}, 'makes your character vis
 	stuff.rawrbxset(workspace, 'CurrentCamera', camera)
 end)
 
--- c5: exploit
+-- c5: exploit/combat
+
+
+cmd_library.add({'aura', 'killaura'}, 'damages nearby players with equipped tool', {
+	{'distance', 'number'}
+}, function(vstorage, dist)
+	if vstorage.active then
+		return notify('aura', 'aura is already active', 2)
+	end
+
+	if not firetouchinterest then
+		return notify('aura', 'firetouchinterest not supported', 2)
+	end
+
+	local radius = dist or 20
+	local sphere = Instance.new('Part')
+	sphere.Shape = Enum.PartType.Ball
+	sphere.Size = Vector3.one * (radius*2)
+	sphere.Transparency = .8
+	sphere.Color = Color3.new(1)
+	sphere.Material = Enum.Material.Neon
+	sphere.Anchored = true
+	sphere.CanCollide = false
+	sphere.Parent = workspace
+	vstorage.visualizer = sphere
+
+	local function handle_()
+		if not stuff.owner_char then return end
+		local equipped_tool = stuff.owner_char:FindFirstChildWhichIsA('Tool')
+		if not equipped_tool then return end
+		return equipped_tool:FindFirstChild('Handle') or equipped_tool:FindFirstChildWhichIsA('BasePart')
+	end
+
+	maid.add('aura_loop', services.run_service.RenderStepped, function()
+		local handle = handle_()
+		local root = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not handle or not root then return end
+
+		sphere.CFrame = root.CFrame
+
+		for _, plr in services.players:GetPlayers() do
+			if plr ~= stuff.owner and plr.Character then
+				local hum = plr.Character:FindFirstChildOfClass('Humanoid')
+				if hum and hum.Health > 0 then
+					for _, part in plr.Character:GetChildren() do
+						if part:IsA('BasePart') and (part.Position - handle.Position).Magnitude <= radius then
+							firetouchinterest(handle, part, 0)
+							task.wait()
+							firetouchinterest(handle, part, 1)
+							break
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	vstorage.active = true
+	notify('aura', `enabled at {radius} studs`, 1)
+end)
+
+cmd_library.add({'unaura', 'unkillaura'}, 'disables aura', {}, function(vstorage)
+	local aura_storage = cmd_library.get_variable_storage('aura')
+
+	if not aura_storage.active then
+		notify('unaura', 'not active', 3)
+		return
+	end
+
+	maid.remove('aura_loop')
+	if aura_storage.visualizer then
+		stuff.destroy(aura_storage.visualizer)
+		aura_storage.visualizer = nil
+	end
+	aura_storage.active = false
+	notify('unaura', 'disabled', 1)
+end)
+
+cmd_library.add({'adonisbypass', 'bypassadonis', 'badonis', 'adonisb'}, 'bypasses adonis admin detection', {
+	{'verbose', 'boolean'}
+}, function(vstorage, verbose)
+	if vstorage.active then
+		if vstorage.hook_id then
+			hook_lib.destroy_hook(vstorage.hook_id)
+		end
+		vstorage.active = false
+		vstorage.hook_id = nil
+		notify('adonisbypass', 'disabled', 2)
+		return
+	end
+
+	if not (getgc and hookfunction and debug_info) then
+		notify('adonisbypass', 'missing executor functions', 3)
+		return
+	end
+
+	local detect_func, terminate_func
+	local found_admin = false
+
+	for _, tbl in getgc(true) do
+		if typeof(tbl) == 'table' then
+			local has_detect = typeof(rawget(tbl, 'Detected')) == 'function'
+			local has_term = typeof(rawget(tbl, 'Kill')) == 'function'
+			local has_vars = rawget(tbl, 'Variables') ~= nil
+			local has_proc = rawget(tbl, 'Process') ~= nil
+
+			if has_detect or (has_term and has_vars and has_proc) then
+				found_admin = true
+				break
+			end
+		end
+	end
+
+	if not found_admin then
+		notify('adonisbypass', 'target not present', 3)
+		return
+	end
+
+	local fn_hooks = {}
+
+	for _, tbl in getgc(true) do
+		if typeof(tbl) == 'table' then
+			local detect_ref = rawget(tbl, 'Detected')
+			local term_ref = rawget(tbl, 'Kill')
+
+			if typeof(detect_ref) == 'function' and not detect_func then
+				detect_func = detect_ref
+				fn_hooks[detect_ref] = function(orig, name, info, ...)
+					if name ~= '_' and verbose then
+						notify('adonisbypass', `intercepted: {tostring(name)}`, 3)
+					end
+					return true
+				end
+			end
+
+			if rawget(tbl, 'Variables') and rawget(tbl, 'Process') and typeof(term_ref) == 'function' and not terminate_func then
+				terminate_func = term_ref
+				fn_hooks[term_ref] = function(orig, target, ...)
+					if verbose then
+						notify('adonisbypass', `blocked: {tostring(target)}`, 3)
+					end
+					return nil
+				end
+			end
+		end
+	end
+
+	if detect_func and debug_info then
+		fn_hooks[debug_info] = function(orig, target, ...)
+			if target == detect_func then
+				return coroutine.yield(coroutine.running())
+			end
+			return orig(target, ...)
+		end
+	end
+
+	if next(fn_hooks) then
+		vstorage.hook_id = 'adonis_' .. tostring(tick())
+		hook_lib.create_hook(vstorage.hook_id, {
+			functions = fn_hooks
+		})
+		vstorage.active = true
+		notify('adonisbypass', 'enabled', 2)
+	else
+		notify('adonisbypass', 'no targets found', 3)
+	end
+end)
+
+cmd_library.add({'unadonisbypass', 'unbypassadonis', 'unbadonis', 'unadonisb'}, 'disables adonis bypass', {}, function(vstorage)
+	local bypass_storage = cmd_library.get_variable_storage('adonisbypass')
+
+	if not bypass_storage.active then
+		notify('unadonisbypass', 'adonis bypass already disabled', 2)
+		return
+	end
+
+	if bypass_storage.hook_id then
+		hook_lib.destroy_hook(bypass_storage.hook_id)
+	end
+
+	bypass_storage.active = false
+	bypass_storage.hook_id = nil
+	notify('unadonisbypass', 'disabled', 2)
+end)
 
 cmd_library.add({'ghostmode', 'ghost', 'normalmode'}, 'makes your character appear completely normal to the client', {
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -8360,8 +8977,9 @@ end)
 
 cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts', {
 	{'radius', 'number'},
+	{'max_parts', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
-}, function(vstorage, radius, et)
+}, function(vstorage, radius, max_parts, et)
 	if vstorage.enabled and et then
 		cmd_library.execute('unblackhole')
 		return
@@ -8373,9 +8991,11 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 
 	vstorage.enabled = true
 	vstorage.radius = radius or 10
+	vstorage.max_parts = max_parts or 500
 	vstorage.angle = 1
+	vstorage.part_count = 0
 
-	notify('blackhole', `black hole enabled with radius {vstorage.radius}`, 1)
+	notify('blackhole', `black hole enabled with radius {vstorage.radius}, max parts {vstorage.max_parts}`, 1)
 
 	local character = stuff.owner.Character
 	if not character or not character:FindFirstChild('HumanoidRootPart') then
@@ -8399,6 +9019,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	vstorage.folder = folder
 	vstorage.part = part
 	vstorage.attachment1 = attachment1
+	vstorage.processed_parts = {}
 
 	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
 
@@ -8412,8 +9033,11 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	end
 
 	local function force_part(v)
+		if vstorage.part_count >= vstorage.max_parts then return end
+		if vstorage.processed_parts[v] then return end
+
 		if v:IsA('Part') and not v.Anchored and not v.Parent:FindFirstChild('Humanoid') and not v.Parent:FindFirstChild('Head') and v.Name ~= 'Handle' then
-			for _, x in pairs(v:GetChildren()) do
+			for _, x in v:GetChildren() do
 				if x:IsA('BodyAngularVelocity') or x:IsA('BodyForce') or x:IsA('BodyGyro') or x:IsA('BodyPosition') or x:IsA('BodyThrust') or x:IsA('BodyVelocity') or x:IsA('RocketPropulsion') then
 					x:Destroy()
 				end
@@ -8449,15 +9073,19 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 			stuff.rawrbxset(align_position, 'Responsiveness', 500)
 			stuff.rawrbxset(align_position, 'Attachment0', attachment2)
 			stuff.rawrbxset(align_position, 'Attachment1', attachment1)
+
+			vstorage.processed_parts[v] = true
+			vstorage.part_count = vstorage.part_count + 1
 		end
 	end
 
-	for _, v in pairs(workspace:GetDescendants()) do
+	for _, v in workspace:GetDescendants() do
+		if vstorage.part_count >= vstorage.max_parts then break end
 		force_part(v)
 	end
 
 	maid.add('blackhole_descendant', workspace.DescendantAdded, function(v)
-		if vstorage.enabled then
+		if vstorage.enabled and vstorage.part_count < vstorage.max_parts then
 			force_part(v)
 		end
 	end)
@@ -8497,6 +9125,1568 @@ cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vst
 	maid.remove('blackhole_update')
 
 	notify('blackhole', 'black hole disabled', 1)
+end)
+
+cmd_library.add({'mousefling', 'mfling'}, 'collects parts at mouse position', {
+	{'radius', 'number'},
+	{'max_parts', 'number'},
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, radius, max_parts, et)
+	if vstorage.enabled and et then
+		cmd_library.execute('unmousefling')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('mousefling', 'mousefling is already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.radius = radius or 15
+	vstorage.max_parts = max_parts or 300
+	vstorage.part_count = 0
+	vstorage.processed_parts = {}
+
+	notify('mousefling', `mousefling enabled with radius {vstorage.radius}, max parts {vstorage.max_parts}`, 1)
+
+	local folder = Instance.new('Folder')
+	stuff.rawrbxset(folder, 'Parent', workspace)
+
+	local part = Instance.new('Part')
+	stuff.rawrbxset(part, 'Parent', folder)
+	stuff.rawrbxset(part, 'Anchored', true)
+	stuff.rawrbxset(part, 'CanCollide', false)
+	stuff.rawrbxset(part, 'Transparency', 1)
+
+	local attachment1 = Instance.new('Attachment')
+	stuff.rawrbxset(attachment1, 'Parent', part)
+
+	vstorage.folder = folder
+	vstorage.part = part
+	vstorage.attachment1 = attachment1
+
+	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
+
+	if sethidden then
+		maid.add('mousefling_network', services.run_service.Heartbeat, function()
+			pcall(function()
+				sethidden(stuff.owner, 'SimulationRadius', math.huge)
+				stuff.rawrbxset(stuff.owner, 'ReplicationFocus', workspace)
+			end)
+		end)
+	end
+
+	local function force_part(v)
+		if vstorage.part_count >= vstorage.max_parts then return end
+		if vstorage.processed_parts[v] then return end
+
+		if v:IsA('Part') and not v.Anchored and not v.Parent:FindFirstChild('Humanoid') and not v.Parent:FindFirstChild('Head') and v.Name ~= 'Handle' then
+			for _, x in v:GetChildren() do
+				if x:IsA('BodyAngularVelocity') or x:IsA('BodyForce') or x:IsA('BodyGyro') or x:IsA('BodyPosition') or x:IsA('BodyThrust') or x:IsA('BodyVelocity') or x:IsA('RocketPropulsion') then
+					x:Destroy()
+				end
+			end
+
+			if v:FindFirstChild('Attachment') then
+				v:FindFirstChild('Attachment'):Destroy()
+			end
+			if v:FindFirstChild('AlignPosition') then
+				v:FindFirstChild('AlignPosition'):Destroy()
+			end
+			if v:FindFirstChild('Torque') then
+				v:FindFirstChild('Torque'):Destroy()
+			end
+
+			stuff.rawrbxset(v, 'CanCollide', false)
+			stuff.rawrbxset(v, 'CustomPhysicalProperties', PhysicalProperties.new(0, 0, 0, 0, 0))
+			stuff.rawrbxset(v, 'Velocity', Vector3.new(14.46262424, 14.46262424, 14.46262424))
+
+			local torque = Instance.new('Torque')
+			stuff.rawrbxset(torque, 'Parent', v)
+			stuff.rawrbxset(torque, 'Torque', Vector3.new(1000000, 1000000, 1000000))
+
+			local align_position = Instance.new('AlignPosition')
+			stuff.rawrbxset(align_position, 'Parent', v)
+
+			local attachment2 = Instance.new('Attachment')
+			stuff.rawrbxset(attachment2, 'Parent', v)
+
+			stuff.rawrbxset(torque, 'Attachment0', attachment2)
+			stuff.rawrbxset(align_position, 'MaxForce', math.huge)
+			stuff.rawrbxset(align_position, 'MaxVelocity', math.huge)
+			stuff.rawrbxset(align_position, 'Responsiveness', 500)
+			stuff.rawrbxset(align_position, 'Attachment0', attachment2)
+			stuff.rawrbxset(align_position, 'Attachment1', attachment1)
+
+			vstorage.processed_parts[v] = true
+			vstorage.part_count = vstorage.part_count + 1
+		end
+	end
+
+	for _, v in workspace:GetDescendants() do
+		if vstorage.part_count >= vstorage.max_parts then break end
+		force_part(v)
+	end
+
+	maid.add('mousefling_descendant', workspace.DescendantAdded, function(v)
+		if vstorage.enabled and vstorage.part_count < vstorage.max_parts then
+			force_part(v)
+		end
+	end)
+
+	maid.add('mousefling_update', services.run_service.RenderStepped, function()
+		local mouse = stuff.owner:GetMouse()
+		local hit = mouse.Hit
+		if hit then
+			stuff.rawrbxset(attachment1, 'WorldCFrame', hit * CFrame.new(0, vstorage.radius / 2, 0))
+		end
+	end)
+end)
+
+cmd_library.add({'unmousefling', 'unmfling'}, 'disables mousefling', {}, function(vstorage)
+	local mf_vs = cmd_library.get_variable_storage('mousefling')
+
+	if not mf_vs.enabled then
+		return notify('mousefling', 'mousefling not enabled', 2)
+	end
+
+	mf_vs.enabled = false
+
+	if mf_vs.attachment1 then
+		stuff.rawrbxset(mf_vs.attachment1, 'WorldCFrame', CFrame.new(0, -1000, 0))
+	end
+
+	if mf_vs.folder then
+		mf_vs.folder:Destroy()
+	end
+
+	maid.remove('mousefling_network')
+	maid.remove('mousefling_descendant')
+	maid.remove('mousefling_update')
+
+	notify('mousefling', 'mousefling disabled', 1)
+end)
+
+cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', {
+	{'asset_id', 'number'}
+}, function(vstorage, asset_id)
+	if not asset_id then
+		return notify('f3xbuild', 'asset id required', 2)
+	end
+	
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+	
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xbuild', 'f3x tool not found', 2)
+	end
+
+	local batch_size = 500
+	local offset_distance = 10
+	local task_batch_size = 200
+	local build_parent = workspace
+
+	local function parallel_run(tasks)
+		local total = #tasks
+		if total == 0 then return end
+		local completed = 0
+		for i = 1, total, task_batch_size do
+			local batch_end = math.min(i + task_batch_size - 1, total)
+			local batch_completed = 0
+			local batch_count = batch_end - i + 1
+			for j = i, batch_end do
+				task.spawn(function()
+					pcall(tasks[j])
+					batch_completed = batch_completed + 1
+					completed = completed + 1
+				end)
+			end
+			while batch_completed < batch_count do task.wait() end
+			if i % 1000 == 1 then
+				notify('f3xbuild', `progress: {completed}/{total}`, 0.5)
+			end
+		end
+	end
+
+	local function sequential_run(tasks)
+		local total = #tasks
+		if total == 0 then return end
+
+		local completed = 0
+
+		for i = 1, total, task_batch_size do
+			local batch_end = math.min(i + task_batch_size - 1, total)
+			local batch_completed = 0
+			local batch_count = batch_end - i + 1
+
+			for j = i, batch_end do
+				task.spawn(function()
+					local success, err = pcall(tasks[j])
+					if not success then
+						warn('task failed: ' .. tostring(err))
+					end
+					batch_completed = batch_completed + 1
+					completed = completed + 1
+				end)
+			end
+
+			while batch_completed < batch_count do task.wait() end
+
+			if i % 100 == 1 then
+				print('progress: ' .. completed .. '/' .. total)
+				task.wait()
+			end
+		end
+	end
+
+	notify('f3xbuild', `loading asset: {asset_id}`, 1)
+
+	local success, objects = pcall(function()
+		return game:GetObjects('rbxassetid://' .. asset_id)
+	end)
+
+	if not success or not objects or #objects == 0 then
+		return notify('f3xbuild', 'failed to load asset', 2)
+	end
+
+	local source_model = Instance.new('Model')
+	objects[1].Parent = source_model
+	source_model.Name = objects[1].Name
+
+	local function get_part_type(part)
+		local class = part.ClassName
+		if class == 'TrussPart' then return 'Truss'
+		elseif class == 'WedgePart' then return 'Wedge'
+		elseif class == 'CornerWedgePart' then return 'Corner'
+		elseif class == 'Seat' then return 'Seat'
+		elseif class == 'VehicleSeat' then return 'VehicleSeat'
+		elseif class == 'SpawnLocation' then return 'Spawn'
+		elseif class == 'MeshPart' then return 'Normal'
+		elseif class == 'UnionOperation' then return 'Normal'
+		elseif class == 'Part' then
+			if part.Shape == Enum.PartType.Cylinder then return 'Cylinder'
+			elseif part.Shape == Enum.PartType.Ball then return 'Ball'
+			end
+		end
+		return 'Normal'
+	end
+
+	local source_parts = {}
+	local mesh_part_data = {}
+
+	for _, item in source_model:GetDescendants() do
+		if item:IsA('BasePart') and not item:IsA('Terrain') then
+			table.insert(source_parts, item)
+			if item:IsA('MeshPart') then
+				local scale = Vector3.new(1, 1, 1)
+				local mesh_size = item.MeshSize
+				if mesh_size and mesh_size.Magnitude > 0.001 then
+					scale = Vector3.new(
+						item.Size.X / mesh_size.X,
+						item.Size.Y / mesh_size.Y,
+						item.Size.Z / mesh_size.Z
+					)
+				end
+				mesh_part_data[item] = {
+					MeshId = item.MeshId or '',
+					TextureId = item.TextureID or '',
+					Scale = scale
+				}
+			end
+		end
+	end
+
+	local total_parts = #source_parts
+	if total_parts == 0 then
+		return notify('f3xbuild', 'no parts found in model', 2)
+	end
+
+	notify('f3xbuild', `found {total_parts} parts`, 1)
+
+	local function get_model_bounds(parts)
+		if #parts == 0 then return Vector3.zero, Vector3.zero end
+		local min_pos = Vector3.new(math.huge, math.huge, math.huge)
+		local max_pos = Vector3.new(-math.huge, -math.huge, -math.huge)
+		for _, part in parts do
+			local pos = part.Position
+			local half_size = part.Size / 2
+			min_pos = Vector3.new(
+				math.min(min_pos.X, pos.X - half_size.X),
+				math.min(min_pos.Y, pos.Y - half_size.Y),
+				math.min(min_pos.Z, pos.Z - half_size.Z)
+			)
+			max_pos = Vector3.new(
+				math.max(max_pos.X, pos.X + half_size.X),
+				math.max(max_pos.Y, pos.Y + half_size.Y),
+				math.max(max_pos.Z, pos.Z + half_size.Z)
+			)
+		end
+		local center = (min_pos + max_pos) / 2
+		local size = max_pos - min_pos
+		return center, size
+	end
+
+	local model_center, model_size = get_model_bounds(source_parts)
+
+	local character = stuff.owner.Character
+	local root_part = character and character:FindFirstChild('HumanoidRootPart')
+
+	if not root_part then
+		return notify('f3xbuild', 'character not found', 2)
+	end
+
+	local player_pos = root_part.Position
+	local player_right = root_part.CFrame.RightVector
+	local spawn_offset_distance = (model_size.X / 2) + offset_distance
+	local spawn_position = player_pos + (player_right * spawn_offset_distance)
+	local model_offset = spawn_position - model_center
+	local ground_y = player_pos.Y - 3
+	local model_bottom_y = model_center.Y - (model_size.Y / 2)
+	local y_adjustment = ground_y - model_bottom_y
+	model_offset = Vector3.new(model_offset.X, y_adjustment, model_offset.Z)
+
+	local start_time = tick()
+	local part_map = {}
+	local created_parts = {}
+
+	notify('f3xbuild', 'creating parts...', 1)
+
+	local use_sequential = total_parts > 3000
+	local create_tasks = {}
+
+	for _, source in source_parts do
+		table.insert(create_tasks, function()
+			local part_type = get_part_type(source)
+			local new_cframe = source.CFrame + model_offset
+			local new_part = sync('CreatePart', part_type, new_cframe, build_parent)
+			if new_part then
+				part_map[source] = new_part
+				table.insert(created_parts, new_part)
+			end
+		end)
+	end
+
+	if use_sequential then sequential_run(create_tasks) else parallel_run(create_tasks) end
+
+	if #created_parts == 0 then
+		return notify('f3xbuild', 'no parts were created', 2)
+	end
+
+	notify('f3xbuild', `created {#created_parts} parts, syncing properties...`, 1)
+
+	local resize_changes = {}
+	local color_changes = {}
+	local material_changes = {}
+	local anchor_changes = {}
+	local collision_changes = {}
+	local surface_changes = {}
+	local name_items = {}
+	local name_values = {}
+
+	for source, new_part in part_map do
+		local new_cframe = source.CFrame + model_offset
+		table.insert(resize_changes, { Part = new_part, Size = source.Size, CFrame = new_cframe })
+		table.insert(color_changes, { Part = new_part, Color = source.Color, UnionColoring = source:IsA('UnionOperation') and source.UsePartColor or false })
+		table.insert(material_changes, { Part = new_part, Material = source.Material, Transparency = source.Transparency, Reflectance = source.Reflectance })
+		table.insert(anchor_changes, { Part = new_part, Anchored = source.Anchored })
+		table.insert(collision_changes, { Part = new_part, CanCollide = source.CanCollide })
+		local surfaces = {}
+		for _, normal in Enum.NormalId:GetEnumItems() do
+			local surface_name = normal.Name .. 'Surface'
+			local success, surface_value = pcall(function() return source[surface_name] end)
+			if success then surfaces[normal.Name] = surface_value end
+		end
+		table.insert(surface_changes, { Part = new_part, Surfaces = surfaces })
+		table.insert(name_items, new_part)
+		table.insert(name_values, source.Name)
+	end
+
+	local function batch_sync(action, changes)
+		local total = #changes
+		for i = 1, total, batch_size do
+			local batch = {}
+			for j = i, math.min(i + batch_size - 1, total) do
+				table.insert(batch, changes[j])
+			end
+			sync(action, batch)
+			if i + batch_size <= total then task.wait() end
+		end
+	end
+
+	batch_sync('SyncResize', resize_changes)
+	batch_sync('SyncColor', color_changes)
+	batch_sync('SyncMaterial', material_changes)
+	batch_sync('SyncCollision', collision_changes)
+	batch_sync('SyncSurface', surface_changes)
+
+	for i = 1, #name_items, batch_size do
+		local items_batch = {}
+		local names_batch = {}
+		for j = i, math.min(i + batch_size - 1, #name_items) do
+			table.insert(items_batch, name_items[j])
+			table.insert(names_batch, name_values[j])
+		end
+		sync('SetName', items_batch, names_batch)
+	end
+
+	notify('f3xbuild', 'syncing children...', 1)
+
+	local mesh_parts = {}
+	local mesh_data = {}
+	local light_parts = {}
+	local light_data = {}
+	local decoration_parts = {}
+	local decoration_data = {}
+	local texture_parts = {}
+	local texture_data = {}
+
+	for source, new_part in part_map do
+		local mp_data = mesh_part_data[source]
+		if mp_data and mp_data.MeshId ~= '' then
+			table.insert(mesh_parts, { Part = new_part })
+			table.insert(mesh_data, { Part = new_part, MeshType = Enum.MeshType.FileMesh, Scale = mp_data.Scale, Offset = Vector3.new(0, 0, 0), MeshId = mp_data.MeshId, TextureId = mp_data.TextureId, VertexColor = Vector3.new(1, 1, 1) })
+		end
+		for _, child in source:GetChildren() do
+			if child:IsA('SpecialMesh') then
+				table.insert(mesh_parts, { Part = new_part })
+				table.insert(mesh_data, { Part = new_part, MeshType = child.MeshType, Scale = child.Scale, Offset = child.Offset, MeshId = child.MeshId, TextureId = child.TextureId, VertexColor = child.VertexColor })
+			elseif child:IsA('PointLight') then
+				table.insert(light_parts, { Part = new_part, LightType = 'PointLight' })
+				table.insert(light_data, { Part = new_part, LightType = 'PointLight', Range = child.Range, Brightness = child.Brightness, Color = child.Color, Shadows = child.Shadows })
+			elseif child:IsA('SpotLight') then
+				table.insert(light_parts, { Part = new_part, LightType = 'SpotLight' })
+				table.insert(light_data, { Part = new_part, LightType = 'SpotLight', Range = child.Range, Brightness = child.Brightness, Color = child.Color, Shadows = child.Shadows, Face = child.Face, Angle = child.Angle })
+			elseif child:IsA('SurfaceLight') then
+				table.insert(light_parts, { Part = new_part, LightType = 'SurfaceLight' })
+				table.insert(light_data, { Part = new_part, LightType = 'SurfaceLight', Range = child.Range, Brightness = child.Brightness, Color = child.Color, Shadows = child.Shadows, Face = child.Face, Angle = child.Angle })
+			elseif child:IsA('Smoke') then
+				table.insert(decoration_parts, { Part = new_part, DecorationType = 'Smoke' })
+				table.insert(decoration_data, { Part = new_part, DecorationType = 'Smoke', Color = child.Color, Opacity = child.Opacity, RiseVelocity = child.RiseVelocity, Size = child.Size })
+			elseif child:IsA('Fire') then
+				table.insert(decoration_parts, { Part = new_part, DecorationType = 'Fire' })
+				table.insert(decoration_data, { Part = new_part, DecorationType = 'Fire', Color = child.Color, Heat = child.Heat, Size = child.Size, SecondaryColor = child.SecondaryColor })
+			elseif child:IsA('Sparkles') then
+				table.insert(decoration_parts, { Part = new_part, DecorationType = 'Sparkles' })
+				table.insert(decoration_data, { Part = new_part, DecorationType = 'Sparkles', SparkleColor = child.SparkleColor })
+			elseif child:IsA('Decal') then
+				table.insert(texture_parts, { Part = new_part, TextureType = 'Decal', Face = child.Face })
+				table.insert(texture_data, { Part = new_part, TextureType = 'Decal', Face = child.Face, Texture = child.Texture, Transparency = child.Transparency })
+			elseif child:IsA('Texture') then
+				table.insert(texture_parts, { Part = new_part, TextureType = 'Texture', Face = child.Face })
+				table.insert(texture_data, { Part = new_part, TextureType = 'Texture', Face = child.Face, Texture = child.Texture, Transparency = child.Transparency, StudsPerTileU = child.StudsPerTileU, StudsPerTileV = child.StudsPerTileV })
+			end
+		end
+	end
+
+	if #mesh_parts > 0 then
+		batch_sync('CreateMeshes', mesh_parts)
+		batch_sync('SyncMesh', mesh_data)
+	end
+
+	if #light_parts > 0 then
+		batch_sync('CreateLights', light_parts)
+		batch_sync('SyncLighting', light_data)
+	end
+
+	if #decoration_parts > 0 then
+		batch_sync('CreateDecorations', decoration_parts)
+		batch_sync('SyncDecorate', decoration_data)
+	end
+
+	if #texture_parts > 0 then
+		batch_sync('CreateTextures', texture_parts)
+		batch_sync('SyncTexture', texture_data)
+	end
+
+	notify('f3xbuild', 'creating welds...', 1)
+
+	local weld_count = 0
+	local weld_data = {}
+	local processed_pairs = {}
+
+	for source, new_part in part_map do
+		for _, child in source:GetChildren() do
+			local source_part0, source_part1
+			if child:IsA('Weld') or child:IsA('ManualWeld') or child:IsA('ManualGlue') or child:IsA('Motor') or child:IsA('Motor6D') or child:IsA('WeldConstraint') then
+				source_part0 = child.Part0
+				source_part1 = child.Part1
+			end
+			if source_part0 and source_part1 then
+				local new_part0 = part_map[source_part0]
+				local new_part1 = part_map[source_part1]
+				if new_part0 and new_part1 and new_part0 ~= new_part1 then
+					local key = tostring(new_part0) .. '_' .. tostring(new_part1)
+					local key_reverse = tostring(new_part1) .. '_' .. tostring(new_part0)
+					if not processed_pairs[key] and not processed_pairs[key_reverse] then
+						processed_pairs[key] = true
+						table.insert(weld_data, { Part0 = new_part0, Part1 = new_part1 })
+					end
+				end
+			end
+		end
+	end
+
+	for _, item in source_model:GetDescendants() do
+		if item:IsA('WeldConstraint') then
+			local new_part0 = part_map[item.Part0]
+			local new_part1 = part_map[item.Part1]
+			if new_part0 and new_part1 and new_part0 ~= new_part1 then
+				local key = tostring(new_part0) .. '_' .. tostring(new_part1)
+				local key_reverse = tostring(new_part1) .. '_' .. tostring(new_part0)
+				if not processed_pairs[key] and not processed_pairs[key_reverse] then
+					processed_pairs[key] = true
+					table.insert(weld_data, { Part0 = new_part0, Part1 = new_part1 })
+				end
+			end
+		end
+	end
+
+	local weld_groups = {}
+	for _, data in weld_data do
+		if not weld_groups[data.Part0] then
+			weld_groups[data.Part0] = {}
+		end
+		table.insert(weld_groups[data.Part0], data.Part1)
+	end
+
+	local weld_targets = {}
+	for target, _ in weld_groups do
+		table.insert(weld_targets, target)
+	end
+
+	for i, target in weld_targets do
+		local parts_list = weld_groups[target]
+		if #parts_list > 0 then
+			local welds = sync('CreateWelds', parts_list, target)
+			if welds then
+				weld_count = weld_count + #welds
+			end
+		end
+		if i % 50 == 0 then
+			task.wait()
+		end
+	end
+
+	if #created_parts > 0 then
+		local group = sync('CreateGroup', 'Model', build_parent, created_parts)
+		if group then
+			sync('SetName', {group}, {source_model.Name})
+		end
+	end
+
+	batch_sync('SyncAnchor', anchor_changes)
+
+	local elapsed = tick() - start_time
+	notify('f3xbuild', `build complete: {#created_parts} parts, {weld_count} welds in {string.format('%.2f', elapsed)}s`, 4)
+end)
+
+cmd_library.add({'f3xkill', 'f3xk'}, 'kills a player by resizing their parts using f3x', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('f3xkill', 'player required', 2)
+	end
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xkill', 'f3x tool not found', 2)
+	end
+
+	local killed_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local head = target_char:FindFirstChild('Head')
+			local hum = target_char:FindFirstChildOfClass('Humanoid')
+			if head and hum then
+				sync('SyncResize', {{ Part = head, Size = Vector3.new(0, 0, 0), CFrame = head.CFrame }})
+				task.defer(function()
+					if hum.Health < 1 then 
+						table.insert(killed_players, target.Name)
+					end
+				end)
+			end
+		end
+	end
+
+	if #killed_players > 0 then
+		notify('f3xkill', `killed {table.concat(killed_players, ', ')}`, 1)
+	else
+		notify('f3xkill', 'no valid targets found', 2)
+	end
+end)
+
+cmd_library.add({'f3xfire'}, 'sets player on fire using f3x', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('f3xfire', 'player required', 2)
+	end
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xfire', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local parts_to_fire = {}
+			for _, part in pairs(target_char:GetDescendants()) do
+				if part:IsA('BasePart') then
+					table.insert(parts_to_fire, part)
+				end
+			end
+
+			local fire_parts = {}
+			local fire_data = {}
+			for _, part in pairs(parts_to_fire) do
+				table.insert(fire_parts, { Part = part, DecorationType = 'Fire' })
+				table.insert(fire_data, { Part = part, DecorationType = 'Fire', Color = Color3.new(1, 0.5, 0), Heat = 25, Size = 10, SecondaryColor = Color3.new(1, 0, 0) })
+			end
+
+			sync('CreateDecorations', fire_parts)
+			sync('SyncDecorate', fire_data)
+			table.insert(affected_players, target.Name)
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xfire', `set {table.concat(affected_players, ', ')} on fire`, 1)
+	end
+end)
+
+cmd_library.add({'f3xsmoke'}, 'adds smoke to player using f3x', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('f3xsmoke', 'player required', 2)
+	end
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xsmoke', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local parts_to_smoke = {}
+			for _, part in pairs(target_char:GetDescendants()) do
+				if part:IsA('BasePart') then
+					table.insert(parts_to_smoke, part)
+				end
+			end
+
+			local smoke_parts = {}
+			local smoke_data = {}
+			for _, part in pairs(parts_to_smoke) do
+				table.insert(smoke_parts, { Part = part, DecorationType = 'Smoke' })
+				table.insert(smoke_data, { Part = part, DecorationType = 'Smoke', Color = Color3.new(0.3, 0.3, 0.3), Opacity = 1, RiseVelocity = 10, Size = 10 })
+			end
+
+			sync('CreateDecorations', smoke_parts)
+			sync('SyncDecorate', smoke_data)
+			table.insert(affected_players, target.Name)
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xsmoke', `added smoke to {table.concat(affected_players, ', ')}`, 1)
+	end
+end)
+
+cmd_library.add({'f3xsparkles', 'f3xsparkle', 'sparkles', 'sparkle'}, 'adds sparkles to player using f3x', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('f3xsparkles', 'player required', 2)
+	end
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xsparkles', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local parts = {}
+			for _, part in pairs(target_char:GetDescendants()) do
+				if part:IsA('BasePart') then
+					table.insert(parts, part)
+				end
+			end
+
+			local sparkle_parts = {}
+			local sparkle_data = {}
+			for _, part in pairs(parts) do
+				table.insert(sparkle_parts, { Part = part, DecorationType = 'Sparkles' })
+				table.insert(sparkle_data, { Part = part, DecorationType = 'Sparkles', SparkleColor = Color3.new(1, 1, 0) })
+			end
+
+			sync('CreateDecorations', sparkle_parts)
+			sync('SyncDecorate', sparkle_data)
+			table.insert(affected_players, target.Name)
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xsparkles', `added sparkles to {table.concat(affected_players, ', ')}`, 1)
+	end
+end)
+
+cmd_library.add({'f3xspam'}, 'spams effects on player using f3x', {
+	{'player', 'player'},
+	{'amount', 'number'}
+}, function(vstorage, targets, amount)
+	if not targets or #targets == 0 then
+		return notify('f3xspam', 'player required', 2)
+	end
+
+	amount = amount or 10
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xspam', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local parts = {}
+			for _, part in pairs(target_char:GetDescendants()) do
+				if part:IsA('BasePart') then
+					table.insert(parts, part)
+				end
+			end
+
+			for i = 1, amount do
+				local fire_parts = {}
+				local fire_data = {}
+				local smoke_parts = {}
+				local smoke_data = {}
+				local sparkle_parts = {}
+				local sparkle_data = {}
+
+				for _, part in pairs(parts) do
+					table.insert(fire_parts, { Part = part, DecorationType = 'Fire' })
+					table.insert(fire_data, { Part = part, DecorationType = 'Fire', Color = Color3.new(math.random(), math.random(), math.random()), Heat = math.random(10, 50), Size = math.random(5, 20), SecondaryColor = Color3.new(math.random(), math.random(), math.random()) })
+					table.insert(smoke_parts, { Part = part, DecorationType = 'Smoke' })
+					table.insert(smoke_data, { Part = part, DecorationType = 'Smoke', Color = Color3.new(math.random(), math.random(), math.random()), Opacity = 1, RiseVelocity = math.random(5, 25), Size = math.random(5, 20) })
+					table.insert(sparkle_parts, { Part = part, DecorationType = 'Sparkles' })
+					table.insert(sparkle_data, { Part = part, DecorationType = 'Sparkles', SparkleColor = Color3.new(math.random(), math.random(), math.random()) })
+				end
+
+				sync('CreateDecorations', fire_parts)
+				sync('SyncDecorate', fire_data)
+				sync('CreateDecorations', smoke_parts)
+				sync('SyncDecorate', smoke_data)
+				sync('CreateDecorations', sparkle_parts)
+				sync('SyncDecorate', sparkle_data)
+				task.wait()
+			end
+
+			table.insert(affected_players, target.Name)
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xspam', `spammed effects on {table.concat(affected_players, ', ')} {amount} times`, 1)
+	end
+end)
+
+cmd_library.add({'f3xtransparent', 'f3xinvis'}, 'makes player transparent using f3x', {
+	{'player', 'player'},
+	{'transparency', 'number'}
+}, function(vstorage, targets, transparency)
+	if not targets or #targets == 0 then
+		return notify('f3xtransparent', 'player required', 2)
+	end
+
+	transparency = transparency or 1
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xtransparent', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local material_changes = {}
+			for _, part in pairs(target_char:GetDescendants()) do
+				if part:IsA('BasePart') then
+					table.insert(material_changes, { Part = part, Material = part.Material, Transparency = transparency, Reflectance = part.Reflectance })
+				end
+			end
+
+			sync('SyncMaterial', material_changes)
+			table.insert(affected_players, target.Name)
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xtransparent', `made {table.concat(affected_players, ', ')} transparent ({transparency})`, 1)
+	end
+end)
+
+cmd_library.add({'f3xbreak', 'break'}, 'breaks a player using f3x', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('f3xsky', 'player required', 2)
+	end
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xsky', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local torso = target_char:FindFirstChild('Torso') or target_char:FindFirstChild('LowerTorso')
+			if torso then
+				local new_cf = torso.CFrame + Vector3.new(0, 100, 0)
+				sync('SyncResize', {{ Part = torso, Size = torso.Size, CFrame = new_cf }})
+				table.insert(affected_players, target.Name)
+			end
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xsky', `broke {table.concat(affected_players, ', ')}`, 1)
+	end
+end)
+
+cmd_library.add({'f3xv8', 'v8'}, 'derender everything using f3x', {
+	{'amount', 'number'}
+}, function(vstorage, amount)
+	amount = amount or 10
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xv8', 'f3x tool not found', 2)
+	end
+
+	local character = stuff.owner.Character
+	if not character then
+		return notify('f3xv8', 'character not found', 2)
+	end
+
+	local hrp = character:FindFirstChild('HumanoidRootPart')
+	if not hrp then
+		return notify('f3xv8', 'root part not found', 2)
+	end
+
+	local start_pos = hrp.Position
+	local spacing = 15
+	local task_batch_size = 50
+	local batch_size = 100
+
+	local positions = {}
+	for x = 0, amount - 1 do
+		for z = 0, amount - 1 do
+			table.insert(positions, start_pos + Vector3.new(x * spacing, 0, z * spacing))
+		end
+	end
+
+	local total_parts = #positions
+	notify('f3xv8', `creating {total_parts} v8 meshes...`, 1)
+
+	local created_parts = {}
+	local create_tasks = {}
+
+	for _, pos in positions do
+		table.insert(create_tasks, function()
+			local part = sync('CreatePart', 'Normal', CFrame.new(pos), workspace)
+			if part then
+				table.insert(created_parts, part)
+			end
+		end)
+	end
+
+	local function parallel_run(tasks)
+		local total = #tasks
+		if total == 0 then return end
+		for i = 1, total, task_batch_size do
+			local batch_end = math.min(i + task_batch_size - 1, total)
+			local batch_completed = 0
+			local batch_count = batch_end - i + 1
+			for j = i, batch_end do
+				task.spawn(function()
+					pcall(tasks[j])
+					batch_completed = batch_completed + 1
+				end)
+			end
+			while batch_completed < batch_count do task.wait() end
+		end
+	end
+
+	local function batch_sync(action, changes)
+		local total = #changes
+		for i = 1, total, batch_size do
+			local batch = {}
+			for j = i, math.min(i + batch_size - 1, total) do
+				table.insert(batch, changes[j])
+			end
+			sync(action, batch)
+		end
+	end
+
+	parallel_run(create_tasks)
+
+	if #created_parts == 0 then
+		return notify('f3xv8', 'no parts created', 2)
+	end
+
+	local anchor_changes = {}
+	local collision_changes = {}
+	local material_changes = {}
+	local mesh_parts = {}
+	local mesh_data = {}
+
+	for _, part in created_parts do
+		table.insert(anchor_changes, { Part = part, Anchored = true })
+		table.insert(collision_changes, { Part = part, CanCollide = false })
+		table.insert(material_changes, { Part = part, Material = Enum.Material.SmoothPlastic, Transparency = 1, Reflectance = 0 })
+		table.insert(mesh_parts, { Part = part })
+		table.insert(mesh_data, { Part = part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.one, Offset = Vector3.new(0/0, 0/0, 0/0), MeshId = 'rbxassetid://15143821581', TextureId = '', VertexColor = Vector3.one })
+	end
+
+	batch_sync('SyncAnchor', anchor_changes)
+	batch_sync('SyncCollision', collision_changes)
+	batch_sync('SyncMaterial', material_changes)
+	batch_sync('CreateMeshes', mesh_parts)
+	batch_sync('SyncMesh', mesh_data)
+
+	notify('f3xv8', `created {#created_parts} v8 meshes`, 1)
+end)
+
+cmd_library.add({'f3xclear', 'clear'}, 'deletes everything in workspace using f3x', {}, function(vstorage)
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xclear', 'f3x tool not found', 2)
+	end
+
+	local parts_to_remove = {}
+	for _, part in pairs(workspace:GetDescendants()) do
+		if part:IsA('BasePart') and not part:IsDescendantOf(stuff.owner.Character or {}) then
+			table.insert(parts_to_remove, part)
+		end
+	end
+
+	if #parts_to_remove == 0 then
+		return notify('f3xclear', 'no parts found', 2)
+	end
+
+	local batch_size = 100
+	local removed = 0
+
+	for i = 1, #parts_to_remove, batch_size do
+		local batch = {}
+		for j = i, math.min(i + batch_size - 1, #parts_to_remove) do
+			table.insert(batch, parts_to_remove[j])
+		end
+		sync('Remove', batch)
+		removed = removed + #batch
+		task.wait()
+	end
+
+	notify('f3xclear', `deleted {removed} parts`, 1)
+end)
+
+cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
+	{'player', 'player'},
+	{'size', 'number'},
+	{'kill_radius', 'number'}
+}, function(vstorage, targets, nuke_size, nuke_kill_radius)
+	if not targets or #targets == 0 then
+		targets = {stuff.owner}
+	end
+
+	nuke_size = nuke_size or 30
+	nuke_kill_radius = nuke_kill_radius or nuke_size * 3
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xnuke', 'f3x tool not found', 2)
+	end
+
+	for _, target in targets do
+		local target_char = target.Character
+		if not target_char then
+			return notify('f3xnuke', 'target has no character', 2)
+		end
+
+		local hrp = target_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return notify('f3xnuke', 'target has no root part', 2)
+		end
+
+		local nuke_position = hrp.Position
+
+		local cloud_mesh_id = 'rbxassetid://1095708'
+		local color_texture_id = 'rbxassetid://1361097'
+		local ring_mesh_id = 'rbxassetid://3270017'
+		local sphere_mesh_id = 'rbxassetid://1185246'
+
+		local cloud_parts = {}
+		local shockwave_parts = {}
+		local killed_cache = {}
+		local corroded_cache = {}
+		local task_batch_size = 50
+		local batch_size = 100
+
+		local function parallel_run(tasks)
+			local total = #tasks
+			if total == 0 then return end
+			for i = 1, total, task_batch_size do
+				local batch_end = math.min(i + task_batch_size - 1, total)
+				local batch_completed = 0
+				local batch_count = batch_end - i + 1
+				for j = i, batch_end do
+					task.spawn(function()
+						pcall(tasks[j])
+						batch_completed = batch_completed + 1
+					end)
+				end
+				while batch_completed < batch_count do task.wait() end
+			end
+		end
+
+		local function batch_sync(action, changes)
+			local total = #changes
+			for i = 1, total, batch_size do
+				local batch = {}
+				for j = i, math.min(i + batch_size - 1, total) do
+					table.insert(batch, changes[j])
+				end
+				sync(action, batch)
+			end
+		end
+
+		local function murder(position, radius)
+			for _, player in pairs(services.players:GetPlayers()) do
+				if player ~= stuff.owner and not killed_cache[player] and player.Character then
+					local player_head = player.Character:FindFirstChild('Head')
+					local player_hum = player.Character:FindFirstChildOfClass('Humanoid')
+					if player_head and player_hum then
+						local distance = (player_head.Position - position).Magnitude
+						if distance <= radius then
+							sync('SyncResize', {{ Part = player_head, Size = Vector3.zero, CFrame = player_head.CFrame }})
+							task.defer(function()
+								if player_hum.Health < 1 then
+									killed_cache[player] = true
+								end
+							end)
+						end
+					end
+				end
+			end
+		end
+
+		local function corrode(position, radius)
+			local parts_to_corrode = {}
+			local welds_to_remove = {}
+
+			for _, obj in pairs(workspace:GetDescendants()) do
+				if obj:IsA('BasePart') and not corroded_cache[obj] then
+					local success, distance = pcall(function()
+						return (obj.Position - position).Magnitude
+					end)
+					if success and distance <= radius then
+						table.insert(parts_to_corrode, obj)
+						corroded_cache[obj] = true
+					end
+				end
+			end
+
+			for _, part in pairs(parts_to_corrode) do
+				for _, child in pairs(part:GetChildren()) do
+					if child:IsA('Weld') then
+						table.insert(welds_to_remove, child)
+					end
+				end
+			end
+
+			if #welds_to_remove > 0 then
+				for i = 1, #welds_to_remove, batch_size do
+					local batch = {}
+					for j = i, math.min(i + batch_size - 1, #welds_to_remove) do
+						table.insert(batch, welds_to_remove[j])
+					end
+					pcall(function()
+						sync('RemoveWelds', batch)
+					end)
+				end
+			end
+
+			if #parts_to_corrode > 0 then
+				local material_changes = {}
+				for _, part in pairs(parts_to_corrode) do
+					table.insert(material_changes, { Part = part, Material = Enum.Material.CorrodedMetal, Transparency = part.Transparency, Reflectance = 0 })
+				end
+				for i = 1, #material_changes, batch_size do
+					local batch = {}
+					for j = i, math.min(i + batch_size - 1, #material_changes) do
+						table.insert(batch, material_changes[j])
+					end
+					pcall(function()
+						sync('SyncMaterial', batch)
+					end)
+				end
+			end
+		end
+
+		local part_positions = {
+			{ pos = nuke_position, name = 'base' },
+			{ pos = nuke_position + Vector3.new(0, 0.1, 0), name = 'pole_base' },
+			{ pos = nuke_position + Vector3.new(0, 0.75, 0), name = 'cloud_1' },
+			{ pos = nuke_position + Vector3.new(0, 1.25, 0), name = 'cloud_2' },
+			{ pos = nuke_position + Vector3.new(0, 1.7, 0), name = 'cloud_3' },
+			{ pos = nuke_position + Vector3.new(0, 1.3, 0), name = 'pole_ring' },
+			{ pos = nuke_position + Vector3.new(0, 2.3, 0), name = 'mushroom_cloud' },
+			{ pos = nuke_position + Vector3.new(0, 2.7, 0), name = 'top_cloud' },
+			{ pos = nuke_position, name = 'big_ring' },
+			{ pos = nuke_position, name = 'small_ring' },
+			{ pos = nuke_position, name = 'inner_sphere' },
+			{ pos = nuke_position, name = 'outer_sphere' },
+		}
+
+		local created_parts = {}
+		local create_tasks = {}
+
+		for _, data in part_positions do
+			table.insert(create_tasks, function()
+				local part = sync('CreatePart', 'Normal', CFrame.new(data.pos), workspace)
+				if part then
+					created_parts[data.name] = part
+					sync('SyncAnchor', {{ Part = part, Anchored = true }})
+					sync('SyncCollision', {{ Part = part, CanCollide = false }})
+				end
+			end)
+		end
+
+		parallel_run(create_tasks)
+
+		local base_part = created_parts['base']
+		local pole_base_part = created_parts['pole_base']
+		local cloud_1_part = created_parts['cloud_1']
+		local cloud_2_part = created_parts['cloud_2']
+		local cloud_3_part = created_parts['cloud_3']
+		local pole_ring_part = created_parts['pole_ring']
+		local mushroom_cloud_part = created_parts['mushroom_cloud']
+		local top_cloud_part = created_parts['top_cloud']
+		local big_ring_part = created_parts['big_ring']
+		local small_ring_part = created_parts['small_ring']
+		local inner_sphere_part = created_parts['inner_sphere']
+		local outer_sphere_part = created_parts['outer_sphere']
+
+		if base_part then table.insert(cloud_parts, base_part) end
+		if pole_base_part then table.insert(cloud_parts, pole_base_part) end
+		if cloud_1_part then table.insert(cloud_parts, cloud_1_part) end
+		if cloud_2_part then table.insert(cloud_parts, cloud_2_part) end
+		if cloud_3_part then table.insert(cloud_parts, cloud_3_part) end
+		if pole_ring_part then table.insert(cloud_parts, pole_ring_part) end
+		if mushroom_cloud_part then table.insert(cloud_parts, mushroom_cloud_part) end
+		if top_cloud_part then table.insert(cloud_parts, top_cloud_part) end
+
+		if big_ring_part then table.insert(shockwave_parts, big_ring_part) end
+		if small_ring_part then table.insert(shockwave_parts, small_ring_part) end
+		if inner_sphere_part then table.insert(shockwave_parts, inner_sphere_part) end
+		if outer_sphere_part then table.insert(shockwave_parts, outer_sphere_part) end
+
+		local all_mesh_parts = {}
+		for _, part in cloud_parts do
+			table.insert(all_mesh_parts, { Part = part })
+		end
+		for _, part in shockwave_parts do
+			table.insert(all_mesh_parts, { Part = part })
+		end
+		sync('CreateMeshes', all_mesh_parts)
+
+		local initial_mesh_data = {}
+		if base_part then table.insert(initial_mesh_data, { Part = base_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(2.5, 1, 4.5), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if pole_base_part then table.insert(initial_mesh_data, { Part = pole_base_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(1.25, 2, 2.5), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if cloud_1_part then table.insert(initial_mesh_data, { Part = cloud_1_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5, 3, 1), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if cloud_2_part then table.insert(initial_mesh_data, { Part = cloud_2_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5, 1.5, 1), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if cloud_3_part then table.insert(initial_mesh_data, { Part = cloud_3_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5, 1.5, 1), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if pole_ring_part then 
+			table.insert(initial_mesh_data, { Part = pole_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(1.2, 1.2, 1.2), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+			sync('SyncMaterial', {{ Part = pole_ring_part, Material = Enum.Material.SmoothPlastic, Transparency = 0.2, Reflectance = 0 }})
+			sync('SyncColor', {{ Part = pole_ring_part, Color = Color3.fromRGB(85, 85, 85) }})
+			sync('SyncResize', {{ Part = pole_ring_part, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(nuke_position + Vector3.new(0, 1.3, 0)) * CFrame.Angles(math.rad(90), 0, 0) }})
+		end
+		if mushroom_cloud_part then table.insert(initial_mesh_data, { Part = mushroom_cloud_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(2.5, 1.75, 3.5), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+		if top_cloud_part then table.insert(initial_mesh_data, { Part = top_cloud_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.75, 1.5, 1.5), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) }) end
+
+		if big_ring_part then
+			table.insert(initial_mesh_data, { Part = big_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(5, 5, 1), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+			sync('SyncResize', {{ Part = big_ring_part, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(nuke_position) * CFrame.Angles(math.rad(90), 0, 0) }})
+		end
+		if small_ring_part then
+			table.insert(initial_mesh_data, { Part = small_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(4.6, 4.6, 1.5), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+			sync('SyncColor', {{ Part = small_ring_part, Color = Color3.fromRGB(85, 85, 85) }})
+			sync('SyncResize', {{ Part = small_ring_part, Size = Vector3.new(1, 1, 1), CFrame = CFrame.new(nuke_position) * CFrame.Angles(math.rad(90), 0, 0) }})
+		end
+		if inner_sphere_part then
+			table.insert(initial_mesh_data, { Part = inner_sphere_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(-6.5, -6.5, -6.5), Offset = Vector3.new(0, 0, 0), MeshId = sphere_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+			sync('SyncColor', {{ Part = inner_sphere_part, Color = Color3.fromRGB(255, 165, 0) }})
+			sync('SyncMaterial', {{ Part = inner_sphere_part, Material = Enum.Material.SmoothPlastic, Transparency = 0.5, Reflectance = 0 }})
+		end
+		if outer_sphere_part then
+			table.insert(initial_mesh_data, { Part = outer_sphere_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(6.5, 6.5, 6.5), Offset = Vector3.new(0, 0, 0), MeshId = sphere_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+			sync('SyncColor', {{ Part = outer_sphere_part, Color = Color3.fromRGB(255, 165, 0) }})
+			sync('SyncMaterial', {{ Part = outer_sphere_part, Material = Enum.Material.SmoothPlastic, Transparency = 0.5, Reflectance = 0 }})
+		end
+
+		sync('SyncMesh', initial_mesh_data)
+
+		local done1, done2, done3 = false, false, false
+
+		task.spawn(function()
+			for resize_factor = nuke_size / 2.5, nuke_size * 3, 2 do
+				local mesh_updates = {}
+				if big_ring_part then table.insert(mesh_updates, { Part = big_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(5 * resize_factor, 5 * resize_factor, 1 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) }) end
+				if small_ring_part then table.insert(mesh_updates, { Part = small_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(4.6 * resize_factor, 4.6 * resize_factor, 1.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) }) end
+				if inner_sphere_part then table.insert(mesh_updates, { Part = inner_sphere_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(-6.5 * resize_factor, -6.5 * resize_factor, -6.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = sphere_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) }) end
+				if outer_sphere_part then table.insert(mesh_updates, { Part = outer_sphere_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(6.5 * resize_factor, 6.5 * resize_factor, 6.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = sphere_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) }) end
+				if #mesh_updates > 0 then sync('SyncMesh', mesh_updates) end
+
+				local current_radius = 3 * resize_factor
+				if current_radius <= nuke_kill_radius then
+					murder(nuke_position, current_radius)
+					corrode(nuke_position, current_radius)
+				end
+				task.wait()
+			end
+
+			for fade_value = 0, 1, 0.05 do
+				local material_changes = {}
+				for _, v in shockwave_parts do
+					table.insert(material_changes, { Part = v, Material = Enum.Material.SmoothPlastic, Transparency = fade_value, Reflectance = 0 })
+				end
+				if #material_changes > 0 then sync('SyncMaterial', material_changes) end
+				task.wait()
+			end
+
+			if #shockwave_parts > 0 then sync('Remove', shockwave_parts) end
+			done1 = true
+		end)
+
+		task.spawn(function()
+			for resize_factor = nuke_size / 5, nuke_size, 1 do
+				local mesh_updates = {}
+				local move_updates = {}
+
+				if base_part then 
+					table.insert(mesh_updates, { Part = base_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(2.5 * resize_factor, 1 * resize_factor, 4.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = base_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 0.05 * resize_factor, 0)) })
+				end
+				if top_cloud_part then 
+					table.insert(mesh_updates, { Part = top_cloud_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.75 * resize_factor, 1.5 * resize_factor, 1.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = top_cloud_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 2.7 * resize_factor, 0)) })
+				end
+				if mushroom_cloud_part then 
+					table.insert(mesh_updates, { Part = mushroom_cloud_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(2.5 * resize_factor, 1.75 * resize_factor, 3.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = mushroom_cloud_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 2.3 * resize_factor, 0)) })
+				end
+				if cloud_1_part then 
+					table.insert(mesh_updates, { Part = cloud_1_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5 * resize_factor, 3 * resize_factor, 1 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = cloud_1_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 0.75 * resize_factor, 0)) })
+				end
+				if cloud_2_part then 
+					table.insert(mesh_updates, { Part = cloud_2_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5 * resize_factor, 1.5 * resize_factor, 1 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = cloud_2_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 1.25 * resize_factor, 0)) })
+				end
+				if cloud_3_part then 
+					table.insert(mesh_updates, { Part = cloud_3_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(0.5 * resize_factor, 1.5 * resize_factor, 1 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = cloud_3_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 1.7 * resize_factor, 0)) })
+				end
+				if pole_base_part then 
+					table.insert(mesh_updates, { Part = pole_base_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(1 * resize_factor, 2 * resize_factor, 2.5 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = cloud_mesh_id, TextureId = color_texture_id, VertexColor = Vector3.new(0.9, 0.6, 0) })
+					table.insert(move_updates, { Part = pole_base_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 0.1 * resize_factor, 0)) })
+				end
+				if pole_ring_part then 
+					table.insert(mesh_updates, { Part = pole_ring_part, MeshType = Enum.MeshType.FileMesh, Scale = Vector3.new(1.2 * resize_factor, 1.2 * resize_factor, 1.2 * resize_factor), Offset = Vector3.new(0, 0, 0), MeshId = ring_mesh_id, TextureId = '', VertexColor = Vector3.new(1, 1, 1) })
+					table.insert(move_updates, { Part = pole_ring_part, CFrame = CFrame.new(nuke_position + Vector3.new(0, 1.3 * resize_factor, 0)) * CFrame.Angles(math.rad(90), 0, 0) })
+				end
+
+				if #mesh_updates > 0 then sync('SyncMesh', mesh_updates) end
+				if #move_updates > 0 then sync('SyncMove', move_updates) end
+				task.wait()
+			end
+			done2 = true
+		end)
+
+		task.spawn(function()
+			task.wait(2)
+
+			local current_scales = {}
+			if base_part then current_scales[base_part] = Vector3.new(2.5 * nuke_size, 1 * nuke_size, 4.5 * nuke_size) end
+			if top_cloud_part then current_scales[top_cloud_part] = Vector3.new(0.75 * nuke_size, 1.5 * nuke_size, 1.5 * nuke_size) end
+			if mushroom_cloud_part then current_scales[mushroom_cloud_part] = Vector3.new(2.5 * nuke_size, 1.75 * nuke_size, 3.5 * nuke_size) end
+			if cloud_1_part then current_scales[cloud_1_part] = Vector3.new(0.5 * nuke_size, 3 * nuke_size, 1 * nuke_size) end
+			if cloud_2_part then current_scales[cloud_2_part] = Vector3.new(0.5 * nuke_size, 1.5 * nuke_size, 1 * nuke_size) end
+			if cloud_3_part then current_scales[cloud_3_part] = Vector3.new(0.5 * nuke_size, 1.5 * nuke_size, 1 * nuke_size) end
+			if pole_base_part then current_scales[pole_base_part] = Vector3.new(1 * nuke_size, 2 * nuke_size, 2.5 * nuke_size) end
+			if pole_ring_part then current_scales[pole_ring_part] = Vector3.new(1.2 * nuke_size, 1.2 * nuke_size, 1.2 * nuke_size) end
+
+			for yellow_value = 0.6, 0, -0.025 do
+				local mesh_updates = {}
+				for _, part in cloud_parts do
+					local mesh_id = (part == pole_ring_part) and ring_mesh_id or cloud_mesh_id
+					local texture_id = (part == pole_ring_part) and '' or color_texture_id
+					local scale = current_scales[part] or Vector3.new(1, 1, 1)
+					table.insert(mesh_updates, { Part = part, MeshType = Enum.MeshType.FileMesh, Scale = scale, Offset = Vector3.new(0, 0, 0), MeshId = mesh_id, TextureId = texture_id, VertexColor = Vector3.new(0.9, yellow_value, 0) })
+				end
+				if #mesh_updates > 0 then sync('SyncMesh', mesh_updates) end
+				task.wait()
+			end
+
+			for red_value = 0.9, 0.5, -0.05 do
+				local mesh_updates = {}
+				for _, part in cloud_parts do
+					local mesh_id = (part == pole_ring_part) and ring_mesh_id or cloud_mesh_id
+					local texture_id = (part == pole_ring_part) and '' or color_texture_id
+					local scale = current_scales[part] or Vector3.new(1, 1, 1)
+					table.insert(mesh_updates, { Part = part, MeshType = Enum.MeshType.FileMesh, Scale = scale, Offset = Vector3.new(0, 0, 0), MeshId = mesh_id, TextureId = texture_id, VertexColor = Vector3.new(red_value, 0, 0) })
+				end
+				if #mesh_updates > 0 then sync('SyncMesh', mesh_updates) end
+				task.wait()
+			end
+
+			for blend_value = 0, 0.5, 0.025 do
+				local mesh_updates = {}
+				local material_updates = {}
+				for _, part in cloud_parts do
+					local mesh_id = (part == pole_ring_part) and ring_mesh_id or cloud_mesh_id
+					local texture_id = (part == pole_ring_part) and '' or color_texture_id
+					local scale = current_scales[part]
+					if scale then
+						scale = scale + Vector3.new(0.1, 0.1, 0.1)
+						current_scales[part] = scale
+					else
+						scale = Vector3.new(1, 1, 1)
+					end
+					table.insert(mesh_updates, { Part = part, MeshType = Enum.MeshType.FileMesh, Scale = scale, Offset = Vector3.new(0, 0, 0), MeshId = mesh_id, TextureId = texture_id, VertexColor = Vector3.new(0.5, blend_value, blend_value) })
+					table.insert(material_updates, { Part = part, Material = Enum.Material.SmoothPlastic, Transparency = blend_value * 2, Reflectance = 0 })
+				end
+				if #mesh_updates > 0 then sync('SyncMesh', mesh_updates) end
+				if #material_updates > 0 then sync('SyncMaterial', material_updates) end
+				task.wait()
+			end
+
+			done3 = true
+
+			while not (done1 and done2 and done3) do task.wait(0.1) end
+
+			if #cloud_parts > 0 then sync('Remove', cloud_parts) end
+		end)
+
+		notify('f3xnuke', `nuked {target.Name} (kill radius: {nuke_kill_radius})`, 1)
+	end
+end)
+
+cmd_library.add({'f3xwall', 'wall'}, 'creates a wall in front of player using f3x', {
+	{'player', 'player'},
+	{'height', 'number'},
+	{'width', 'number'}
+}, function(vstorage, targets, height, width)
+	if not targets or #targets == 0 then
+		targets = {stuff.owner}
+	end
+	
+	height = height or 20
+	width = width or 30
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xwall', 'f3x tool not found', 2)
+	end
+
+	for _,target in targets do
+		local character = target.Character
+		if not character then
+			return notify('f3xwall', 'character not found', 2)
+		end
+
+		local hrp = character:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return notify('f3xwall', 'root part not found', 2)
+		end
+
+		local wall_cf = hrp.CFrame * CFrame.new(0, height / 2 - 3, -10)
+		local wall_part = sync('CreatePart', 'Normal', wall_cf, workspace)
+		if wall_part then
+			sync('SyncResize', {{ Part = wall_part, Size = Vector3.new(width, height, 2), CFrame = wall_cf }})
+			sync('SyncColor', {{ Part = wall_part, Color = Color3.fromRGB(100, 100, 100) }})
+			sync('SyncMaterial', {{ Part = wall_part, Material = Enum.Material.Concrete, Transparency = 0, Reflectance = 0 }})
+			sync('SyncAnchor', {{ Part = wall_part, Anchored = true }})
+			sync('SyncCollision', {{ Part = wall_part, CanCollide = true }})
+			notify('f3xwall', `created wall ({width}x{height})`, 1)
+		end
+	end
+end)
+
+cmd_library.add({'f3xplatform', 'f3xplat', 'plat'}, 'creates a platform below player using f3x', {
+	{'size', 'number'}
+}, function(vstorage, size)
+	size = size or 20
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xplatform', 'f3x tool not found', 2)
+	end
+
+	local character = stuff.owner.Character
+	if not character then
+		return notify('f3xplatform', 'character not found', 2)
+	end
+
+	local hrp = character:FindFirstChild('HumanoidRootPart')
+	if not hrp then
+		return notify('f3xplatform', 'root part not found', 2)
+	end
+
+	local plat_cf = hrp.CFrame * CFrame.new(0, -4, 0)
+	local plat_part = sync('CreatePart', 'Normal', plat_cf, workspace)
+	if plat_part then
+		sync('SyncResize', {{ Part = plat_part, Size = Vector3.new(size, 1, size), CFrame = plat_cf }})
+		sync('SyncColor', {{ Part = plat_part, Color = Color3.fromRGB(50, 50, 50) }})
+		sync('SyncMaterial', {{ Part = plat_part, Material = Enum.Material.Metal, Transparency = 0, Reflectance = 0.2 }})
+		sync('SyncAnchor', {{ Part = plat_part, Anchored = true }})
+		sync('SyncCollision', {{ Part = plat_part, CanCollide = true }})
+		notify('f3xplatform', `created platform (size {size})`, 1)
+	end
+end)
+
+cmd_library.add({'f3xtrap', 'trap'}, 'traps a player in a box using f3x', {
+	{'player', 'player'},
+	{'size', 'number'},
+	{'thickness', 'number'}
+}, function(vstorage, targets, size, thickness)
+	if not targets or #targets == 0 then
+		return notify('f3xtrap', 'player required', 2)
+	end
+
+	size = size or 8
+	thickness = thickness or 2
+
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xtrap', 'f3x tool not found', 2)
+	end
+
+	local affected_players = {}
+
+	for _, target in pairs(targets) do
+		local target_char = target.Character
+		if target_char then
+			local hrp = target_char:FindFirstChild('HumanoidRootPart')
+			if hrp then
+				local pos = hrp.Position
+				local half = size / 2
+				local t = thickness / 2
+
+				local walls = {
+					{ name = "front", cframe = CFrame.new(pos.X, pos.Y, pos.Z + half + t), size = Vector3.new(size + thickness * 2, size, thickness) },
+					{ name = "back", cframe = CFrame.new(pos.X, pos.Y, pos.Z - half - t), size = Vector3.new(size + thickness * 2, size, thickness) },
+					{ name = "right", cframe = CFrame.new(pos.X + half + t, pos.Y, pos.Z), size = Vector3.new(thickness, size, size) },
+					{ name = "left", cframe = CFrame.new(pos.X - half - t, pos.Y, pos.Z), size = Vector3.new(thickness, size, size) },
+					{ name = "top", cframe = CFrame.new(pos.X, pos.Y + half + t, pos.Z), size = Vector3.new(size + thickness * 2, thickness, size + thickness * 2) },
+					{ name = "bottom", cframe = CFrame.new(pos.X, pos.Y - half - t, pos.Z), size = Vector3.new(size + thickness * 2, thickness, size + thickness * 2) }
+				}
+
+				local created_parts = {}
+				for _, wall in pairs(walls) do
+					local part = sync('CreatePart', 'Normal', wall.cframe, workspace)
+					if part then
+						table.insert(created_parts, { part = part, size = wall.size, cframe = wall.cframe })
+					end
+				end
+
+				if #created_parts > 0 then
+					local resize_changes = {}
+					local color_changes = {}
+					local material_changes = {}
+					local anchor_changes = {}
+					local collision_changes = {}
+
+					for _, data in pairs(created_parts) do
+						table.insert(resize_changes, { Part = data.part, Size = data.size, CFrame = data.cframe })
+						table.insert(color_changes, { Part = data.part, Color = Color3.fromRGB(30, 30, 30) })
+						table.insert(material_changes, { Part = data.part, Material = Enum.Material.Metal, Transparency = 0, Reflectance = 0.3 })
+						table.insert(anchor_changes, { Part = data.part, Anchored = true })
+						table.insert(collision_changes, { Part = data.part, CanCollide = true })
+					end
+
+					sync('SyncResize', resize_changes)
+					sync('SyncColor', color_changes)
+					sync('SyncMaterial', material_changes)
+					sync('SyncAnchor', anchor_changes)
+					sync('SyncCollision', collision_changes)
+
+					local parts_only = {}
+					for _, data in pairs(created_parts) do
+						table.insert(parts_only, data.part)
+					end
+
+					local group = sync('CreateGroup', 'Model', workspace, parts_only)
+					if group then
+						sync('SetName', {group}, {'trap_' .. target.Name})
+					end
+
+					table.insert(affected_players, target.Name)
+				end
+			end
+		end
+	end
+
+	if #affected_players > 0 then
+		notify('f3xtrap', `trapped {table.concat(affected_players, ', ')} in a box`, 1)
+	end
 end)
 
 cmd_library.add({'togglefreegamepass', 'tfreegp', 'freegp'}, 'makes the client think that you own every gamepass and in the group', {}, function(vstorage)
