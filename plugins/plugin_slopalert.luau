@@ -195,26 +195,29 @@ export type plugin_api = {
 
 local plugin = {
 	name = 'slopalert',
-	version = '1.0',
+	version = '1.1',
 	author = 'rez',
 	description = 'slop detection software',
 
-	init = function(api: plugin_api)
+	init = function(api)
 		local maid = api.get_maid()
 
 		local shared_vars = {
 			active = false,
 			hint = nil,
-			scroll_position = 1
+			scroll_position = 1,
+			scroll_accumulator = 0
 		}
 
 		local full_text = ('slop warning ⚠ slop alert ⚠ slop detected ⚠ slop detection software ⚠ '):rep(50)
 		local display_length = 250
+		local scroll_speed = 0.05
 
-		local function start_alert()
+		local function yes()
 			if shared_vars.active then return end
 			shared_vars.active = true
 			shared_vars.scroll_position = 1
+			shared_vars.scroll_accumulator = 0
 
 			local hint = Instance.new('Hint')
 			hint.Parent = workspace
@@ -223,23 +226,28 @@ local plugin = {
 			local current_text = string.sub(full_text, 1, display_length)
 			hint.Text = current_text
 
-			maid.add('slop_scroll', game:GetService('RunService').Heartbeat, function()
+			maid.add('slop_scroll', game:GetService('RunService').Heartbeat, function(dt)
 				if not shared_vars.active or not shared_vars.hint or not shared_vars.hint.Parent then return end
 
-				shared_vars.scroll_position = shared_vars.scroll_position + 1
+				shared_vars.scroll_accumulator = shared_vars.scroll_accumulator + dt
 
-				if shared_vars.scroll_position + display_length > #full_text then
-					shared_vars.scroll_position = 1
+				if shared_vars.scroll_accumulator >= scroll_speed then
+					shared_vars.scroll_accumulator = shared_vars.scroll_accumulator - scroll_speed
+					shared_vars.scroll_position = shared_vars.scroll_position + 1
+
+					if shared_vars.scroll_position + display_length > #full_text then
+						shared_vars.scroll_position = 1
+					end
+
+					local new_text = string.sub(full_text, shared_vars.scroll_position, shared_vars.scroll_position + display_length - 1)
+					shared_vars.hint.Text = new_text
 				end
-
-				local new_text = string.sub(full_text, shared_vars.scroll_position, shared_vars.scroll_position + display_length - 1)
-				shared_vars.hint.Text = new_text
 			end)
 
 			api.notify('slopalert', 'slop detection active', 1)
 		end
 
-		local function stop_alert()
+		local function no()
 			if not shared_vars.active then return end
 			shared_vars.active = false
 
@@ -255,14 +263,14 @@ local plugin = {
 
 		api.add_command({'slopalert', 'slop'}, 'toggle scrolling slop warning hint', {}, function(vars)
 			if shared_vars.active then
-				stop_alert()
+				no()
 			else
-				start_alert()
+				yes()
 			end
 		end)
 
 		api.add_command({'unslopalert', 'unslop'}, 'disable slop warning hint', {}, function(vars)
-			stop_alert()
+			no()
 		end)
 
 		return true
