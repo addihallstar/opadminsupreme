@@ -209,8 +209,8 @@ local plugin = {
 
 		local function no()
 			shared_vars.drunk = false
-			maid:remove('drunk_camera')
-			maid:remove('drunk_movement')
+			maid.remove('drunk_camera')
+			maid.remove('drunk_movement')
 			cam.FieldOfView = shared_vars.original_fov
 
 			local char = stuff.owner_char
