@@ -175,7 +175,7 @@ local plugin = {
 			local time_offset = 0
 			local wobble_offset = 0
 
-			maid.add('drunk_camera', game:GetService('RunService').RenderStepped:Connect(function(dt)
+			maid.add('drunk_camera', game:GetService('RunService').RenderStepped, function(dt)
 				if not shared_vars.drunk then return end
 
 				time_offset = time_offset + dt
@@ -188,9 +188,9 @@ local plugin = {
 
 				cam.CFrame = cam.CFrame * CFrame.Angles(pitch, yaw, roll)
 				cam.FieldOfView = shared_vars.original_fov + math.sin(wobble_offset * 2) * 5 * intensity
-			end))
+			end)
 
-			maid.add('drunk_movement', game:GetService('RunService').Heartbeat:Connect(function(dt)
+			maid.add('drunk_movement', game:GetService('RunService').Heartbeat, function(dt)
 				if not shared_vars.drunk then return end
 
 				local char = stuff.owner_char
@@ -202,7 +202,7 @@ local plugin = {
 				local intensity = shared_vars.intensity
 				local random_speed = stuff.default_ws + math.sin(tick() * 3) * 4 * intensity
 				hum.WalkSpeed = math.max(random_speed, 4)
-			end))
+			end)
 
 			api.notify('drunk', 'enabled', 1)
 		end
