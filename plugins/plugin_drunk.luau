@@ -197,7 +197,7 @@ local plugin = {
 	name = 'drunk',
 	version = '1.2',
 	author = 'rez',
-	description = 'realistic drunk effect with vision distortion and stumbling',
+	description = 'uhh idk yes drunk thing yes',
 
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
