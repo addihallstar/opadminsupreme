@@ -1,16 +1,17 @@
 # opadmin
 
-another admin script yes, currently we have 292 commands
+another admin script yes, currently we have 293 commands
+16000 lines op
 
 ## features
 
 - **plugin support** - load custom plugins from urls with auto-reload on rejoin.
-- **targeting** - flexible player targeting (me, all, others, random, teamamtes, enemies, nearest, currently viewing, partial matching).
-- **visuals** - esp, tracers, crosshair, fov circle, bullet tracers, hit sounds (slop), and more.
+- **targeting** - flexible player targeting.
+- **visuals** - esp (npcs, items, players), tracers (npcs, items, players), crosshair, fov circle, bullet tracers, hit sounds (slop), and more.
 - **combat** - aimbot, silent aim, rageaim, triggerbot, hitbox expand, antiaim (useless) and more.
 - **movement** - fly, noclip, speed, infinite jump, teleport, click tp, teleport tool, cframewalkspeed, noclip and more.
-- **bypasses** - decent bypasses for most movement/visual/combat commands. (you have to set bypass arg to true if the command have one)
-- **cool stuff** - flingaura, partfling, parttrap, partwalkfling, blackhole, partrain, partcontrol, punchfling. (very fun yes)
+- **bypasses** - decent bypasses for most movement/visual/combat commands. (you have to set bypass arg to true if the command has one)
+- **cool stuff** - flingaura, partfling, parttrap, partwalkfling, blackhole, partrain, partcontrol, punchfling, f3xnuke, f3xblackhole, f3xbuild, f3xtrap. (very fun yes)
 
 ## running
 
@@ -22,9 +23,9 @@ loadstring(game:HttpGet('https://raw.githubusercontent.com/addihallstar/opadmins
 
 ## usage
 
-open command bar (press ] / RightBracket ) or use the chat with "!" prefix and type commands
+open command bar (press ] / RightBracket ) or use the chat with '!' prefix and type commands
 
-note: you don't need to use the prefix if typing into the command bar
+> **note:** you don't need to use the prefix if typing into the command bar
 
 use `!cmds` to list all available commands.
 
@@ -32,26 +33,85 @@ use `!cmds` to list all available commands.
 
 commands that accept players support these selectors:
 
-note: all selectors (expect partial name matching) should start with @
+> **note:** all selectors (except partial name matching) should start with `@`, `#`, `$`, or `*`
+
+### basic selectors
 
 | selector | description |
 |-|-|
-| `@me/@s/@m` | yourself |
-| `@everyone/@all/@e/@a` | all players |
-| `@others/@other/@o` | everyone except you |
-| `@view/@v` | the player you are currently viewing with `view` command |
-| `@random/@rand/@r` | random player |
-| `@nearest/@n` | closest player to you |
-| `@team` | players on your team |
-| `@enemies` | every player except players on your team |
-| `playername` | partial name matching |
+| `@me` / `@self` / `@s` / `@m` | yourself |
+| `@everyone` / `@all` / `@e` / `@a` | all players |
+| `@others` / `@other` / `@o` | everyone except you |
+| `@random` / `@rand` / `@r` | random player |
+| `@view` / `@v` | the player you are currently viewing with `view` command |
 
-examples:
+### team-based selectors
+
+| selector | description |
+|-|-|
+| `@team` / `@teammates` / `@allies` / `@t` | players on your team (excluding yourself) |
+| `@enemies` / `@enemy` | players not on your team (excluding yourself) |
+| `#teamname` | players on a specific team (partial matching) |
+
+### relationship selectors
+
+| selector | description |
+|-|-|
+| `@friends` / `@friend` | your roblox friends in the server |
+| `@nonfriends` / `@notfriends` / `@strangers` | players who aren't your friends |
+
+### state-based selectors
+
+| selector | description |
+|-|-|
+| `@armed` / `@hastool` | players currently holding a tool |
+| `@unarmed` / `@notool` | players not holding a tool |
+| `@grounded` / `@onground` | players standing on solid ground |
+| `@moving` | players with horizontal movement speed > 1 |
+
+### visibility selectors
+
+| selector | description |
+|-|-|
+| `@onscreen` / `@screen` | players visible on your screen |
+| `@offscreen` | players not visible on your screen |
+| `@facing` / `@lookingat` | players looking towards you |
+
+### health selectors
+
+| selector | description |
+|-|-|
+| `@lowhp` / `@lowhealth` / `@weak` | players with ≤30% health |
+| `@fullhp` / `@fullhealth` | players with full health |
+
+### account age selectors
+
+| selector | description |
+|-|-|
+| `@newest` / `@new` | player with youngest account (under 1 year) |
+| `@oldest` / `@old` / `@veteran` | player with oldest account |
+
+### special prefixes
+
+| prefix | description | example |
+|-|-|-|
+| `#` | team name matching | `#red` - all players on a team containing 'red' |
+| `$` | user id matching | `$12345678` - player with that exact user id |
+| `*` | pattern matching (contains) | `*pro` - all players with 'pro' in their name |
+| *(none)* | partial name matching | `john` - first player whose name starts with 'john' |
+
+### examples
+
 ```
 !murder @everyone (the command doesn't exist it just for the funny)
 !to @nearest
 !orbit @random
-!partfling @enemies
+!fling @enemies
+!f3xtrap @nonfriends
+!nuke @others
+!partfling #Lobby
+!view $13371337
+!parttrap *monkey
 ```
 
 ## plugins
