@@ -195,41 +195,95 @@ export type plugin_api = {
 
 local plugin = {
 	name = 'drunk',
-	version = '1.0',
+	version = '1.1',
 	author = 'rez',
-	description = 'beer',
+	description = 'yes',
 
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
 		local maid = api.get_maid()
 		local cam = workspace.CurrentCamera
+		local lighting = game:GetService('Lighting')
 
 		local shared_vars = {
 			drunk = false,
 			intensity = 1,
-			original_fov = 70
+			original_fov = 70,
+			time = 0,
+			stumble_timer = 0,
+			stumble_dir = Vector3.zero,
+			blur = nil,
+			color = nil
 		}
+
+		local function yo()
+			local blur = Instance.new('BlurEffect')
+			blur.Name = '_drunk_blur'
+			blur.Size = 0
+			blur.Parent = lighting
+			shared_vars.blur = blur
+
+			local color = Instance.new('ColorCorrectionEffect')
+			color.Name = '_drunk_color'
+			color.Brightness = 0
+			color.Contrast = 0
+			color.Saturation = 0
+			color.TintColor = Color3.new(1, 1, 1)
+			color.Parent = lighting
+			shared_vars.color = color
+		end
+
+		local function remove_effects()
+			if shared_vars.blur then
+				shared_vars.blur:Destroy()
+				shared_vars.blur = nil
+			end
+			if shared_vars.color then
+				shared_vars.color:Destroy()
+				shared_vars.color = nil
+			end
+		end
 
 		local function yes()
 			shared_vars.drunk = true
 			shared_vars.original_fov = cam.FieldOfView
+			shared_vars.time = 0
+			shared_vars.stumble_timer = 0
 
-			local time_offset = 0
-			local wobble_offset = 0
+			yo()
 
 			maid.add('drunk_camera', game:GetService('RunService').RenderStepped, function(dt)
 				if not shared_vars.drunk then return end
 
-				time_offset = time_offset + dt
-				wobble_offset = wobble_offset + dt * 0.7
-
+				shared_vars.time = shared_vars.time + dt
+				local t = shared_vars.time
 				local intensity = shared_vars.intensity
-				local roll = math.sin(time_offset * 1.3) * 0.08 * intensity
-				local pitch = math.sin(time_offset * 0.9) * 0.03 * intensity
-				local yaw = math.sin(time_offset * 0.5) * 0.02 * intensity
+
+				local roll = math.sin(t * 0.4) * 0.012 * intensity
+					+ math.sin(t * 0.7 + 1.2) * 0.008 * intensity
+					+ math.sin(t * 1.1 + 2.5) * 0.004 * intensity
+
+				local pitch = math.sin(t * 0.3 + 0.5) * 0.006 * intensity
+					+ math.sin(t * 0.6 + 1.8) * 0.003 * intensity
+
+				local yaw = math.sin(t * 0.25 + 1.0) * 0.004 * intensity
 
 				cam.CFrame = cam.CFrame * CFrame.Angles(pitch, yaw, roll)
-				cam.FieldOfView = shared_vars.original_fov + math.sin(wobble_offset * 2) * 5 * intensity
+
+				local fov_offset = math.sin(t * 0.5) * 1.5 * intensity
+				cam.FieldOfView = shared_vars.original_fov + fov_offset
+
+				if shared_vars.blur then
+					local blur_amount = 2 + math.sin(t * 0.8) * 1.5 * intensity
+					shared_vars.blur.Size = blur_amount * intensity
+				end
+
+				if shared_vars.color then
+					local warmth = 0.02 * intensity
+					shared_vars.color.TintColor = Color3.new(1 + warmth, 1, 1 - warmth * 0.5)
+					shared_vars.color.Saturation = -0.1 * intensity
+					shared_vars.color.Contrast = 0.05 * intensity
+				end
 			end)
 
 			maid.add('drunk_movement', game:GetService('RunService').Heartbeat, function(dt)
@@ -238,22 +292,46 @@ local plugin = {
 				local char = stuff.owner_char
 				if not char then return end
 
+				local hrp = char:FindFirstChild('HumanoidRootPart')
 				local hum = char:FindFirstChildOfClass('Humanoid')
-				if not hum then return end
+				if not hum or not hrp then return end
 
 				local intensity = shared_vars.intensity
-				local random_speed = stuff.default_ws + math.sin(tick() * 3) * 4 * intensity
-				hum.WalkSpeed = math.max(random_speed, 4)
+
+				shared_vars.stumble_timer = shared_vars.stumble_timer - dt
+
+				if shared_vars.stumble_timer <= 0 then
+					shared_vars.stumble_timer = 3 + math.random() * 5
+
+					if hum.MoveDirection.Magnitude > 0.1 then
+						local stumble_strength = 2 * intensity
+						shared_vars.stumble_dir = Vector3.new(
+							(math.random() - 0.5) * stumble_strength,
+							0,
+							(math.random() - 0.5) * stumble_strength
+						)
+					end
+				end
+
+				if shared_vars.stumble_dir.Magnitude > 0.01 then
+					hrp.AssemblyLinearVelocity = hrp.AssemblyLinearVelocity + shared_vars.stumble_dir
+					shared_vars.stumble_dir = shared_vars.stumble_dir * 0.9
+				end
+
+				local speed_wobble = math.sin(tick() * 0.8) * 1 * intensity
+				hum.WalkSpeed = math.max(stuff.default_ws + speed_wobble, stuff.default_ws * 0.8)
 			end)
 
-			api.notify('drunk', 'enabled', 1)
+			api.notify('drunk', 'feeling tipsy...', 1)
 		end
 
 		local function no()
 			shared_vars.drunk = false
 			maid.remove('drunk_camera')
 			maid.remove('drunk_movement')
+
 			cam.FieldOfView = shared_vars.original_fov
+			remove_effects()
 
 			local char = stuff.owner_char
 			if char then
@@ -269,7 +347,7 @@ local plugin = {
 		api.add_command({'drunk'}, 'toggle drunk mode', {
 			{'intensity', 'number'}
 		}, function(vars, intensity)
-			shared_vars.intensity = math.clamp(tonumber(intensity) or 1, 0.1, 3)
+			shared_vars.intensity = math.clamp(tonumber(intensity) or 1, 0.1, 2)
 
 			if shared_vars.drunk then
 				no()
@@ -279,7 +357,9 @@ local plugin = {
 		end)
 
 		api.add_command({'sober'}, 'disable drunk mode', {}, function(vars)
-			no()
+			if shared_vars.drunk then
+				no()
+			end
 		end)
 
 		return true
