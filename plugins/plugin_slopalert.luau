@@ -224,7 +224,7 @@ local plugin = {
 
 			task.spawn(function()
 				while shared_vars.active and shared_vars.hint and shared_vars.hint.Parent do
-					task.wait(0.05)
+					task.wait(0.1)
 					
 					shared_vars.scroll_position = shared_vars.scroll_position + 1
 
