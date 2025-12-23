@@ -195,55 +195,91 @@ export type plugin_api = {
 
 local plugin = {
 	name = 'reversecontrols',
-	version = '1.0',
+	version = '1.1',
 	author = 'rez',
 	description = 'flip your controls',
 
 	init = function(api: plugin_api)
 		local stuff = api.get_stuff()
 		local maid = api.get_maid()
-		local uis = game:GetService('UserInputService')
-		local cas = game:GetService('ContextActionService')
+		local players = game:GetService('Players')
+		local run_service = game:GetService('RunService')
 
 		local shared_vars = {
 			enabled = false,
-			mode = 'all'
+			mode = 'all',
+			original_move = nil
 		}
 
-		local key_swaps = {
-			[Enum.KeyCode.W] = Enum.KeyCode.S,
-			[Enum.KeyCode.S] = Enum.KeyCode.W,
-			[Enum.KeyCode.A] = Enum.KeyCode.D,
-			[Enum.KeyCode.D] = Enum.KeyCode.A,
-		}
+		local function reverse_movement()
+			maid.add('reverse_move', run_service.RenderStepped, function()
+				if not shared_vars.enabled then return end
+				if shared_vars.mode ~= 'movement' and shared_vars.mode ~= 'all' then return end
+
+				local char = stuff.owner_char
+				if not char then return end
+
+				local hum = char:FindFirstChildOfClass('Humanoid')
+				local hrp = char:FindFirstChild('HumanoidRootPart')
+				if not hum or not hrp then return end
+
+				local move_dir = hum.MoveDirection
+				if move_dir.Magnitude > 0.01 then
+					local current_vel = hrp.AssemblyLinearVelocity
+					local horizontal_vel = Vector3.new(current_vel.X, 0, current_vel.Z)
+					
+					local reversed = -move_dir * hum.WalkSpeed * 2
+					hrp.AssemblyLinearVelocity = Vector3.new(
+						reversed.X,
+						current_vel.Y,
+						reversed.Z
+					)
+				end
+			end)
+		end
+
+		local function reverse_camera()
+			local uis = game:GetService('UserInputService')
+			local last_mouse_pos = uis:GetMouseLocation()
+
+			maid.add('reverse_camera', run_service.RenderStepped, function()
+				if not shared_vars.enabled then return end
+				if shared_vars.mode ~= 'camera' and shared_vars.mode ~= 'all' then return end
+
+				local current_pos = uis:GetMouseLocation()
+				local delta = current_pos - last_mouse_pos
+
+				if delta.Magnitude > 0.5 then
+					local cam = workspace.CurrentCamera
+					local sensitivity = 0.002
+					cam.CFrame = cam.CFrame * CFrame.Angles(
+						delta.Y * sensitivity * 2,
+						delta.X * sensitivity * 2,
+						0
+					)
+				end
+
+				last_mouse_pos = current_pos
+			end)
+		end
 
 		local function yes()
 			shared_vars.enabled = true
 
-			for original, swapped in key_swaps do
-				cas:BindActionAtPriority('reverse_' .. original.Name, function(action, state, input)
-						if state == Enum.UserInputState.Begin then
-							uis:GetPropertyChangedSignal("GamepadEnabled")
-						end
-						return Enum.ContextActionResult.Pass
-					end, false, 3000, original)
+			if shared_vars.mode == 'movement' or shared_vars.mode == 'all' then
+				reverse_movement()
 			end
 
-			maid.add('reverse_camera', game:GetService('RunService').RenderStepped, function()
-				if not shared_vars.enabled then return end
-				if shared_vars.mode ~= 'camera' and shared_vars.mode ~= 'all' then return end
-			end)
+			if shared_vars.mode == 'camera' or shared_vars.mode == 'all' then
+				reverse_camera()
+			end
 
-			api.notify('reverse', 'controls reversed - good luck', 1)
+			api.notify('reverse', 'controls reversed (' .. shared_vars.mode .. ')', 1)
 		end
 
 		local function no()
 			shared_vars.enabled = false
-
-			for original in key_swaps do
-				cas:UnbindAction('reverse_' .. original.Name)
-			end
-
+			maid.remove('reverse_move')
 			maid.remove('reverse_camera')
 			api.notify('reverse', 'controls normal', 1)
 		end
@@ -266,7 +302,9 @@ local plugin = {
 		end)
 
 		api.add_command({'unreverse'}, 'disable reversed controls', {}, function(vars)
-			no()
+			if shared_vars.enabled then
+				no()
+			end
 		end)
 
 		return true
