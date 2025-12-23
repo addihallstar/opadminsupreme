@@ -5,21 +5,21 @@ end
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
 fireproximityprompt = fireproximityprompt or function() end
-firetouchinterest = firetouchinterest or nil
+firetouchinterest = firetouchinterest or function() end
 setclipboard = setclipboard or function() end
 saveinstance = saveinstance or function() end
-hookmetamethod = hookmetamethod or function() end
-getloadedmodules = getloadedmodules or nil
+hookmetamethod = hookmetamethod or nil
+getloadedmodules = getloadedmodules or function() return {} end
 decompile = decompile or function() return '' end
-getnamecallmethod = getnamecallmethod or function() return '' end
+getnamecallmethod = getnamecallmethod or nil
 checkcaller = checkcaller or function() return false end
 syn = syn or {}
 sethiddenproperty = sethiddenproperty or function() end
 set_hidden_property = sethiddenproperty or function() end
 set_hidden_prop = sethiddenproperty or function() end
-hookfunction = hookfunction or function() end
+hookfunction = hookfunction or nil
 getrawmetatable = getrawmetatable or function() return {} end
-mouse1click = mouse1click or nil
+mouse1click = mouse1click or function() end
 writefile = writefile or function() end
 isfile = isfile or function() return false end
 readfile = readfile or function() return '' end
@@ -39,6 +39,7 @@ newcclosure = newcclosure or function(f)
 end
 debug_info = (getrenv().debug and getrenv().debug.info) or (debug and debug.info)
 Drawing = Drawing or {}
+
 
 local env = getgenv() or shared or _G
 
@@ -66,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.5',
+	ver = '3.8.6',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1374,7 +1375,7 @@ function maid.add(name, task_or_signal, fn, important)
 		if important then
 			maid.remove_protected(name)
 		else
-			warn(`[maid] tried to overwrite protected task {name}`)
+			notify('maid', `tried to overwrite protected task {name}`, 3)
 			return
 		end
 	end
@@ -1397,7 +1398,7 @@ function maid.add(name, task_or_signal, fn, important)
 		task_obj = task_or_signal
 		task_type = 'function'
 	else
-		warn(`[maid] unknown task type: {typeof(task_or_signal)}`)
+		notify('maid', `tried to add task {name} with unknown type {typeof(task_or_signal)}`, 3)
 		return
 	end
 
@@ -1807,7 +1808,7 @@ function cmd_library.execute(name, ...)
 
 		if not success then
 			notify('cmd', `error in '{name}': {tostring(err):match("[^\n]*")}`, 2)
-			notify('command error', 'report this to the develepors', 4)
+			notify('command error', 'report this to the develepors, open console for the full error (F9 or /console in chat)', 4)
 			warn(`command '{name}' failed:`, err)
 		end
 	end)
@@ -1999,7 +2000,7 @@ end
 
 stuff.ui = load_ui()
 if not stuff.ui then
-	return warn('[opadmin] ui failed to load')
+	return error('[opadmin] ui failed to load')
 end
 
 config.load()
@@ -9480,7 +9481,7 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 				task.spawn(function()
 					local success, err = pcall(tasks[j])
 					if not success then
-						warn('task failed: ' .. tostring(err))
+						notify('f3xbuild', 'task failed: ' .. tostring(err), 3)
 					end
 					batch_completed = batch_completed + 1
 					completed = completed + 1
@@ -10671,7 +10672,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 
 			done3 = true
 
-			while not (done1 and done2 and done3) do task.wait(0.1) end
+			while not (done1 and done2 and done3) do task.wait() end
 
 			if #cloud_parts > 0 then sync('Remove', cloud_parts) end
 		end)
@@ -10958,7 +10959,7 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			end
 		end
 
-		notify('f3xblackhole', `collapsed after consuming {destroyed_count} parts`, 3)
+		notify('f3xblackhole', `collapsed after consuming {destroyed_count} parts`, 1)
 
 		pcall(function()
 			local cleanup = {}
