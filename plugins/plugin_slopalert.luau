@@ -195,7 +195,7 @@ export type plugin_api = {
 
 local plugin = {
 	name = 'slopalert',
-	version = '1.1',
+	version = '1.2',
 	author = 'rez',
 	description = 'slop detection software',
 
@@ -205,42 +205,36 @@ local plugin = {
 		local shared_vars = {
 			active = false,
 			hint = nil,
-			scroll_position = 1,
-			scroll_accumulator = 0
+			scroll_position = 1
 		}
 
 		local full_text = ('slop warning ⚠ slop alert ⚠ slop detected ⚠ slop detection software ⚠ '):rep(50)
 		local display_length = 250
-		local scroll_speed = 0.0001
 
 		local function yes()
 			if shared_vars.active then return end
 			shared_vars.active = true
 			shared_vars.scroll_position = 1
-			shared_vars.scroll_accumulator = 0
 
 			local hint = Instance.new('Hint')
 			hint.Parent = workspace
 			shared_vars.hint = hint
 
-			local current_text = string.sub(full_text, 1, display_length)
-			hint.Text = current_text
+			hint.Text = string.sub(full_text, 1, display_length)
 
-			maid.add('slop_scroll', game:GetService('RunService').Heartbeat, function(dt)
-				if not shared_vars.active or not shared_vars.hint or not shared_vars.hint.Parent then return end
-
-				shared_vars.scroll_accumulator = shared_vars.scroll_accumulator + dt
-
-				if shared_vars.scroll_accumulator >= scroll_speed then
-					shared_vars.scroll_accumulator = shared_vars.scroll_accumulator - scroll_speed
+			task.spawn(function()
+				while shared_vars.active and shared_vars.hint and shared_vars.hint.Parent do
+					task.wait(0.05)
+					
 					shared_vars.scroll_position = shared_vars.scroll_position + 1
 
 					if shared_vars.scroll_position + display_length > #full_text then
 						shared_vars.scroll_position = 1
 					end
 
-					local new_text = string.sub(full_text, shared_vars.scroll_position, shared_vars.scroll_position + display_length - 1)
-					shared_vars.hint.Text = new_text
+					if shared_vars.hint and shared_vars.hint.Parent then
+						shared_vars.hint.Text = string.sub(full_text, shared_vars.scroll_position, shared_vars.scroll_position + display_length - 1)
+					end
 				end
 			end)
 
@@ -250,8 +244,6 @@ local plugin = {
 		local function no()
 			if not shared_vars.active then return end
 			shared_vars.active = false
-
-			maid.remove('slop_scroll')
 
 			if shared_vars.hint then
 				pcall(game.Destroy, shared_vars.hint)
