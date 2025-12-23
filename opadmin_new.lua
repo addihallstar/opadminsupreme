@@ -67,11 +67,11 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.6',
+	ver = '3.8.0',
 	--[[   ^ ^ ^
-		   | | | hot-fix
-		   | | update
-		   | big update
+		   | | | patch
+		   | | minor
+		   | major
 	]]
 
 	empty_function = function() end,
