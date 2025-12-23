@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.6',
+	ver = '3.8.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -493,7 +493,7 @@ end
 local function deep_copy(t)
 	if type(t) ~= 'table' then return t end
 	local copy = {}
-	for k, v in pairs(t) do
+	for k, v in t do
 		copy[deep_copy(k)] = deep_copy(v)
 	end
 	return copy
@@ -733,9 +733,9 @@ end
 local function find_f3x()
 	local function search(container)
 		if not container then return nil, nil end
-		for _, item in pairs(container:GetChildren()) do
+		for _, item in container:GetChildren() do
 			if item:IsA('Tool') then
-				for _, child in pairs(item:GetChildren()) do
+				for _, child in item:GetChildren() do
 					if child:IsA('BindableFunction') and child.Name:find('SyncAPI') then
 						local endpoint = child:FindFirstChild('ServerEndpoint')
 						if endpoint then
@@ -1452,13 +1452,13 @@ function maid._cleanup_task(task_data)
 end
 
 function maid.clean(keep_protected)
-	for name, task_data in pairs(maid._tasks) do
+	for name, task_data in maid._tasks do
 		maid._cleanup_task(task_data)
 	end
 	table.clear(maid._tasks)
 
 	if not keep_protected then
-		for name, task_data in pairs(maid._protected) do
+		for name, task_data in maid._protected do
 			maid._cleanup_task(task_data)
 		end
 		table.clear(maid._protected)
@@ -1519,7 +1519,7 @@ do
 	maid._cleaner = stuff.connect(services.run_service.Heartbeat, function()
 		update_performance_stats()
 
-		for name, task_data in pairs(maid._tasks) do
+		for name, task_data in maid._tasks do
 			if task_data.type == 'connection' then
 				local conn = task_data.task
 				if typeof(conn) == 'RBXScriptConnection' and not conn.Connected then
@@ -1547,7 +1547,7 @@ do
 	end, 1)
 
 	maid.add('clean_highlights', services.run_service.Stepped, function()
-		for plr, highlight in pairs(stuff.highlights) do
+		for plr, highlight in stuff.highlights do
 			if highlight and not (highlight.Adornee and highlight.Adornee:IsDescendantOf(workspace)) then
 				pcall(stuff.destroy, highlight)
 				stuff.highlights[plr] = nil
@@ -1655,7 +1655,7 @@ end
 
 function cmd_library.get_plugins()
 	local plugins = {}
-	for name, plugin in pairs(cmd_library._plugins) do
+	for name, plugin in cmd_library._plugins do
 		table.insert(plugins, {
 			name = plugin.name,
 			version = plugin.version,
@@ -1677,7 +1677,7 @@ function cmd_library.remove_plugin(plugin_name)
 	for i = #cmd_library._commands, 1, -1 do
 		local cmd = cmd_library._commands[i]
 		if cmd.plugin and cmd.plugin:lower() == plugin_name:lower() then
-			for _, name in ipairs(cmd.names) do
+			for _, name in cmd.names do
 				cmd_library._command_map[name:lower()] = nil
 			end
 
@@ -1871,7 +1871,7 @@ function config.load()
 			if success and result then
 				config.current_settings = result
 
-				for key, default_value in pairs(config.default_settings) do
+				for key, default_value in config.default_settings do
 					if config.current_settings[key] == nil then
 						config.current_settings[key] = default_value
 					end
@@ -1946,7 +1946,7 @@ function config.apply()
 	end
 
 	if settings.aliases then
-		for alias, command in pairs(settings.aliases) do
+		for alias, command in settings.aliases do
 			local cmd_data = cmd_library._command_map[command:lower()]
 			if cmd_data then
 				table.insert(cmd_data.names, alias)
@@ -1957,7 +1957,7 @@ function config.apply()
 
 	local game_binds = config.get_game_binds()
 	if game_binds then
-		for bind_id, bind_data in pairs(game_binds) do
+		for bind_id, bind_data in game_binds do
 			local keycode = Enum.KeyCode[bind_data.key]
 			if keycode and cmd_library._command_map[bind_data.command:lower()] then
 				maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
@@ -2064,7 +2064,7 @@ function hook_lib.create_hook(name, hooks)
 	end
 
 	if hooks.functions and hookfunction then
-		for original_func, handler in pairs(hooks.functions) do
+		for original_func, handler in hooks.functions do
 			pcall(function()
 				local old_func
 				old_func = hookfunction(original_func, newcclosure(function(...)
@@ -2091,7 +2091,7 @@ function hook_lib.destroy_hook(name)
 		hook_data.enabled = false
 
 		if hookfunction then
-			for original_func, old_func in pairs(hook_data.function_hooks) do
+			for original_func, old_func in hook_data.function_hooks do
 				pcall(function()
 					hookfunction(original_func, old_func)
 				end)
@@ -2228,7 +2228,7 @@ end
 hook_lib.presets.property_spoof = function(instance, properties)
 	local spoofed_values = {}
 
-	for prop, value in pairs(properties) do
+	for prop, value in properties do
 		spoofed_values[prop] = value
 	end
 
@@ -3031,7 +3031,7 @@ cmd_library.add({'to', 'goto'}, 'teleport infront of the target', {
 		return notify('goto', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if not target_char or not target_char:FindFirstChild('HumanoidRootPart') then
 			notify('goto', `player {target.Name} does not have a rootpart | skipping`, 3)
@@ -3209,7 +3209,7 @@ cmd_library.add({'swim', 'swimmode'}, 'swim in the air', {
 		Enum.HumanoidStateType.Swimming
 	}
 
-	for _, state in pairs(states) do
+	for _, state in states do
 		humanoid:SetStateEnabled(state, false)
 	end
 
@@ -3243,7 +3243,7 @@ cmd_library.add({'unswim', 'unswimmode', 'stopswim'}, 'stop swimming in the air'
 		Enum.HumanoidStateType.Swimming
 	}
 
-	for _, state in pairs(states) do
+	for _, state in states do
 		humanoid:SetStateEnabled(state, true)
 	end
 
@@ -3888,7 +3888,7 @@ cmd_library.add({'interact', 'touchnearby', 'autocollect'}, 'automatically inter
 			local hrp = character.HumanoidRootPart
 			local hrp_pos = stuff.rawrbxget(hrp, 'Position')
 
-			for _, item in pairs(workspace:GetDescendants()) do
+			for _, item in workspace:GetDescendants() do
 				if item:IsA('Part') or item:IsA("BasePart") or item:IsA("MeshPart") or item:IsA("UnionOperation") or item.Name:lower():find('coin') or item.Name:lower():find('cash') or item.Name:lower():find('money') or item.Name:lower():find('orb') or item.Name:lower():find('gem') then
 					if not vstorage.filter or item.Name:lower():find(vstorage.filter:lower()) or filter:lower() == "tool" and item.Parent.ClassName == "Tool" and item.Parent.Parent == workspace then
 						local item_pos = stuff.rawrbxget(item, 'Position')
@@ -3936,7 +3936,7 @@ cmd_library.add({'aliases', 'listalias', 'showaliases'}, 'lists all aliases', {}
 	end
 
 	local alias_list = {}
-	for alias, command in pairs(aliases) do
+	for alias, command in aliases do
 		table.insert(alias_list, `{alias} -> {command}`)
 	end
 
@@ -4031,7 +4031,7 @@ cmd_library.add({'clearaliases', 'removeallaliases'}, 'clears all aliases', {}, 
 	end
 
 	local count = 0
-	for alias, command in pairs(aliases) do
+	for alias, command in aliases do
 		local cmd_data = cmd_library._command_map[command]
 		if cmd_data then
 			for i, name in cmd_data.names do
@@ -4127,7 +4127,7 @@ cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	local removed = false
 	local game_binds = config.get_game_binds()
 
-	for bind_id, bind_data in pairs(bind_vs.binds) do
+	for bind_id, bind_data in bind_vs.binds do
 		if bind_data.key == key:upper() then
 			maid.remove(bind_id)
 			bind_vs.binds[bind_id] = nil
@@ -4406,7 +4406,7 @@ cmd_library.add({'settings'}, 'manage settings', {
 			notify('settings', 'key and value required', 2)
 		end
 	elseif action == 'list' then
-		for k, v in pairs(config.current_settings) do
+		for k, v in config.current_settings do
 			notify('settings', `{k}: {tostring(v)}`, 4)
 			task.wait(0.1)
 		end
@@ -5118,7 +5118,7 @@ cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your charact
 				stuff.rawrbxset(anchor_part, 'Anchored', true)
 
 				local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-				for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+				for _, track in humanoid:GetPlayingAnimationTracks() do
 					track:AdjustSpeed(track.Speed * 1.1)
 				end
 
@@ -5132,7 +5132,7 @@ cmd_library.add({'fakelag', 'desync'}, 'creates fake lag applied on your charact
 				stuff.rawrbxset(anchor_part, 'Anchored', false)
 
 				local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-				for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+				for _, track in humanoid:GetPlayingAnimationTracks() do
 					track:AdjustSpeed(track.Speed / 1.1)
 				end
 			end)
@@ -5185,9 +5185,9 @@ cmd_library.add({'antifling', 'afling', 'antif'}, 'stops other exploiters from f
 				local other_players = services.players:GetPlayers()
 				table.remove(other_players, table.find(other_players, stuff.owner))
 
-				for _, v in pairs(other_players) do
+				for _, v in other_players do
 					if v.Character then
-						for _, part in pairs(v.Character:GetDescendants()) do
+						for _, part in v.Character:GetDescendants() do
 							if part:IsA('BasePart') then
 								stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
 
@@ -5373,7 +5373,7 @@ cmd_library.add({'serverhop', 'hop'}, 'teleports you to another server', {}, fun
 		end)
 
 		if success and result.data then
-			for _, server in pairs(result.data) do
+			for _, server in result.data do
 				if server.id ~= game.JobId and server.playing < server.maxPlayers then
 					table.insert(servers, server.id)
 				end
@@ -5469,7 +5469,7 @@ cmd_library.add({'enabletouchevent', 'enablete'}, 're-enables touch events', {},
 	maid.remove('disable_touch_event_died')
 	maid.remove('disable_touch_event_char_added')
 
-	for part, original_state in pairs(disablete_vs.original_states or {}) do
+	for part, original_state in disablete_vs.original_states or {} do
 		if part and part.Parent then
 			pcall(function()
 				stuff.rawrbxset(part, 'CanTouch', original_state)
@@ -5689,7 +5689,7 @@ cmd_library.add({'age', 'accountage'}, 'shows account age', {
 }, function(vstorage, targets)
 	targets = targets or {stuff.owner}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local days = target.AccountAge
 		local creation_date = os.date('*t', os.time() - (days * 86400))
 
@@ -5883,7 +5883,7 @@ cmd_library.add({'deleteplayer', 'delplayer'}, 'deletes a player\'s character cl
 		return notify('deleteplayer', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		if target.Character then
 			stuff.destroy(target.Character)
 			notify('deleteplayer', `deleted {target.Name}`, 1)
@@ -5898,7 +5898,7 @@ cmd_library.add({'kick'}, 'kicks a player on client side', {
 		return notify('kick', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		pcall(function()
 			stuff.rawrbxset(target, 'Parent', nil)
 		end)
@@ -5922,7 +5922,7 @@ end)
 cmd_library.add({'fpsboost', 'performancemode'}, 'optimizes game for better fps', {}, function(vstorage)
 	notify('fpsboost', 'applying fps boost', 1)
 
-	for _, v in pairs(workspace:GetDescendants()) do
+	for _, v in workspace:GetDescendants() do
 		pcall(function()
 			if v:IsA('BasePart') then
 				stuff.rawrbxset(v, 'Material', Enum.Material.SmoothPlastic)
@@ -5941,7 +5941,7 @@ cmd_library.add({'fpsboost', 'performancemode'}, 'optimizes game for better fps'
 		end)
 	end
 
-	for _, v in pairs(services.lighting:GetChildren()) do
+	for _, v in services.lighting:GetChildren() do
 		if not v:IsA('Sky') and not v:IsA('Atmosphere') then
 			pcall(stuff.destroy, v)
 		end
@@ -5992,7 +5992,7 @@ end)
 cmd_library.add({'zerovelocity', 'zerovel', 'novel'}, 'stops all velocity on your character', {}, function(vstorage)
 	notify('zerovelocity', 'velocity stopped', 1)
 
-	for _, part in pairs(stuff.owner_char:GetDescendants()) do
+	for _, part in stuff.owner_char:GetDescendants() do
 		if part:IsA('Part') or part:IsA("MeshPart") then
 			stuff.rawrbxset(part, 'Velocity', Vector3.zero)
 			stuff.rawrbxset(part, 'RotVelocity', Vector3.zero)
@@ -6090,7 +6090,7 @@ cmd_library.add({'autopickup', 'apickup'}, 'automatically picks up tools', {
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 		local hrp_pos = stuff.rawrbxget(hrp, 'Position')
 
-		for _, v in pairs(workspace:GetDescendants()) do
+		for _, v in workspace:GetDescendants() do
 			if v:IsA('Tool') and v:FindFirstChild('Handle') then
 				local handle_pos = stuff.rawrbxget(v.Handle, 'Position')
 				if (hrp_pos - handle_pos).Magnitude <= range then
@@ -6128,7 +6128,7 @@ cmd_library.add({'loop'}, 'loops a command at specified interval', {
 
 	local similar = cmd_library.find_similar(cmd_name:lower())
 	local matched = false
-	for _, name in pairs(similar) do
+	for _, name in similar do
 		if name:lower() == cmd_name:lower() then
 			matched = true
 			break
@@ -6186,7 +6186,7 @@ cmd_library.add({'unloop'}, 'stops looping a command', {
 		end
 	else
 		local count = 0
-		for _ in pairs(loop_vs.loops) do
+		for _ in loop_vs.loops do
 			count = count + 1
 		end
 		loop_vs.loops = {}
@@ -6322,7 +6322,7 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 			if use_handle ~= true then
 				local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
 
-				for _, v in pairs(workspace:GetDescendants()) do
+				for _, v in workspace:GetDescendants() do
 					if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
 						local char = v.Parent
 						if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
@@ -6340,7 +6340,7 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 			else
 				local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
 
-				for _, v in pairs(workspace:GetDescendants()) do
+				for _, v in workspace:GetDescendants() do
 					if (v.Name == 'HumanoidRootPart' or v.Name == 'Head' or v.Name == 'Torso' or v.Name == 'UpperTorso') then
 						local char = v.Parent
 						if char and char ~= stuff.owner_char and char:FindFirstChildOfClass('Humanoid') then
@@ -6348,7 +6348,7 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 							if humanoid and humanoid.Health > 0 then
 								local v_pos = stuff.rawrbxget(v, 'Position')
 								if (handle_pos - v_pos).Magnitude <= reach then
-									for _, tool_part in ipairs(tool:GetChildren()) do
+									for _, tool_part in tool:GetChildren() do
 										if tool_part:IsA("BasePart") or tool_part:IsA("Part") or tool_part:IsA("MeshPart") or tool_part:IsA("UnionOperation") or tool_part.Name:lower() == "hitbox" then
 											firetouchinterest(v, tool_part, 0)
 											firetouchinterest(v, tool_part, 1)
@@ -6435,7 +6435,7 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 
 	local current_pos = stuff.owner_char:GetPivot()
 
-	for _, fake in pairs(stuff.fakechars) do
+	for _, fake in stuff.fakechars do
 		pcall(stuff.destroy, fake)
 	end
 
@@ -6453,7 +6453,7 @@ cmd_library.add({'unfakecharacter', 'unfakechar', 'unfc'}, 'brings you back to y
 	local humanoid = stuff.rawrbxget(stuff.real_char, 'Humanoid')
 	stuff.rawrbxset(cam, 'CameraSubject', humanoid)
 
-	for _, v in pairs(stuff.real_char:GetDescendants()) do
+	for _, v in stuff.real_char:GetDescendants() do
 		if v:IsA('LocalScript') then
 			stuff.rawrbxset(v, 'Enabled', false)
 			stuff.rawrbxset(v, 'Enabled', true)
@@ -7026,7 +7026,7 @@ cmd_library.add({'copychat'}, 'copies all chat messages', {}, function(vstorage)
 	if vstorage.enabled then
 		notify('copychat', 'chat spy enabled', 1)
 
-		for _, plr in pairs(services.players:GetPlayers()) do
+		for _, plr in services.players:GetPlayers() do
 			if plr ~= stuff.owner then
 				maid.add(`copychat_{plr.Name}`, plr.Chatted, function(message)
 					notify('chatspy', `{plr.Name}: {message}`, 4)
@@ -7044,7 +7044,7 @@ cmd_library.add({'copychat'}, 'copies all chat messages', {}, function(vstorage)
 	else
 		notify('copychat', 'chat spy disabled', 1)
 
-		for _, plr in pairs(services.players:GetPlayers()) do
+		for _, plr in services.players:GetPlayers() do
 			maid.remove(`copychat_{plr.Name}`)
 		end
 
@@ -7061,7 +7061,7 @@ cmd_library.add({'uncopychat'}, 'disables copychat', {}, function(vstorage)
 
 	copychat_vs.enabled = false
 
-	for _, plr in pairs(services.players:GetPlayers()) do
+	for _, plr in services.players:GetPlayers() do
 		maid.remove(`copychat_{plr.Name}`)
 	end
 
@@ -7089,7 +7089,7 @@ cmd_library.add({'netlag'}, 'glitches netless/reanimation users', {
 
 			maid.add(connection_id, services.run_service.Heartbeat, function()
 				if target.Character then
-					for _, v in pairs(target.Character:GetDescendants()) do
+					for _, v in target.Character:GetDescendants() do
 						if v:IsA('BasePart') then
 							pcall(sethiddenproperty, v, 'NetworkIsSleeping', false)
 						end
@@ -7125,7 +7125,7 @@ cmd_library.add({'unnetlag'}, 'stops netlagging', {
 			end
 		end
 	else
-		for connection_id in pairs(netlag_vs.connections) do
+		for connection_id in netlag_vs.connections do
 			maid.remove(connection_id)
 		end
 		netlag_vs.connections = {}
@@ -7277,7 +7277,7 @@ cmd_library.add({'instakillreach', 'instksreach'}, 'always applies newest damage
 			local tool_handle = stuff.rawrbxget(tool, 'Handle')
 			local handle_pos = stuff.rawrbxget(tool_handle, 'Position')
 
-			for _, v in pairs(workspace:GetDescendants()) do
+			for _, v in workspace:GetDescendants() do
 				if (v.Name == 'HumanoidRootPart' or v.Name == 'Head') and v.Parent:FindFirstChildOfClass('Humanoid') then
 					local v_pos = stuff.rawrbxget(v, 'Position')
 					if (handle_pos - v_pos).Magnitude <= reach then
@@ -7312,7 +7312,7 @@ cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown abil
 		return notify('grabtp', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		notify('grabtp', `bringing {target.Name} to you`, 1)
 
 		local old_pos = stuff.owner_char:GetPivot()
@@ -7816,7 +7816,7 @@ cmd_library.add({'clone'}, 'clones your character', {}, function(vstorage)
 	local clone = stuff.clone(stuff.owner_char)
 	stuff.rawrbxset(clone, 'Parent', workspace)
 
-	for _, v in pairs(clone:GetDescendants()) do
+	for _, v in clone:GetDescendants() do
 		if v:IsA('Script') or v:IsA('LocalScript') then
 			stuff.destroy(v)
 		end
@@ -7826,7 +7826,7 @@ end)
 cmd_library.add({'removeclones', 'clearclones'}, 'removes all clones', {}, function(vstorage)
 	notify('removeclones', 'clones removed', 1)
 
-	for _, v in pairs(workspace:GetChildren()) do
+	for _, v in workspace:GetChildren() do
 		if v.Name == stuff.owner_char.Name and v ~= stuff.owner_char then
 			stuff.destroy(v)
 		end
@@ -7856,7 +7856,7 @@ cmd_library.add({"wait"},"waits a specified number of seconds before running a c
 	{['...'] = 'table'}
 },function(vstorage,s,c,...)
 	local arg1,arg2,arg3,arg4 = nil,nil,nil,nil
-	for _, v in pairs(table.pack(...)) do
+	for _, v in table.pack(...) do
 		if typeof(v) == "table" then
 			if arg1 == nil then
 				arg1 = v[1]
@@ -8198,7 +8198,7 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal,
 	end
 
 	vstorage.collision_states = {}
-	for _, part in pairs(character:GetDescendants()) do
+	for _, part in character:GetDescendants() do
 		if part:IsA('BasePart') then
 			vstorage.collision_states[part] = stuff.rawrbxget(part, 'CanCollide')
 		end
@@ -8240,7 +8240,7 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal,
 
 	if vstorage.mode == 'normal' then
 		maid.add('noclip', services.run_service.Stepped, function()
-			for _, part in pairs(character:GetDescendants()) do
+			for _, part in character:GetDescendants() do
 				if part:IsA('BasePart') then
 					stuff.rawrbxset(part, 'CanCollide', false)
 				end
@@ -8249,7 +8249,7 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal,
 
 	elseif vstorage.mode == 'velocity' then
 		maid.add('noclip', services.run_service.Heartbeat, function()
-			for _, part in pairs(character:GetDescendants()) do
+			for _, part in character:GetDescendants() do
 				if part:IsA('BasePart') then
 					stuff.rawrbxset(part, 'CanCollide', false)
 
@@ -8263,7 +8263,7 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal,
 
 	elseif vstorage.mode == 'smart' then
 		maid.add('noclip_stepped', services.run_service.Stepped, function()
-			for _, part in pairs(character:GetDescendants()) do
+			for _, part in character:GetDescendants() do
 				if part:IsA('BasePart') then
 					stuff.rawrbxset(part, 'CanCollide', false)
 				end
@@ -8294,7 +8294,7 @@ cmd_library.add({'noclip', 'nc'}, 'let\'s you walk through parts (modes: normal,
 		end
 
 		maid.add('noclip_cframe_stepped', services.run_service.Stepped, function()
-			for _, part in pairs(character:GetDescendants()) do
+			for _, part in character:GetDescendants() do
 				if part:IsA('BasePart') then
 					stuff.rawrbxset(part, 'CanCollide', false)
 				end
@@ -8380,7 +8380,7 @@ cmd_library.add({'unnoclip', 'unc', 'clip'}, 'disables noclip', {}, function(vst
 		end
 
 		if noclip_vs.collision_states then
-			for part, original_state in pairs(noclip_vs.collision_states) do
+			for part, original_state in noclip_vs.collision_states do
 				if part and part.Parent then
 					pcall(function()
 						stuff.rawrbxset(part, 'CanCollide', original_state)
@@ -8388,7 +8388,7 @@ cmd_library.add({'unnoclip', 'unc', 'clip'}, 'disables noclip', {}, function(vst
 				end
 			end
 		else
-			for _, part in pairs(character:GetDescendants()) do
+			for _, part in character:GetDescendants() do
 				if part:IsA('BasePart') and part.Name ~= 'HumanoidRootPart' then
 					stuff.rawrbxset(part, 'CanCollide', true)
 				end
@@ -8561,7 +8561,7 @@ cmd_library.add({'equiptools', 'etools'}, 'equips all tools', {}, function(vstor
 	notify('equiptools', 'tools equipped', 1)
 
 	pcall(function()
-		for _, tool in pairs(stuff.owner.Backpack:GetChildren()) do
+		for _, tool in stuff.owner.Backpack:GetChildren() do
 			if tool:IsA('Tool') or tool:IsA('HopperBin') or tool:IsA('BackpackItem') then
 				stuff.rawrbxset(tool, 'Parent', stuff.owner_char)
 			end
@@ -8603,7 +8603,7 @@ cmd_library.add({'stopanimations', 'stopanim'}, 'stops all playing animations', 
 	notify('stopanimations', 'animations stopped', 1)
 
 	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-	for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+	for _, track in humanoid:GetPlayingAnimationTracks() do
 		track:Stop()
 	end
 end)
@@ -8673,7 +8673,7 @@ end)
 cmd_library.add({'removehats', 'removeaccessories', 'rhats'}, 'removes all accessories', {}, function(vstorage)
 	notify('removehats', 'accessories removed', 1)
 
-	for _, v in pairs(stuff.owner_char:GetDescendants()) do
+	for _, v in stuff.owner_char:GetDescendants() do
 		if v:IsA('Accessory') then
 			stuff.destroy(v)
 		end
@@ -9854,7 +9854,7 @@ cmd_library.add({'f3xkill', 'f3xk'}, 'kills a player by resizing their parts usi
 
 	local killed_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local head = target_char:FindFirstChild('Head')
@@ -9893,11 +9893,11 @@ cmd_library.add({'f3xfire'}, 'sets player on fire using f3x', {
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local useless_slop_garbage = {}
-			for _, part in pairs(target_char:GetDescendants()) do
+			for _, part in target_char:GetDescendants() do
 				if part:IsA('BasePart') then
 					table.insert(useless_slop_garbage, part)
 				end
@@ -9905,7 +9905,7 @@ cmd_library.add({'f3xfire'}, 'sets player on fire using f3x', {
 
 			local fire_parts = {}
 			local fire_data = {}
-			for _, part in pairs(useless_slop_garbage) do
+			for _, part in useless_slop_garbage do
 				table.insert(fire_parts, { Part = part, DecorationType = 'Fire' })
 				table.insert(fire_data, { Part = part, DecorationType = 'Fire', Color = Color3.new(1, 0.5, 0), Heat = 25, Size = 10, SecondaryColor = Color3.new(1, 0, 0) })
 			end
@@ -9937,11 +9937,11 @@ cmd_library.add({'f3xsmoke'}, 'adds smoke to player using f3x', {
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local useless_slop_garbage = {}
-			for _, part in pairs(target_char:GetDescendants()) do
+			for _, part in target_char:GetDescendants() do
 				if part:IsA('BasePart') then
 					table.insert(useless_slop_garbage, part)
 				end
@@ -9949,7 +9949,7 @@ cmd_library.add({'f3xsmoke'}, 'adds smoke to player using f3x', {
 
 			local smoke_parts = {}
 			local smoke_data = {}
-			for _, part in pairs(useless_slop_garbage) do
+			for _, part in useless_slop_garbage do
 				table.insert(smoke_parts, { Part = part, DecorationType = 'Smoke' })
 				table.insert(smoke_data, { Part = part, DecorationType = 'Smoke', Color = Color3.new(0.3, 0.3, 0.3), Opacity = 1, RiseVelocity = 10, Size = 10 })
 			end
@@ -9981,11 +9981,11 @@ cmd_library.add({'f3xsparkles', 'f3xsparkle', 'sparkles', 'sparkle'}, 'adds spar
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local parts = {}
-			for _, part in pairs(target_char:GetDescendants()) do
+			for _, part in target_char:GetDescendants() do
 				if part:IsA('BasePart') then
 					table.insert(parts, part)
 				end
@@ -9993,7 +9993,7 @@ cmd_library.add({'f3xsparkles', 'f3xsparkle', 'sparkles', 'sparkle'}, 'adds spar
 
 			local sparkle_parts = {}
 			local sparkle_data = {}
-			for _, part in pairs(parts) do
+			for _, part in parts do
 				table.insert(sparkle_parts, { Part = part, DecorationType = 'Sparkles' })
 				table.insert(sparkle_data, { Part = part, DecorationType = 'Sparkles', SparkleColor = Color3.new(1, 1, 0) })
 			end
@@ -10028,11 +10028,11 @@ cmd_library.add({'f3xspam'}, 'spams effects on player using f3x', {
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local parts = {}
-			for _, part in pairs(target_char:GetDescendants()) do
+			for _, part in target_char:GetDescendants() do
 				if part:IsA('BasePart') then
 					table.insert(parts, part)
 				end
@@ -10046,7 +10046,7 @@ cmd_library.add({'f3xspam'}, 'spams effects on player using f3x', {
 				local sparkle_parts = {}
 				local sparkle_data = {}
 
-				for _, part in pairs(parts) do
+				for _, part in parts do
 					table.insert(fire_parts, { Part = part, DecorationType = 'Fire' })
 					table.insert(fire_data, { Part = part, DecorationType = 'Fire', Color = Color3.new(math.random(), math.random(), math.random()), Heat = math.random(10, 50), Size = math.random(5, 20), SecondaryColor = Color3.new(math.random(), math.random(), math.random()) })
 					table.insert(smoke_parts, { Part = part, DecorationType = 'Smoke' })
@@ -10092,11 +10092,11 @@ cmd_library.add({'f3xtransparent', 'f3xinvis'}, 'makes player transparent using 
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local material_changes = {}
-			for _, part in pairs(target_char:GetDescendants()) do
+			for _, part in target_char:GetDescendants() do
 				if part:IsA('BasePart') then
 					table.insert(material_changes, { Part = part, Material = part.Material, Transparency = transparency, Reflectance = part.Reflectance })
 				end
@@ -10128,7 +10128,7 @@ cmd_library.add({'f3xbreak', 'break'}, 'breaks a player using f3x', {
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local torso = target_char:FindFirstChild('Torso') or target_char:FindFirstChild('LowerTorso')
@@ -10260,7 +10260,7 @@ cmd_library.add({'f3xclear', 'clear'}, 'deletes everything in workspace using f3
 	end
 
 	local useless_slop_garbage = {}
-	for _, part in pairs(workspace:GetDescendants()) do
+	for _, part in workspace:GetDescendants() do
 		if part:IsA('BasePart') and not part:IsDescendantOf(stuff.owner.Character or {}) then
 			table.insert(useless_slop_garbage, part)
 		end
@@ -10359,7 +10359,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 		end
 
 		local function murder(position, radius)
-			for _, player in pairs(services.players:GetPlayers()) do
+			for _, player in services.players:GetPlayers() do
 				if player ~= stuff.owner and not killed_cache[player] and player.Character then
 					local player_head = player.Character:FindFirstChild('Head')
 					local player_hum = player.Character:FindFirstChildOfClass('Humanoid')
@@ -10382,7 +10382,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 			local useless_slop_garbage = {}
 			local useless_slop_garbage2 = {}
 
-			for _, obj in pairs(workspace:GetDescendants()) do
+			for _, obj in workspace:GetDescendants() do
 				if obj:IsA('BasePart') and not corroded_cache[obj] then
 					local success, distance = pcall(function()
 						return (obj.Position - position).Magnitude
@@ -10394,8 +10394,8 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 				end
 			end
 
-			for _, part in pairs(useless_slop_garbage) do
-				for _, child in pairs(part:GetChildren()) do
+			for _, part in useless_slop_garbage do
+				for _, child in part:GetChildren() do
 					if child:IsA('Weld') then
 						table.insert(useless_slop_garbage2, child)
 					end
@@ -10416,7 +10416,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 
 			if #useless_slop_garbage > 0 then
 				local material_changes = {}
-				for _, part in pairs(useless_slop_garbage) do
+				for _, part in useless_slop_garbage do
 					table.insert(material_changes, { Part = part, Material = Enum.Material.CorrodedMetal, Transparency = part.Transparency, Reflectance = 0 })
 				end
 				for i = 1, #material_changes, batch_size do
@@ -11088,7 +11088,7 @@ cmd_library.add({'f3xtrap'}, 'traps a player in a box using f3x', {
 
 	local affected_players = {}
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
 			local hrp = target_char:FindFirstChild('HumanoidRootPart')
@@ -11107,7 +11107,7 @@ cmd_library.add({'f3xtrap'}, 'traps a player in a box using f3x', {
 				}
 
 				local created_parts = {}
-				for _, wall in pairs(walls) do
+				for _, wall in walls do
 					local part = sync('CreatePart', 'Normal', wall.cframe, workspace)
 					if part then
 						table.insert(created_parts, { part = part, size = wall.size, cframe = wall.cframe })
@@ -11116,27 +11116,24 @@ cmd_library.add({'f3xtrap'}, 'traps a player in a box using f3x', {
 
 				if #created_parts > 0 then
 					local resize_changes = {}
-					local color_changes = {}
 					local material_changes = {}
 					local anchor_changes = {}
 					local collision_changes = {}
 
-					for _, data in pairs(created_parts) do
+					for _, data in created_parts do
 						table.insert(resize_changes, { Part = data.part, Size = data.size, CFrame = data.cframe })
-						table.insert(color_changes, { Part = data.part, Color = Color3.fromRGB(30, 30, 30) })
 						table.insert(material_changes, { Part = data.part, Material = Enum.Material.Metal, Transparency = 0, Reflectance = 0.3 })
 						table.insert(anchor_changes, { Part = data.part, Anchored = true })
 						table.insert(collision_changes, { Part = data.part, CanCollide = true })
 					end
 
 					sync('SyncResize', resize_changes)
-					sync('SyncColor', color_changes)
 					sync('SyncMaterial', material_changes)
 					sync('SyncAnchor', anchor_changes)
 					sync('SyncCollision', collision_changes)
 
 					local parts_only = {}
-					for _, data in pairs(created_parts) do
+					for _, data in created_parts do
 						table.insert(parts_only, data.part)
 					end
 
@@ -13460,7 +13457,7 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 		return notify('partfling', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		part_fling(target)
 		task.wait(0.5)
 	end
@@ -13657,7 +13654,7 @@ cmd_library.add({'parttrap', 'ptrap', 'trap'}, 'trap them in a cage like a monke
 		end)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		notify('parttrap', `attempted trap on {target.Name}`, 1)
 		part_trap(target, 1, {})
 		task.wait(0.5)
@@ -13827,7 +13824,7 @@ cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, '
 
 	notify('partwalkfling', 'fetching all parts, your character will be reset', 1)
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
 		local old_cframe = stuff.rawrbxget(hrp, 'CFrame')
 		local cam = stuff.rawrbxget(workspace, 'CurrentCamera')
@@ -13996,7 +13993,7 @@ cmd_library.add({'fullbright', 'fb'}, 'removes darkness', {}, function(vstorage)
 			end
 		end)
 
-		for _, effect in pairs(services.lighting:GetChildren()) do
+		for _, effect in services.lighting:GetChildren() do
 			if effect:IsA('BloomEffect') or effect:IsA('BlurEffect') or effect:IsA('ColorCorrectionEffect') or effect:IsA('SunRaysEffect') then
 				stuff.rawrbxset(effect, 'Enabled', false)
 			end
@@ -14210,7 +14207,7 @@ cmd_library.add({'unbtracers', 'unbullettracers', 'untracers'}, 'disables bullet
 	vstorage.enabled = false
 	maid.remove('btracers_click')
 
-	for _, part in ipairs(workspace:GetChildren()) do
+	for _, part in workspace:GetChildren() do
 		if part.Name == 'BulletTracer' then
 			part:Destroy()
 		end
@@ -14310,7 +14307,7 @@ cmd_library.add({'xray'}, 'makes walls transparent', {
 		vstorage.original_transparency = {}
 		notify('xray', 'xray enabled', 1)
 
-		for _, part in pairs(workspace:GetDescendants()) do
+		for _, part in workspace:GetDescendants() do
 			if part:IsA('BasePart') and not part:IsDescendantOf(stuff.owner.Character) and part.Transparency < 1 then
 				vstorage.original_transparency[part] = stuff.rawrbxget(part, 'Transparency')
 				stuff.rawrbxset(part, 'Transparency', 0.7)
@@ -14330,7 +14327,7 @@ cmd_library.add({'xray'}, 'makes walls transparent', {
 		notify('xray', 'xray disabled', 1)
 		maid.remove('xray_descendant')
 
-		for part, original_transparency in pairs(vstorage.original_transparency or {}) do
+		for part, original_transparency in vstorage.original_transparency or {} do
 			if part and part.Parent then
 				stuff.rawrbxset(part, 'Transparency', original_transparency)
 			end
@@ -15463,7 +15460,7 @@ end)
 cmd_library.add({'removesky'}, 'removes sky', {}, function(vstorage)
 	notify('removesky', 'sky removed', 1)
 
-	for _, v in pairs(services.lighting:GetChildren()) do
+	for _, v in services.lighting:GetChildren() do
 		if v:IsA('Sky') then
 			stuff.destroy(v)
 		end
@@ -15599,7 +15596,7 @@ cmd_library.add({'trail'}, 'adds trail to character', {
 
 	local parsed = color or Color3.fromRGB(255, 255, 255)
 
-	for _, part in pairs(stuff.owner_char:GetDescendants()) do
+	for _, part in stuff.owner_char:GetDescendants() do
 		if part:IsA('BasePart') and part.Name == 'HumanoidRootPart' then
 			local trail = Instance.new('Trail')
 			local a0 = Instance.new('Attachment', part)
@@ -15618,7 +15615,7 @@ end)
 cmd_library.add({'untrail'}, 'removes trail from character', {}, function(vstorage)
 	notify('trail', 'trail removed', 1)
 
-	for _, v in pairs(stuff.owner_char:GetDescendants()) do
+	for _, v in stuff.owner_char:GetDescendants() do
 		if v:IsA('Trail') then
 			stuff.destroy(v)
 		end
@@ -15833,7 +15830,7 @@ cmd_library.add({'seatbring', 'sbring'}, 'bring a player using a seat tool', {
 		return notify('seatbring', 'player not found', 2)
 	end
 
-	for _, target in pairs(targets) do
+	for _, target in targets do
 		local tool = stuff.owner_char:FindFirstChildOfClass('Tool')
 
 		if not tool then
@@ -15995,7 +15992,7 @@ do
 	maid.add('cmdlist_search', ui_cmdlist_search:GetPropertyChangedSignal('Text'), function()
 		local search_text = ui_cmdlist_search.Text:lower()
 		ui_cmdlist_commandlist.CanvasPosition = Vector2.zero
-		for _, label in pairs(ui_cmdlist_commandlist:GetChildren()) do
+		for _, label in ui_cmdlist_commandlist:GetChildren() do
 			if label:IsA('TextLabel') and label ~= stuff.ui_cmdlist_template then
 				if search_text == '' then
 					label.Visible = true
