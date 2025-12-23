@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.0',
+	ver = '3.8.6',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
