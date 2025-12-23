@@ -211,7 +211,7 @@ local plugin = {
 
 		local full_text = ('slop warning ⚠ slop alert ⚠ slop detected ⚠ slop detection software ⚠ '):rep(50)
 		local display_length = 250
-		local scroll_speed = 0.05
+		local scroll_speed = 0.0001
 
 		local function yes()
 			if shared_vars.active then return end
