@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.5',
+	ver = '3.8.6',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -13278,21 +13278,22 @@ cmd_library.add({'unpartstorm', 'unpstorm', 'unpartrain'}, 'stops the part storm
 end)
 
 cmd_library.add({"deletetool"}, "gives you a tool to delete unanchored parts on serverside", {}, function()
-	local tool = Instance.new("Tool",stuff.owner:FindFirstChildOfClass("Backpack"))
-	stuff.rawrbxset(tool,"Name","delete")
-	stuff.rawrbxset(tool,"RequiresHandle",false)
-	stuff.rawrbxset(tool,"CanBeDropped",false)
-	tool.Activated:Connect(function()
+	local tool = Instance.new("Tool", stuff.owner:FindFirstChildOfClass("Backpack") )
+	stuff.rawrbxset(tool, "Name", "delete")
+	stuff.rawrbxset(tool, "RequiresHandle", false)
+	stuff.rawrbxset(tool, "CanBeDropped", false)
+	
+	maid.add('deletetool_activated', tool.Activated, function()
 		if stuff.owner:GetMouse().Target ~= nil then
 			if stuff.owner:GetMouse().Target:IsA("Part") or stuff.owner:GetMouse().Target:IsA("MeshPart") or stuff.owner:GetMouse().Target:IsA("UnionOperation") or stuff.owner:GetMouse().Target:IsA("BasePart") then
 				local target = stuff.owner:GetMouse().Target
 				if target.Anchored == false and network_check(target) == true and #target:GetConnectedParts() == 1 then
-					target.CFrame = CFrame.new(target.Position.X,workspace.FallenPartsDestroyHeight+10+target.Size.Y,target.Position.Z)
+					target.CFrame = CFrame.new(target.Position.X, workspace.FallenPartsDestroyHeight + 10 + target.Size.Y, target.Position.Z)
 					target.CanCollide = false
 					target.Velocity = Vector3.new(0,-20,0)
 				else
 					if network_check(target) == false and target.Anchored == false and #target:GetConnectedParts() == 1 then
-						notify("deletetool","you must own this part's networkowner to be able to delete it; \nmaybe try reloadnet or getting closer to it",3)
+						notify("deletetool", "you must own this part's networkowner to be able to delete it; maybe try reloadnet or getting closer to it", 3)
 					end
 				end
 			end
