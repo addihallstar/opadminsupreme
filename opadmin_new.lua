@@ -66,7 +66,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.6.5',
+	ver = '3.8.5',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -78,6 +78,7 @@ local stuff = {
 	clone = game.Clone,
 	connect = game.Changed.Connect,
 	disconnect = nil,
+	server_endpoint = nil,
 
 	owner = services.players.LocalPlayer,
 	owner_char = nil,
@@ -85,6 +86,8 @@ local stuff = {
 	ui = nil,
 	open_keybind = nil,
 	chat_prefix = nil,
+	sim_range_reset = false,
+	last_command = nil,
 
 	rawrbxget = nil,
 	rawrbxset = nil,
@@ -112,9 +115,7 @@ local stuff = {
 	frame_times = {},
 	last_frame_time = 0,
 	avg_fps = 60,
-	avg_ping = 0,
-	
-	server_endpoint = nil
+	avg_ping = 0
 }
 
 stuff.owner_char = stuff.owner.Character or stuff.owner.CharacterAdded:Wait()
@@ -136,9 +137,9 @@ local function get_plr(name)
 	local all_plrs = get_plrs()
 
 	local special_selectors;special_selectors = {
-		['@random'] = function() return {all_plrs[math.random(#all_plrs)]} end,
-		['@rand'] = function() return {all_plrs[math.random(#all_plrs)]} end,
-		['@r'] = function() return {all_plrs[math.random(#all_plrs)]} end,
+		['@random'] = function() return #all_plrs > 0 and {all_plrs[math.random(#all_plrs)]} or {} end,
+		['@rand'] = function() return special_selectors['@random']() end,
+		['@r'] = function() return special_selectors['@random']() end,
 
 		['@self'] = function() return {stuff.owner} end,
 		['@me'] = function() return {stuff.owner} end,
@@ -165,32 +166,12 @@ local function get_plr(name)
 		['@view'] = function()
 			local subject = workspace.CurrentCamera.CameraSubject
 			if subject and subject.Parent then
-				return {services.players:GetPlayerFromCharacter(subject.Parent)}
+				local plr = services.players:GetPlayerFromCharacter(subject.Parent)
+				return plr and {plr} or {}
 			end
 			return {}
 		end,
 		['@v'] = function() return special_selectors['@view']() end,
-
-		['@nearest'] = function()
-			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-			if not owner_hrp then return {} end
-
-			local nearest, nearest_dist = nil, math.huge
-			for _, plr in all_plrs do
-				if plr ~= stuff.owner and plr.Character then
-					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
-					if hrp then
-						local dist = (owner_hrp.Position - hrp.Position).Magnitude
-						if dist < nearest_dist then
-							nearest_dist = dist
-							nearest = plr
-						end
-					end
-				end
-			end
-			return nearest and {nearest} or {}
-		end,
-		['@n'] = function() return special_selectors['@nearest']() end,
 
 		['@enemies'] = function()
 			local enemies = {}
@@ -203,6 +184,7 @@ local function get_plr(name)
 			end
 			return enemies
 		end,
+		['@enemy'] = function() return special_selectors['@enemies']() end,
 
 		['@team'] = function()
 			local teammates = {}
@@ -212,11 +194,268 @@ local function get_plr(name)
 				end
 			end
 			return teammates
-		end
+		end,
+		['@teammates'] = function() return special_selectors['@team']() end,
+		['@allies'] = function() return special_selectors['@team']() end,
+		['@t'] = function() return special_selectors['@team']() end,
+
+		['@friends'] = function()
+			local friends = {}
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner then
+					local success, is_friend = pcall(function()
+						return stuff.owner:IsFriendsWith(plr.UserId)
+					end)
+					if success and is_friend then
+						table.insert(friends, plr)
+					end
+				end
+			end
+			return friends
+		end,
+		['@friend'] = function() return special_selectors['@friends']() end,
+
+		['@nonfriends'] = function()
+			local non_friends = {}
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner then
+					local success, is_friend = pcall(function()
+						return stuff.owner:IsFriendsWith(plr.UserId)
+					end)
+					if success and not is_friend then
+						table.insert(non_friends, plr)
+					elseif not success then
+						table.insert(non_friends, plr)
+					end
+				end
+			end
+			return non_friends
+		end,
+		['@notfriends'] = function() return special_selectors['@nonfriends']() end,
+		['@strangers'] = function() return special_selectors['@nonfriends']() end,
+
+		['@armed'] = function()
+			local armed = {}
+			for _, plr in all_plrs do
+				if plr.Character and plr.Character:FindFirstChildOfClass('Tool') then
+					table.insert(armed, plr)
+				end
+			end
+			return armed
+		end,
+		['@hastool'] = function() return special_selectors['@armed']() end,
+
+		['@unarmed'] = function()
+			local unarmed = {}
+			for _, plr in all_plrs do
+				if plr.Character and not plr.Character:FindFirstChildOfClass('Tool') then
+					table.insert(unarmed, plr)
+				end
+			end
+			return unarmed
+		end,
+		['@notool'] = function() return special_selectors['@unarmed']() end,
+
+		['@grounded'] = function()
+			local grounded = {}
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass('Humanoid')
+					if hum and hum.FloorMaterial ~= Enum.Material.Air then
+						table.insert(grounded, plr)
+					end
+				end
+			end
+			return grounded
+		end,
+		['@onground'] = function() return special_selectors['@grounded']() end,
+
+		['@moving'] = function()
+			local moving = {}
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local vel = hrp.AssemblyLinearVelocity
+						local h_speed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+						if h_speed > 1 then
+							table.insert(moving, plr)
+						end
+					end
+				end
+			end
+			return moving
+		end,
+
+		['@onscreen'] = function()
+			local on_screen = {}
+			local camera = workspace.CurrentCamera
+
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local _, visible = camera:WorldToViewportPoint(hrp.Position)
+						if visible then
+							table.insert(on_screen, plr)
+						end
+					end
+				end
+			end
+			return on_screen
+		end,
+		['@screen'] = function() return special_selectors['@onscreen']() end,
+
+		['@offscreen'] = function()
+			local off_screen = {}
+			local camera = workspace.CurrentCamera
+
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local _, visible = camera:WorldToViewportPoint(hrp.Position)
+						if not visible then
+							table.insert(off_screen, plr)
+						end
+					end
+				end
+			end
+			return off_screen
+		end,
+
+		['@lowhp'] = function()
+			local low_hp = {}
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass('Humanoid')
+					if hum and hum.Health > 0 and hum.Health <= hum.MaxHealth * 0.3 then
+						table.insert(low_hp, plr)
+					end
+				end
+			end
+			return low_hp
+		end,
+		['@lowhealth'] = function() return special_selectors['@lowhp']() end,
+		['@weak'] = function() return special_selectors['@lowhp']() end,
+
+		['@fullhp'] = function()
+			local full_hp = {}
+			for _, plr in all_plrs do
+				if plr.Character then
+					local hum = plr.Character:FindFirstChildOfClass('Humanoid')
+					if hum and hum.Health >= hum.MaxHealth then
+						table.insert(full_hp, plr)
+					end
+				end
+			end
+			return full_hp
+		end,
+		['@fullhealth'] = function() return special_selectors['@fullhp']() end,
+
+		['@newest'] = function()
+			local newest, newest_time = nil, 0
+			for _, plr in all_plrs do
+				if plr.AccountAge and plr.AccountAge < 365 then
+					if not newest or plr.AccountAge < newest_time then
+						newest = plr
+						newest_time = plr.AccountAge
+					end
+				end
+			end
+			return newest and {newest} or {}
+		end,
+		['@new'] = function() return special_selectors['@newest']() end,
+
+		['@oldest'] = function()
+			local oldest, oldest_time = nil, 0
+			for _, plr in all_plrs do
+				if plr.AccountAge and plr.AccountAge > oldest_time then
+					oldest = plr
+					oldest_time = plr.AccountAge
+				end
+			end
+			return oldest and {oldest} or {}
+		end,
+		['@old'] = function() return special_selectors['@oldest']() end,
+		['@veteran'] = function() return special_selectors['@oldest']() end,
+
+		['@facing'] = function()
+			local facing = {}
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not owner_hrp then return {} end
+
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner and plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local to_me = (owner_hrp.Position - hrp.Position).Unit
+						local their_look = hrp.CFrame.LookVector
+						if to_me:Dot(their_look) > 0.7 then
+							table.insert(facing, plr)
+						end
+					end
+				end
+			end
+			return facing
+		end,
+		['@lookingat'] = function() return special_selectors['@facing']() end
 	}
 
 	if special_selectors[lower_name] then
 		return special_selectors[lower_name]()
+	end
+
+	if lower_name:sub(1, 1) == '#' then
+		local team_name = lower_name:sub(2):gsub('%s', '')
+		local matched_players = {}
+
+		for _, team in services.teams:GetTeams() do
+			local team_name_lower = team.Name:lower():gsub('%s', '')
+			if team_name_lower:match('^' .. team_name) or team_name_lower:find(team_name, 1, true) then
+				for _, plr in team:GetPlayers() do
+					table.insert(matched_players, plr)
+				end
+				break
+			end
+		end
+
+		if #matched_players == 0 then
+			for _, team in services.teams:GetTeams() do
+				local team_name_lower = team.Name:lower():gsub('%s', '')
+				if team_name_lower:find(team_name, 1, true) then
+					for _, plr in team:GetPlayers() do
+						table.insert(matched_players, plr)
+					end
+					break
+				end
+			end
+		end
+
+		return #matched_players > 0 and matched_players or nil
+	end
+
+	if lower_name:match('^%%d+$') then
+		local user_id = tonumber(lower_name:sub(2))
+		if user_id then
+			for _, plr in all_plrs do
+				if plr.UserId == user_id then
+					return {plr}
+				end
+			end
+		end
+		return nil
+	end
+
+	if lower_name:match('^%*') then
+		local pattern = lower_name:sub(2)
+		local matched = {}
+		for _, plr in all_plrs do
+			if plr.Name:lower():find(pattern) or plr.DisplayName:lower():find(pattern) then
+				table.insert(matched, plr)
+			end
+		end
+		return #matched > 0 and matched or nil
 	end
 
 	lower_name = lower_name:gsub('%s', '')
@@ -507,7 +746,7 @@ local function find_f3x()
 		end
 		return nil, nil
 	end
-	
+
 	local tool, endpoint = search(stuff.owner:FindFirstChild('Backpack'))
 	if tool then return tool, endpoint end
 	tool, endpoint = search(stuff.owner.Character)
@@ -848,7 +1087,7 @@ local function esp_gui_()
 	local gui = Instance.new('ScreenGui')
 	stuff.rawrbxset(gui, 'ResetOnSpawn', false)
 	stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
-	stuff.rawrbxset(gui, 'DisplayOrder', 999)
+	stuff.rawrbxset(gui, 'DisplayOrder', 2147483647)
 	stuff.rawrbxset(gui, 'Parent', services.core_gui)
 	return gui
 end
@@ -1516,6 +1755,11 @@ function cmd_library.execute(name, ...)
 		end
 		return false
 	end
+	
+	stuff.last_command = {
+		name = name,
+		args = {...}
+	}
 
 	local vargs = {...}
 	local fvargs = {}
@@ -1563,6 +1807,7 @@ function cmd_library.execute(name, ...)
 
 		if not success then
 			notify('cmd', `error in '{name}': {tostring(err):match("[^\n]*")}`, 2)
+			notify('command error', 'report this to the develepors', 4)
 			warn(`command '{name}' failed:`, err)
 		end
 	end)
@@ -3225,6 +3470,17 @@ end)
 
 -- c2: utility
 
+cmd_library.add({'lastcommand', 'lastcmd'}, 're-runs the last command you ran', {}, function(vstorage)
+	if stuff.last_command then
+		local name, args = stuff.last_command.name, stuff.last_command.args
+		cmd_library.execute(name, unpack(args))
+		
+		notify('lastcommand', `re-ran last command: {name}`, 1)
+	else
+		notify('lastcommand', 'no command to re-run', 2)
+	end
+end)
+
 cmd_library.add({'teleporttoplace', 'toplace', 'ttp'}, 'teleports you using placeid', {
 	{'place_id', 'number'}
 }, function(vstorage, place_id)
@@ -4190,72 +4446,6 @@ cmd_library.add({'openbind', 'setopenbind'}, 'changes the command bar open keybi
 	stuff.update_keybind()
 end)
 
-cmd_library.add({'netless', 'net'}, 'enables netless for your character (prevents parts from falling)', {
-	{'hat_velocity', 'vec3'},
-	{'body_velocity', 'vec3'},
-}, function(vstorage, hat_vel, body_vel)
-	if vstorage.enabled then
-		return notify('netless', 'netless already enabled', 2)
-	end
-
-	hat_vel = hat_vel or Vector3.new(-17.7, 0, -17.7)
-	body_vel = body_vel or Vector3.new(-17.7, 0, -17.7)
-
-	vstorage.enabled = true
-	notify('netless', `netless enabled with hat velocity {tostring(hat_vel)} and body velocity {tostring(body_vel)}`, 1)
-
-	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
-
-	if sethidden then
-		maid.add('netless_simradius', services.run_service.Stepped, function()
-			pcall(function()
-				sethidden(stuff.owner, 'SimulationRadius', math.huge)
-				sethidden(stuff.owner, 'MaximumSimulationRadius', math.huge)
-				stuff.rawrbxset(stuff.owner, 'MaximumSimulationRadius', math.huge)
-			end)
-		end)
-	end
-
-	maid.add('netless_velocity', services.run_service.Heartbeat, function()
-		local char = stuff.owner_char
-		if not char then return end
-
-		for _, part in pairs(char:GetChildren()) do
-			if part:IsA('BasePart') and part.Name ~= 'HumanoidRootPart' then
-				stuff.rawrbxset(part, 'AssemblyLinearVelocity', body_vel)
-			elseif part:IsA('Accessory') and part:FindFirstChild('Handle') then
-				stuff.rawrbxset(part.Handle, 'AssemblyLinearVelocity', hat_vel)
-			end
-		end
-	end)
-
-	maid.add('netless_nocollide', services.run_service.Stepped, function()
-		local char = stuff.owner_char
-		if not char then return end
-
-		for _, part in pairs(char:GetDescendants()) do
-			if part:IsA('BasePart') then
-				stuff.rawrbxset(part, 'CanCollide', false)
-			end
-		end
-	end)
-end)
-
-cmd_library.add({'unnetless'}, 'disables netless', {}, function(vstorage)
-	local netless_vs = cmd_library.get_variable_storage('netless')
-
-	if not netless_vs or not netless_vs.enabled then
-		return notify('netless', 'netless not enabled', 2)
-	end
-
-	netless_vs.enabled = false
-	notify('netless', 'netless disabled', 1)
-
-	maid.remove('netless_simradius')
-	maid.remove('netless_velocity')
-	maid.remove('netless_nocollide')
-end)
-
 cmd_library.add({'clicktp', 'ctp'}, 'click to teleport (hold left alt and press lmb to teleport)', {
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -5046,7 +5236,6 @@ cmd_library.add({'gettools', 'tools'}, 'attempts to steal tools from others', {}
 	notify('gettools', `stole {count} tools`, 1)
 end)
 
-stuff.sim_range_reset = false
 cmd_library.add({'reloadnetwork', 'reloadnet', 'rnetwork', 'rnet'}, 'resets your simulationradius to 1000 and forces partfling to stop', {}, function(vstorage)
 	notify('reloadnetwork', 'fetching all parts, your character will be reset', 1)
 
@@ -7842,27 +8031,27 @@ cmd_library.add({'tweento', 'tweengoto', 'tgoto'}, 'tween teleport to player', {
 	if not target_plrs or #target_plrs == 0 then
 		return notify('tweento', 'player not found', 2)
 	end
-	
+
 	local target = target_plrs[1]
 	local tween_time = duration or 1
 	if target.Character and target.Character:FindFirstChild('HumanoidRootPart') then
 		local cf_value = Instance.new('CFrameValue')
-		
+
 		cf_value.Value = stuff.owner_char:GetPivot()
 		cf_value.Changed:Connect(function(new_cf)
 			stuff.owner_char:PivotTo(new_cf)
 		end)
-		
+
 		local tween_obj = services.tween_service:Create(cf_value, TweenInfo.new(tween_time, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 			Value = target.Character:GetPivot()
 		})
-		
+
 		tween_obj:Play()
 		tween_obj.Completed:Connect(function()
 			stuff.destroy(cf_value)
 		end)
 	end
-	
+
 	notify('tweento', `tweening to {target.DisplayName}`, 1)
 end)
 
@@ -9020,18 +9209,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	vstorage.part = part
 	vstorage.attachment1 = attachment1
 	vstorage.processed_parts = {}
-
-	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
-
-	if sethidden then
-		maid.add('blackhole_network', services.run_service.Heartbeat, function()
-			pcall(function()
-				sethidden(stuff.owner, 'SimulationRadius', math.huge)
-				stuff.rawrbxset(stuff.owner, 'ReplicationFocus', workspace)
-			end)
-		end)
-	end
-
+	
 	local function force_part(v)
 		if vstorage.part_count >= vstorage.max_parts then return end
 		if vstorage.processed_parts[v] then return end
@@ -9143,38 +9321,17 @@ cmd_library.add({'mousefling', 'mfling'}, 'collects parts at mouse position', {
 
 	vstorage.enabled = true
 	vstorage.radius = radius or 15
-	vstorage.max_parts = max_parts or 300
+	vstorage.max_parts = max_parts or 100
 	vstorage.part_count = 0
 	vstorage.processed_parts = {}
 
 	notify('mousefling', `mousefling enabled with radius {vstorage.radius}, max parts {vstorage.max_parts}`, 1)
 
-	local folder = Instance.new('Folder')
-	stuff.rawrbxset(folder, 'Parent', workspace)
-
 	local part = Instance.new('Part')
-	stuff.rawrbxset(part, 'Parent', folder)
-	stuff.rawrbxset(part, 'Anchored', true)
-	stuff.rawrbxset(part, 'CanCollide', false)
-	stuff.rawrbxset(part, 'Transparency', 1)
+	local attachment1 = Instance.new('Attachment', part)
 
-	local attachment1 = Instance.new('Attachment')
-	stuff.rawrbxset(attachment1, 'Parent', part)
-
-	vstorage.folder = folder
 	vstorage.part = part
 	vstorage.attachment1 = attachment1
-
-	local sethidden = sethiddenproperty or set_hidden_property or set_hidden_prop
-
-	if sethidden then
-		maid.add('mousefling_network', services.run_service.Heartbeat, function()
-			pcall(function()
-				sethidden(stuff.owner, 'SimulationRadius', math.huge)
-				stuff.rawrbxset(stuff.owner, 'ReplicationFocus', workspace)
-			end)
-		end)
-	end
 
 	local function force_part(v)
 		if vstorage.part_count >= vstorage.max_parts then return end
@@ -9238,7 +9395,7 @@ cmd_library.add({'mousefling', 'mfling'}, 'collects parts at mouse position', {
 		local mouse = stuff.owner:GetMouse()
 		local hit = mouse.Hit
 		if hit then
-			stuff.rawrbxset(attachment1, 'WorldCFrame', hit * CFrame.new(0, vstorage.radius / 2, 0))
+			stuff.rawrbxset(attachment1, 'WorldCFrame', hit)
 		end
 	end)
 end)
@@ -9273,10 +9430,10 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 	if not asset_id then
 		return notify('f3xbuild', 'asset id required', 2)
 	end
-	
+
 	local tool, s_endpoint = find_f3x()
 	stuff.server_endpoint = s_endpoint
-	
+
 	if not tool or not stuff.server_endpoint then
 		return notify('f3xbuild', 'f3x tool not found', 2)
 	end
@@ -9286,7 +9443,7 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 	local task_batch_size = 200
 	local build_parent = workspace
 
-	local function parallel_run(tasks)
+	local function parallel_run(tasks) -- "parallel"
 		local total = #tasks
 		if total == 0 then return end
 		local completed = 0
@@ -9303,7 +9460,7 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 			end
 			while batch_completed < batch_count do task.wait() end
 			if i % 1000 == 1 then
-				notify('f3xbuild', `progress: {completed}/{total}`, 0.5)
+				notify('f3xbuild', `progress: {completed}/{total}`, 1)
 			end
 		end
 	end
@@ -9333,7 +9490,7 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 			while batch_completed < batch_count do task.wait() end
 
 			if i % 100 == 1 then
-				print('progress: ' .. completed .. '/' .. total)
+				notify('f3xbuild', `progress: {completed}/{total}`, 1)
 				task.wait()
 			end
 		end
@@ -9662,7 +9819,7 @@ cmd_library.add({'f3xbuild', 'f3xb'}, 'builds a model from asset id using f3x', 
 				weld_count = weld_count + #welds
 			end
 		end
-		if i % 50 == 0 then
+		if i % batch_size == 0 then
 			task.wait()
 		end
 	end
@@ -9738,16 +9895,16 @@ cmd_library.add({'f3xfire'}, 'sets player on fire using f3x', {
 	for _, target in pairs(targets) do
 		local target_char = target.Character
 		if target_char then
-			local parts_to_fire = {}
+			local useless_slop_garbage = {}
 			for _, part in pairs(target_char:GetDescendants()) do
 				if part:IsA('BasePart') then
-					table.insert(parts_to_fire, part)
+					table.insert(useless_slop_garbage, part)
 				end
 			end
 
 			local fire_parts = {}
 			local fire_data = {}
-			for _, part in pairs(parts_to_fire) do
+			for _, part in pairs(useless_slop_garbage) do
 				table.insert(fire_parts, { Part = part, DecorationType = 'Fire' })
 				table.insert(fire_data, { Part = part, DecorationType = 'Fire', Color = Color3.new(1, 0.5, 0), Heat = 25, Size = 10, SecondaryColor = Color3.new(1, 0, 0) })
 			end
@@ -9782,16 +9939,16 @@ cmd_library.add({'f3xsmoke'}, 'adds smoke to player using f3x', {
 	for _, target in pairs(targets) do
 		local target_char = target.Character
 		if target_char then
-			local parts_to_smoke = {}
+			local useless_slop_garbage = {}
 			for _, part in pairs(target_char:GetDescendants()) do
 				if part:IsA('BasePart') then
-					table.insert(parts_to_smoke, part)
+					table.insert(useless_slop_garbage, part)
 				end
 			end
 
 			local smoke_parts = {}
 			local smoke_data = {}
-			for _, part in pairs(parts_to_smoke) do
+			for _, part in pairs(useless_slop_garbage) do
 				table.insert(smoke_parts, { Part = part, DecorationType = 'Smoke' })
 				table.insert(smoke_data, { Part = part, DecorationType = 'Smoke', Color = Color3.new(0.3, 0.3, 0.3), Opacity = 1, RiseVelocity = 10, Size = 10 })
 			end
@@ -10036,7 +10193,7 @@ cmd_library.add({'f3xv8', 'v8'}, 'derender everything using f3x', {
 		end)
 	end
 
-	local function parallel_run(tasks)
+	local function parallel_run(tasks) -- "parallel"
 		local total = #tasks
 		if total == 0 then return end
 		for i = 1, total, task_batch_size do
@@ -10101,24 +10258,24 @@ cmd_library.add({'f3xclear', 'clear'}, 'deletes everything in workspace using f3
 		return notify('f3xclear', 'f3x tool not found', 2)
 	end
 
-	local parts_to_remove = {}
+	local useless_slop_garbage = {}
 	for _, part in pairs(workspace:GetDescendants()) do
 		if part:IsA('BasePart') and not part:IsDescendantOf(stuff.owner.Character or {}) then
-			table.insert(parts_to_remove, part)
+			table.insert(useless_slop_garbage, part)
 		end
 	end
 
-	if #parts_to_remove == 0 then
+	if #useless_slop_garbage == 0 then
 		return notify('f3xclear', 'no parts found', 2)
 	end
 
 	local batch_size = 100
 	local removed = 0
 
-	for i = 1, #parts_to_remove, batch_size do
+	for i = 1, #useless_slop_garbage, batch_size do
 		local batch = {}
-		for j = i, math.min(i + batch_size - 1, #parts_to_remove) do
-			table.insert(batch, parts_to_remove[j])
+		for j = i, math.min(i + batch_size - 1, #useless_slop_garbage) do
+			table.insert(batch, useless_slop_garbage[j])
 		end
 		sync('Remove', batch)
 		removed = removed + #batch
@@ -10172,7 +10329,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 		local task_batch_size = 50
 		local batch_size = 100
 
-		local function parallel_run(tasks)
+		local function parallel_run(tasks) -- "parallel"
 			local total = #tasks
 			if total == 0 then return end
 			for i = 1, total, task_batch_size do
@@ -10220,9 +10377,9 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 			end
 		end
 
-		local function corrode(position, radius)
-			local parts_to_corrode = {}
-			local welds_to_remove = {}
+		local function murder2(position, radius)
+			local useless_slop_garbage = {}
+			local useless_slop_garbage2 = {}
 
 			for _, obj in pairs(workspace:GetDescendants()) do
 				if obj:IsA('BasePart') and not corroded_cache[obj] then
@@ -10230,25 +10387,25 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 						return (obj.Position - position).Magnitude
 					end)
 					if success and distance <= radius then
-						table.insert(parts_to_corrode, obj)
+						table.insert(useless_slop_garbage, obj)
 						corroded_cache[obj] = true
 					end
 				end
 			end
 
-			for _, part in pairs(parts_to_corrode) do
+			for _, part in pairs(useless_slop_garbage) do
 				for _, child in pairs(part:GetChildren()) do
 					if child:IsA('Weld') then
-						table.insert(welds_to_remove, child)
+						table.insert(useless_slop_garbage2, child)
 					end
 				end
 			end
 
-			if #welds_to_remove > 0 then
-				for i = 1, #welds_to_remove, batch_size do
+			if #useless_slop_garbage2 > 0 then
+				for i = 1, #useless_slop_garbage2, batch_size do
 					local batch = {}
-					for j = i, math.min(i + batch_size - 1, #welds_to_remove) do
-						table.insert(batch, welds_to_remove[j])
+					for j = i, math.min(i + batch_size - 1, #useless_slop_garbage2) do
+						table.insert(batch, useless_slop_garbage2[j])
 					end
 					pcall(function()
 						sync('RemoveWelds', batch)
@@ -10256,9 +10413,9 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 				end
 			end
 
-			if #parts_to_corrode > 0 then
+			if #useless_slop_garbage > 0 then
 				local material_changes = {}
-				for _, part in pairs(parts_to_corrode) do
+				for _, part in pairs(useless_slop_garbage) do
 					table.insert(material_changes, { Part = part, Material = Enum.Material.CorrodedMetal, Transparency = part.Transparency, Reflectance = 0 })
 				end
 				for i = 1, #material_changes, batch_size do
@@ -10391,7 +10548,7 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 				local current_radius = 3 * resize_factor
 				if current_radius <= nuke_kill_radius then
 					murder(nuke_position, current_radius)
-					corrode(nuke_position, current_radius)
+					murder2(nuke_position, current_radius)
 				end
 				task.wait()
 			end
@@ -10523,6 +10680,315 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 	end
 end)
 
+cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
+	{'size', 'number', 'optional'},
+	{'pull_strength', 'number', 'optional'}
+}, function(vstorage, size, pull_strength)
+	local tool, s_endpoint = find_f3x()
+	stuff.server_endpoint = s_endpoint
+
+	if not tool or not stuff.server_endpoint then
+		return notify('f3xblackhole', 'f3x tool not found', 2)
+	end
+
+	local current_size = size or 12
+	local strength = (pull_strength and pull_strength * 1000) or 100000 -- def: 100
+	local max_size = 1800
+	local event_horizon_ratio = 0.65
+	local build_parent = workspace
+	local move_batch_size = 2500
+	local remove_batch_size = 1500
+
+	local character = stuff.owner.Character
+	local root_part = character and character:FindFirstChild('HumanoidRootPart')
+
+	if not root_part then
+		return notify('f3xblackhole', 'character not found', 2)
+	end
+
+	local spawn_position = root_part.Position + root_part.CFrame.LookVector * 30 + Vector3.new(0, 20, 0)
+
+	local part_templates = {
+		{
+			name = 'bh_core',
+			shape = 'Ball',
+			size_mult = 1,
+			color = Color3.new(0, 0, 0),
+			material = Enum.Material.Neon,
+			transparency = 0,
+			use_rotation = false
+		},
+		{
+			name = 'bh_innerdark',
+			shape = 'Ball',
+			size_mult = 1.2,
+			color = Color3.new(0.02, 0, 0.05),
+			material = Enum.Material.Neon,
+			transparency = 0.1,
+			use_rotation = false
+		},
+		{
+			name = 'bh_innerglow',
+			shape = 'Ball',
+			size_mult = 1.5,
+			color = Color3.new(0.25, 0, 0.4),
+			material = Enum.Material.Neon,
+			transparency = 0.45,
+			use_rotation = false
+		},
+		{
+			name = 'bh_outerglow',
+			shape = 'Ball',
+			size_mult = 2.5,
+			color = Color3.new(0.3, 0.05, 0.5),
+			material = Enum.Material.Neon,
+			transparency = 0.8,
+			use_rotation = false
+		}
+	}
+
+	local bh_parts = {}
+	local blackhole_lookup = {}
+
+	local function wowzersv567753674567(template, cur_size)
+		local part_size
+		local part_cf
+
+		local s = cur_size * template.size_mult
+		part_size = Vector3.new(s, s, s)
+		part_cf = CFrame.new(spawn_position)
+
+		local part = sync('CreatePart', template.shape, part_cf, build_parent)
+		if not part then return nil end
+
+		sync('SyncResize', {{ Part = part, Size = part_size, CFrame = part_cf }})
+		sync('SyncColor', {{ Part = part, Color = template.color }})
+		sync('SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
+		sync('SyncAnchor', {{ Part = part, Anchored = true }})
+		sync('SyncCollision', {{ Part = part, CanCollide = false }})
+		sync('SetName', {part}, {template.name})
+
+		return part
+	end
+
+	local function zzz()
+		for i, template in part_templates do
+			local part = wowzersv567753674567(template, current_size)
+			if part then
+				bh_parts[i] = part
+				blackhole_lookup[part] = true
+			end
+		end
+	end
+
+	local function fix(core_size)
+		for i, template in part_templates do
+			local part = bh_parts[i]
+			local needs_recreate = not part or not part.Parent
+
+			if not needs_recreate then
+				local anchored = part.Anchored
+				local cancollide = part.CanCollide
+				if not anchored or cancollide then
+					pcall(sync, 'SyncAnchor', {{ Part = part, Anchored = true }})
+					pcall(sync, 'SyncCollision', {{ Part = part, CanCollide = false }})
+				end
+			end
+
+			if needs_recreate then
+				if part then
+					blackhole_lookup[part] = nil
+				end
+
+				local new_part = wowzersv567753674567(template, core_size)
+				if new_part then
+					bh_parts[i] = new_part
+					blackhole_lookup[new_part] = true
+				end
+			end
+		end
+	end
+
+	local function cac()
+		local cache = {}
+		for _, player in game:GetService('Players'):GetPlayers() do
+			local char = player.Character
+			if char then
+				for _, part in char:GetDescendants() do
+					if part:IsA('BasePart') then
+						cache[part] = true
+					end
+				end
+			end
+		end
+		return cache
+	end
+
+	zzz()
+
+	if not bh_parts[1] then
+		return notify('f3xblackhole', 'failed to create black hole', 2)
+	end
+
+	notify('f3xblackhole', 'created black hole', 1)
+
+	local destroyed_count = 0
+	local pulse = 0
+	local cache_time = 0
+	local repair_time = 0
+	local player_parts_cache = cac()
+
+	vstorage.blackhole_active = true
+	vstorage.blackhole_parts = bh_parts
+	vstorage.blackhole_lookup = blackhole_lookup
+	vstorage.blackhole_position = spawn_position
+
+	task.spawn(function()
+		while vstorage.blackhole_active do
+			local dt = task.wait()
+
+			cache_time = cache_time + dt
+			if cache_time > 0.2 then
+				cache_time = 0
+				player_parts_cache = cac()
+			end
+
+			repair_time = repair_time + dt
+
+			pulse = pulse + dt * 6
+
+			if current_size < max_size then
+				current_size = current_size + dt * 30
+			end
+
+			local pulse_scale = 1 + math.sin(pulse) * 0.03
+			local core_size = current_size * pulse_scale
+
+			if repair_time > 0.5 then
+				repair_time = 0
+				fix(core_size)
+			end
+
+			local resize_data = {}
+			for i, template in part_templates do
+				local part = bh_parts[i]
+				if part and part.Parent then
+					local part_size
+					local part_cf
+
+					local s = core_size * template.size_mult
+					part_size = Vector3.new(s, s, s)
+					part_cf = CFrame.new(spawn_position)
+
+					resize_data[#resize_data + 1] = { Part = part, Size = part_size, CFrame = part_cf }
+				end
+			end
+
+			if #resize_data > 0 then
+				pcall(sync, 'SyncResize', resize_data)
+			end
+
+			local pull_radius = current_size * 25
+			local pull_radius_sq = pull_radius * pull_radius
+			local event_horizon = current_size * event_horizon_ratio
+			local move_changes = {}
+			local to_remove = {}
+
+			for _, obj in workspace:GetDescendants() do
+				if obj:IsA('BasePart') and not obj:IsA('Terrain') and obj.Parent and not blackhole_lookup[obj] and not player_parts_cache[obj] then
+					local pos = obj.Position
+					local diff_x = spawn_position.X - pos.X
+					local diff_y = spawn_position.Y - pos.Y
+					local diff_z = spawn_position.Z - pos.Z
+					local dist_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z
+
+					if dist_sq < pull_radius_sq and dist_sq > 0.1 then
+						local distance = math.sqrt(dist_sq)
+
+						if distance <= event_horizon then
+							to_remove[#to_remove + 1] = obj
+						else
+							local inv_dist = 1 / distance
+							local direction = Vector3.new(diff_x * inv_dist, diff_y * inv_dist, diff_z * inv_dist)
+
+							local size_factor = current_size * current_size
+							local dist_factor = 1 / (distance * 0.5)
+							local pull_force = strength * size_factor * dist_factor * dt * 0.01
+							pull_force = math.clamp(pull_force, 0, distance * 0.85)
+
+							local tangent = direction:Cross(Vector3.yAxis)
+							if tangent.Magnitude < 0.1 then
+								tangent = direction:Cross(Vector3.xAxis)
+							end
+							tangent = tangent.Unit
+
+							local orbit_factor = math.clamp((pull_radius - distance) / pull_radius, 0, 1)
+							local orbit_force = tangent * pull_force * orbit_factor * 0.5
+
+							local new_position = pos + direction * pull_force + orbit_force
+
+							local spin_speed = pull_force * 0.1
+							local spin = CFrame.Angles(spin_speed, spin_speed * 1.2, spin_speed * 0.8)
+
+							move_changes[#move_changes + 1] = { Part = obj, CFrame = CFrame.new(new_position) * obj.CFrame.Rotation * spin }
+						end
+					end
+				end
+			end
+
+			for i = 1, #move_changes, move_batch_size do
+				local batch = {}
+				local batch_end = math.min(i + move_batch_size - 1, #move_changes)
+				for j = i, batch_end do
+					batch[#batch + 1] = move_changes[j]
+				end
+				pcall(sync, 'SyncMove', batch)
+			end
+
+			if #to_remove > 0 then
+				for i = 1, #to_remove, remove_batch_size do
+					local batch = {}
+					local batch_end = math.min(i + remove_batch_size - 1, #to_remove)
+					for j = i, batch_end do
+						batch[#batch + 1] = to_remove[j]
+					end
+					pcall(sync, 'Remove', batch)
+				end
+				destroyed_count = destroyed_count + #to_remove
+			end
+		end
+
+		notify('f3xblackhole', `collapsed after consuming {destroyed_count} parts`, 3)
+
+		pcall(function()
+			local cleanup = {}
+			for _, p in vstorage.blackhole_parts or {} do
+				if p and p.Parent then
+					cleanup[#cleanup + 1] = p
+				end
+			end
+			if #cleanup > 0 then
+				sync('Remove', cleanup)
+			end
+		end)
+
+		vstorage.blackhole_parts = nil
+		vstorage.blackhole_lookup = nil
+		vstorage.blackhole_position = nil
+	end)
+end)
+
+cmd_library.add({'unf3xblackhole', 'unf3xbh'}, 'destroys the black hole', {}, function()
+	local vstorage = cmd_library.get_variable_storage('f3xbh')
+
+	if vstorage and vstorage.blackhole_active then
+		vstorage.blackhole_active = false
+		notify('unf3xblackhole', 'black hole removed', 1)
+	else
+		notify('unf3xblackhole', 'no active black hole', 2)
+	end
+end)
+
 cmd_library.add({'f3xwall', 'wall'}, 'creates a wall in front of player using f3x', {
 	{'player', 'player'},
 	{'height', 'number'},
@@ -10531,7 +10997,7 @@ cmd_library.add({'f3xwall', 'wall'}, 'creates a wall in front of player using f3
 	if not targets or #targets == 0 then
 		targets = {stuff.owner}
 	end
-	
+
 	height = height or 20
 	width = width or 30
 
@@ -10600,7 +11066,7 @@ cmd_library.add({'f3xplatform', 'f3xplat', 'plat'}, 'creates a platform below pl
 	end
 end)
 
-cmd_library.add({'f3xtrap', 'trap'}, 'traps a player in a box using f3x', {
+cmd_library.add({'f3xtrap'}, 'traps a player in a box using f3x', {
 	{'player', 'player'},
 	{'size', 'number'},
 	{'thickness', 'number'}
@@ -10702,11 +11168,12 @@ cmd_library.add({'togglefreegamepass', 'tfreegp', 'freegp'}, 'makes the client t
 	end
 end)
 
-cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim at a player', {
+cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim at a player or npc', {
 	{'delay', 'number'},
 	{'head_only', 'boolean'},
-	{'wallcheck', 'boolean'}
-}, function(vstorage, delay, head_only, wallcheck)
+	{'wallcheck', 'boolean'},
+	{'target_npcs', 'boolean'}
+}, function(vstorage, delay, head_only, wallcheck, target_npcs)
 	if vstorage.enabled then
 		return notify('triggerbot', 'already enabled', 2)
 	end
@@ -10715,7 +11182,9 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 	vstorage.delay = math.clamp(delay or 0.02, 0, 1)
 	vstorage.head_only = head_only or false
 	vstorage.wallcheck = wallcheck ~= false
+	vstorage.target_npcs = target_npcs or false
 	vstorage.last_shot = 0
+	vstorage.npcs = {}
 
 	local valid_parts = {
 		head = true,
@@ -10751,6 +11220,26 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 				local player = services.players:GetPlayerFromCharacter(ancestor)
 				if player and player ~= stuff.owner then
 					return player, ancestor
+				end
+			end
+			ancestor = ancestor.Parent
+		end
+
+		return nil, nil
+	end
+
+	local function get_npc_from_part(part)
+		if not part then return nil, nil end
+
+		local ancestor = part
+		while ancestor do
+			if ancestor:IsA('Model') then
+				local humanoid = ancestor:FindFirstChildOfClass('Humanoid')
+				if humanoid and humanoid.Health > 0 then
+					local player = services.players:GetPlayerFromCharacter(ancestor)
+					if not player and is_npc(ancestor) then
+						return ancestor, ancestor
+					end
 				end
 			end
 			ancestor = ancestor.Parent
@@ -10799,6 +11288,30 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 		return nil, nil
 	end
 
+	if vstorage.target_npcs then
+		for _, model in workspace:GetDescendants() do
+			if is_npc(model) then
+				vstorage.npcs[model] = true
+			end
+		end
+
+		maid.add('triggerbot_npc_added', workspace.DescendantAdded, function(descendant)
+			if descendant:IsA('Model') then
+				task.defer(function()
+					if is_npc(descendant) then
+						vstorage.npcs[descendant] = true
+					end
+				end)
+			end
+		end)
+
+		maid.add('triggerbot_npc_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.npcs[descendant] then
+				vstorage.npcs[descendant] = nil
+			end
+		end)
+	end
+
 	maid.add('triggerbot', services.run_service.Heartbeat, function()
 		if not vstorage.enabled then return end
 		if not stuff.owner_char then return end
@@ -10810,6 +11323,7 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 		if not target then return end
 
 		local player, character = get_player_from_part(target)
+		local is_npc_target = false
 
 		if not player then
 			local accessory_part, accessory_char = check_accessory(target)
@@ -10820,8 +11334,16 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 			end
 		end
 
-		if not player then return end
-		if not is_target(player) then return end
+		if not player and vstorage.target_npcs then
+			local npc, npc_char = get_npc_from_part(target)
+			if npc then
+				character = npc_char
+				is_npc_target = true
+			end
+		end
+
+		if not player and not is_npc_target then return end
+		if player and not is_target(player) then return end
 		if not is_body_part(target) then return end
 
 		if vstorage.wallcheck and hit_position then
@@ -10840,7 +11362,7 @@ cmd_library.add({'triggerbot', 'tbot'}, 'automatically shoots whenever you aim a
 		mouse1click()
 	end)
 
-	notify('triggerbot', `enabled | delay: {vstorage.delay}s | head only: {vstorage.head_only} | wallcheck: {vstorage.wallcheck}`, 1)
+	notify('triggerbot', `enabled | delay: {vstorage.delay}s | head only: {vstorage.head_only} | wallcheck: {vstorage.wallcheck} | npcs: {vstorage.target_npcs}`, 1)
 end)
 
 cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function()
@@ -10850,11 +11372,14 @@ cmd_library.add({'untriggerbot', 'untbot'}, 'disables triggerbot', {}, function(
 	end
 
 	vs.enabled = false
+	table.clear(vs.npcs)
 	maid.remove('triggerbot')
+	maid.remove('triggerbot_npc_added')
+	maid.remove('triggerbot_npc_removing')
 	notify('triggerbot', 'disabled', 1)
 end)
 
-cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "auto" or "automatic" instead of a number for automatic prediction)', {
+cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy or npc (set prediction to "auto" or "automatic" instead of a number for automatic prediction)', {
 	{'toggle_key', 'string'},
 	{'fov', 'number'},
 	{'max_distance', 'number'},
@@ -10864,8 +11389,9 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 	{'priority', 'string'},
 	{'wallcheck', 'boolean'},
 	{'sticky', 'boolean'},
-	{'humanize', 'boolean'}
-}, function(vstorage, toggle_key, fov, max_distance, smoothness, target_part, prediction, priority, wallcheck, sticky, humanize)
+	{'humanize', 'boolean'},
+	{'target_npcs', 'boolean'}
+}, function(vstorage, toggle_key, fov, max_distance, smoothness, target_part, prediction, priority, wallcheck, sticky, humanize, target_npcs)
 	if vstorage.enabled then
 		return notify('aimbot', 'already enabled', 2)
 	end
@@ -10882,11 +11408,14 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 	vstorage.wallcheck = wallcheck ~= false
 	vstorage.sticky = sticky ~= false
 	vstorage.humanize = humanize or false
+	vstorage.target_npcs = target_npcs or false
 	vstorage.current_target = nil
 	vstorage.locked_player = nil
+	vstorage.locked_npc = nil
 	vstorage.last_switch = 0
 	vstorage.velocity_cache = {}
 	vstorage.smooth_offset = Vector2.zero
+	vstorage.npcs = {}
 
 	vstorage.auto_prediction = prediction == nil or prediction == 'auto' or prediction == 'automatic'
 	vstorage.base_prediction = tonumber(prediction) or 0.1
@@ -10917,13 +11446,37 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 	}
 
 	if not part_lookup[vstorage.target_part] then
-		notify('rageaim', 'invalid target part, setting to closest', 3)
+		notify('aimbot', 'invalid target part, setting to closest', 3)
 		vstorage.target_part = 'closest'
 	end
 
-	if not table.find({'fov', 'distance', 'speed', 'none'}, vstorage.priority) then
-		notify('rageaim', 'invalid priority, setting to fov', 3)
+	if not table.find({'fov', 'distance', 'health', 'threat'}, vstorage.priority) then
+		notify('aimbot', 'invalid priority, setting to fov', 3)
 		vstorage.priority = 'fov'
+	end
+
+	if vstorage.target_npcs then
+		for _, model in workspace:GetDescendants() do
+			if is_npc(model) then
+				vstorage.npcs[model] = true
+			end
+		end
+
+		maid.add('aimbot_npc_added', workspace.DescendantAdded, function(descendant)
+			if descendant:IsA('Model') then
+				task.defer(function()
+					if is_npc(descendant) then
+						vstorage.npcs[descendant] = true
+					end
+				end)
+			end
+		end)
+
+		maid.add('aimbot_npc_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.npcs[descendant] then
+				vstorage.npcs[descendant] = nil
+			end
+		end)
 	end
 
 	local function update_ping_stats()
@@ -11191,7 +11744,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		return result == nil
 	end
 
-	local function is_target_valid(plr)
+	local function is_player_valid(plr)
 		if not plr or plr == stuff.owner then return false end
 		if plr.Team and plr.Team == stuff.owner.Team then return false end
 
@@ -11201,6 +11754,16 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		local hum = char:FindFirstChildOfClass('Humanoid')
 		if not hum or hum.Health <= 0 then return false end
 		if char:FindFirstChildOfClass('ForceField') then return false end
+
+		return true
+	end
+
+	local function is_npc_valid(npc)
+		if not npc or not npc.Parent then return false end
+
+		local hum = npc:FindFirstChildOfClass('Humanoid')
+		if not hum or hum.Health <= 0 then return false end
+		if npc:FindFirstChildOfClass('ForceField') then return false end
 
 		return true
 	end
@@ -11238,8 +11801,8 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		local cam_pos = camera.CFrame.Position
 		local now = tick()
 
-		if vstorage.sticky and vstorage.locked_player then
-			if is_target_valid(vstorage.locked_player) then
+		if vstorage.sticky then
+			if vstorage.locked_player and is_player_valid(vstorage.locked_player) then
 				local char = vstorage.locked_player.Character
 				local part = get_part(char)
 				if part then
@@ -11252,19 +11815,40 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 								character = char,
 								part = part,
 								predicted = predicted,
-								is_locked = true
+								is_locked = true,
+								is_npc = false
+							}
+						end
+					end
+				end
+			elseif vstorage.locked_npc and is_npc_valid(vstorage.locked_npc) then
+				local char = vstorage.locked_npc
+				local part = get_part(char)
+				if part then
+					local world_dist = (cam_pos - part.Position).Magnitude
+					if world_dist <= vstorage.max_distance * 1.2 then
+						if not vstorage.wallcheck or has_los(cam_pos, part.Position, char) then
+							local predicted = predict_p(char, part)
+							return {
+								player = nil,
+								character = char,
+								part = part,
+								predicted = predicted,
+								is_locked = true,
+								is_npc = true
 							}
 						end
 					end
 				end
 			end
 			vstorage.locked_player = nil
+			vstorage.locked_npc = nil
 		end
 
 		local candidates = {}
 
 		for _, plr in services.players:GetPlayers() do
-			if not is_target_valid(plr) then continue end
+			if not is_player_valid(plr) then continue end
 
 			local char = plr.Character
 			local part = get_part(char)
@@ -11295,12 +11879,55 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 				screen_dist = screen_dist,
 				world_dist = world_dist,
 				health = hum and hum.Health or 100,
-				has_tool = has_tool
+				has_tool = has_tool,
+				is_npc = false
 			}
 
 			candidate.threat = calculate_threat(candidate)
 
 			table.insert(candidates, candidate)
+		end
+
+		if vstorage.target_npcs then
+			for npc in vstorage.npcs do
+				if not is_npc_valid(npc) then continue end
+
+				local part = get_part(npc)
+				if not part then continue end
+
+				local world_dist = (cam_pos - part.Position).Magnitude
+				if world_dist > vstorage.max_distance then continue end
+
+				local predicted = predict_p(npc, part)
+				local screen, visible = camera:WorldToViewportPoint(predicted)
+				if not visible or screen.Z <= 0 then continue end
+
+				local screen_dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+				if screen_dist > vstorage.fov_radius then continue end
+
+				if vstorage.wallcheck and not has_los(cam_pos, part.Position, npc) then
+					continue
+				end
+
+				local hum = npc:FindFirstChildOfClass('Humanoid')
+				local has_tool = npc:FindFirstChildOfClass('Tool') ~= nil
+
+				local candidate = {
+					player = nil,
+					char = npc,
+					part = part,
+					predicted = predicted,
+					screen_dist = screen_dist,
+					world_dist = world_dist,
+					health = hum and hum.Health or 100,
+					has_tool = has_tool,
+					is_npc = true
+				}
+
+				candidate.threat = calculate_threat(candidate)
+
+				table.insert(candidates, candidate)
+			end
 		end
 
 		if #candidates == 0 then return nil end
@@ -11319,7 +11946,13 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		local best = candidates[1]
 
 		if vstorage.sticky and now - vstorage.last_switch > 0.5 then
-			vstorage.locked_player = best.player
+			if best.is_npc then
+				vstorage.locked_npc = best.char
+				vstorage.locked_player = nil
+			else
+				vstorage.locked_player = best.player
+				vstorage.locked_npc = nil
+			end
 			vstorage.last_switch = now
 		end
 
@@ -11329,7 +11962,8 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 			part = best.part,
 			predicted = best.predicted,
 			screen_dist = best.screen_dist,
-			is_locked = false
+			is_locked = false,
+			is_npc = best.is_npc
 		}
 	end
 
@@ -11339,6 +11973,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 			if input.KeyCode == vstorage.toggle_key then
 				vstorage.active = not vstorage.active
 				vstorage.locked_player = nil
+				vstorage.locked_npc = nil
 				notify('aimbot', vstorage.active and 'activated' or 'deactivated', 1)
 			end
 		end)
@@ -11425,6 +12060,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 		vstorage.velocity_cache = {}
 		vstorage.target_velocity_history = {}
 		vstorage.locked_player = nil
+		vstorage.locked_npc = nil
 		vstorage.ping_history = {}
 		vstorage.hit_history = {}
 		vstorage.prediction_multiplier = 1.0
@@ -11432,7 +12068,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy (set prediction to "au
 
 	local key_name = tostring(vstorage.toggle_key):split('.')[3]
 	local pred_str = vstorage.auto_prediction and 'auto' or tostring(vstorage.base_prediction)
-	local msg = `enabled | fov: {vstorage.fov}° | smooth: {vstorage.smoothness} | prediction: {pred_str} | priority: {vstorage.priority}`
+	local msg = `enabled | fov: {vstorage.fov}° | smooth: {vstorage.smoothness} | prediction: {pred_str} | priority: {vstorage.priority} | npcs: {vstorage.target_npcs}`
 	if not stuff.is_mobile then
 		msg ..= ` | toggle: {key_name}`
 	end
@@ -11449,14 +12085,18 @@ cmd_library.add({'unaimbot', 'unaim'}, 'disables aimbot', {}, function()
 	vs.active = false
 	vs.current_target = nil
 	vs.locked_player = nil
+	vs.locked_npc = nil
 	vs.velocity_cache = {}
 	vs.target_velocity_history = {}
 	vs.ping_history = {}
 	vs.hit_history = {}
+	table.clear(vs.npcs)
 	maid.remove('aimbot')
 	maid.remove('aimbot_toggle')
 	maid.remove('aimbot_cleanup')
 	maid.remove('aimbot_shot_detect')
+	maid.remove('aimbot_npc_added')
+	maid.remove('aimbot_npc_removing')
 	notify('aimbot', 'disabled', 1)
 end)
 
@@ -11467,8 +12107,9 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 	{'target_part', 'string'},
 	{'prediction', 'string'},
 	{'priority', 'string'},
-	{'auto_fire', 'boolean'}
-}, function(vstorage, toggle_key, fov, max_distance, target_part, prediction, priority, auto_fire)
+	{'auto_fire', 'boolean'},
+	{'target_npcs', 'boolean'}
+}, function(vstorage, toggle_key, fov, max_distance, target_part, prediction, priority, auto_fire, target_npcs)
 	if vstorage.enabled then
 		return notify('rageaim', 'already enabled', 2)
 	end
@@ -11482,10 +12123,13 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 	vstorage.target_part = (target_part or 'head'):lower()
 	vstorage.priority = (priority or 'fov'):lower()
 	vstorage.auto_fire = auto_fire or false
+	vstorage.target_npcs = target_npcs or false
 	vstorage.locked_target = nil
 	vstorage.locked_player = nil
+	vstorage.locked_npc = nil
 	vstorage.last_fire = 0
 	vstorage.last_switch = 0
+	vstorage.npcs = {}
 
 	vstorage.auto_prediction = prediction == nil or prediction == 'auto' or prediction == 'automatic'
 	vstorage.base_prediction = tonumber(prediction) or 0.15
@@ -11511,9 +12155,33 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		vstorage.target_part = 'closest'
 	end
 
-	if not table.find({'fov', 'distance', 'speed', 'none'}, vstorage.priority) then
+	if not table.find({'fov', 'distance', 'health', 'threat'}, vstorage.priority) then
 		notify('rageaim', 'invalid priority, setting to fov', 3)
 		vstorage.priority = 'fov'
+	end
+
+	if vstorage.target_npcs then
+		for _, model in workspace:GetDescendants() do
+			if is_npc(model) then
+				vstorage.npcs[model] = true
+			end
+		end
+
+		maid.add('rageaim_npc_added', workspace.DescendantAdded, function(descendant)
+			if descendant:IsA('Model') then
+				task.defer(function()
+					if is_npc(descendant) then
+						vstorage.npcs[descendant] = true
+					end
+				end)
+			end
+		end)
+
+		maid.add('rageaim_npc_removing', workspace.DescendantRemoving, function(descendant)
+			if vstorage.npcs[descendant] then
+				vstorage.npcs[descendant] = nil
+			end
+		end)
 	end
 
 	local function update_ping_stats()
@@ -11778,7 +12446,7 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		return result == nil
 	end
 
-	local function is_target_valid(plr)
+	local function is_player_valid(plr)
 		if not plr or plr == stuff.owner then return false end
 		if plr.Team and plr.Team == stuff.owner.Team then return false end
 
@@ -11788,6 +12456,16 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		local hum = char:FindFirstChildOfClass('Humanoid')
 		if not hum or hum.Health <= 0 then return false end
 		if char:FindFirstChildOfClass('ForceField') then return false end
+
+		return true
+	end
+
+	local function is_npc_valid(npc)
+		if not npc or not npc.Parent then return false end
+
+		local hum = npc:FindFirstChildOfClass('Humanoid')
+		if not hum or hum.Health <= 0 then return false end
+		if npc:FindFirstChildOfClass('ForceField') then return false end
 
 		return true
 	end
@@ -11820,6 +12498,7 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 			if input.KeyCode == vstorage.toggle_key then
 				vstorage.active = not vstorage.active
 				vstorage.locked_player = nil
+				vstorage.locked_npc = nil
 				notify('rageaim', vstorage.active and 'activated' or 'deactivated', 1)
 			end
 		end)
@@ -11857,8 +12536,29 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		local cam_pos = cam.CFrame.Position
 		local now = tick()
 
-		if vstorage.locked_player and is_target_valid(vstorage.locked_player) then
+		if vstorage.locked_player and is_player_valid(vstorage.locked_player) then
 			local char = vstorage.locked_player.Character
+			local part = get_part(char)
+			if part then
+				local world_dist = (cam_pos - part.Position).Magnitude
+				if world_dist <= vstorage.max_distance * 1.2 then
+					if has_los(cam_pos, part.Position, char) then
+						local predicted = predict_advanced(char, part)
+						vstorage.locked_target = char
+						cam.CFrame = CFrame.lookAt(cam.CFrame.Position, predicted)
+
+						if vstorage.auto_fire then
+							if now - vstorage.last_fire > 0.05 then
+								vstorage.last_fire = now
+								mouse1click()
+							end
+						end
+						return
+					end
+				end
+			end
+		elseif vstorage.locked_npc and is_npc_valid(vstorage.locked_npc) then
+			local char = vstorage.locked_npc
 			local part = get_part(char)
 			if part then
 				local world_dist = (cam_pos - part.Position).Magnitude
@@ -11881,10 +12581,11 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 		end
 
 		vstorage.locked_player = nil
+		vstorage.locked_npc = nil
 		local candidates = {}
 
 		for _, plr in services.players:GetPlayers() do
-			if not is_target_valid(plr) then continue end
+			if not is_player_valid(plr) then continue end
 
 			local char = plr.Character
 			local part = get_part(char)
@@ -11913,11 +12614,51 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 				screen_dist = screen_dist,
 				world_dist = world_dist,
 				health = hum and hum.Health or 100,
-				has_tool = has_tool
+				has_tool = has_tool,
+				is_npc = false
 			}
 
 			candidate.threat = calculate_threat(candidate)
 			table.insert(candidates, candidate)
+		end
+
+		if vstorage.target_npcs then
+			for npc in vstorage.npcs do
+				if not is_npc_valid(npc) then continue end
+
+				local part = get_part(npc)
+				if not part then continue end
+
+				local world_dist = (cam_pos - part.Position).Magnitude
+				if world_dist > vstorage.max_distance then continue end
+
+				local predicted = predict_advanced(npc, part)
+				local screen, visible = cam:WorldToViewportPoint(predicted)
+				if not visible or screen.Z <= 0 then continue end
+
+				local screen_dist = (Vector2.new(screen.X, screen.Y) - center).Magnitude
+				if screen_dist > vstorage.fov_radius then continue end
+
+				if not has_los(cam_pos, part.Position, npc) then continue end
+
+				local hum = npc:FindFirstChildOfClass('Humanoid')
+				local has_tool = npc:FindFirstChildOfClass('Tool') ~= nil
+
+				local candidate = {
+					player = nil,
+					char = npc,
+					part = part,
+					predicted = predicted,
+					screen_dist = screen_dist,
+					world_dist = world_dist,
+					health = hum and hum.Health or 100,
+					has_tool = has_tool,
+					is_npc = true
+				}
+
+				candidate.threat = calculate_threat(candidate)
+				table.insert(candidates, candidate)
+			end
 		end
 
 		if #candidates == 0 then
@@ -11934,7 +12675,15 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 
 		local best = candidates[1]
 		vstorage.locked_target = best.char
-		vstorage.locked_player = best.player
+
+		if best.is_npc then
+			vstorage.locked_npc = best.char
+			vstorage.locked_player = nil
+		else
+			vstorage.locked_player = best.player
+			vstorage.locked_npc = nil
+		end
+
 		vstorage.last_switch = now
 
 		cam.CFrame = CFrame.lookAt(cam.CFrame.Position, best.predicted)
@@ -11950,6 +12699,7 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 	maid.add('rageaim_cleanup', stuff.owner.CharacterAdded, function()
 		vstorage.target_velocity_history = {}
 		vstorage.locked_player = nil
+		vstorage.locked_npc = nil
 		vstorage.locked_target = nil
 		vstorage.ping_history = {}
 		vstorage.hit_history = {}
@@ -11958,7 +12708,7 @@ cmd_library.add({'rageaim', 'raim', 'rage'}, 'rage aimbot with instant lock (bas
 
 	local key_name = tostring(vstorage.toggle_key):split('.')[3]
 	local pred_str = vstorage.auto_prediction and 'auto' or tostring(vstorage.base_prediction)
-	local msg = `enabled | fov: {vstorage.fov}° | prediction: {pred_str} | priority: {vstorage.priority} | auto fire: {vstorage.auto_fire}`
+	local msg = `enabled | fov: {vstorage.fov}° | prediction: {pred_str} | priority: {vstorage.priority} | auto fire: {vstorage.auto_fire} | npcs: {vstorage.target_npcs}`
 	if not stuff.is_mobile then
 		msg ..= ` | toggle: {key_name}`
 	end
@@ -11975,16 +12725,19 @@ cmd_library.add({'unrageaim', 'unraim', 'unrage'}, 'disables rage aimbot', {}, f
 	vs.active = false
 	vs.locked_target = nil
 	vs.locked_player = nil
+	vs.locked_npc = nil
 	vs.target_velocity_history = {}
 	vs.ping_history = {}
 	vs.hit_history = {}
+	table.clear(vs.npcs)
 	maid.remove('rageaim')
 	maid.remove('rageaim_toggle')
 	maid.remove('rageaim_cleanup')
 	maid.remove('rageaim_shot_detect')
+	maid.remove('rageaim_npc_added')
+	maid.remove('rageaim_npc_removing')
 	notify('rageaim', 'disabled', 1)
 end)
-
 
 cmd_library.add({'antiaim', 'aa'}, 'makes your character harder to hit (modes: spin, jitter, random, sway, flip)', {
 	{'mode', 'string'},
@@ -13220,6 +13973,43 @@ end)
 
 -- c6: visual
 
+cmd_library.add({'fullbright', 'fb'}, 'removes darkness', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		notify('fullbright', 'fullbright enabled', 1)
+
+		vstorage.original_ambient = stuff.rawrbxget(services.lighting, 'Ambient')
+		vstorage.original_brightness = stuff.rawrbxget(services.lighting, 'Brightness')
+		vstorage.original_outdoor_ambient = stuff.rawrbxget(services.lighting, 'OutdoorAmbient')
+
+		stuff.rawrbxset(services.lighting, 'Ambient', Color3.new(1, 1, 1))
+		stuff.rawrbxset(services.lighting, 'Brightness', 2)
+		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', Color3.new(1, 1, 1))
+
+		maid.add('fullbright', services.lighting.ChildAdded, function(child)
+			if vstorage.enabled then
+				if child:IsA('BloomEffect') or child:IsA('BlurEffect') or child:IsA('ColorCorrectionEffect') or child:IsA('SunRaysEffect') then
+					stuff.rawrbxset(child, 'Enabled', false)
+				end
+			end
+		end)
+
+		for _, effect in pairs(services.lighting:GetChildren()) do
+			if effect:IsA('BloomEffect') or effect:IsA('BlurEffect') or effect:IsA('ColorCorrectionEffect') or effect:IsA('SunRaysEffect') then
+				stuff.rawrbxset(effect, 'Enabled', false)
+			end
+		end
+	else
+		notify('fullbright', 'fullbright disabled', 1)
+		maid.remove('fullbright')
+
+		stuff.rawrbxset(services.lighting, 'Ambient', vstorage.original_ambient)
+		stuff.rawrbxset(services.lighting, 'Brightness', vstorage.original_brightness)
+		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', vstorage.original_outdoor_ambient)
+	end
+end)
+
 cmd_library.add({'setuiasset', 'uiasset'}, 'change the ui asset id', {{'asset_id', 'string'}}, function(storage, asset_id)
 	if not asset_id then
 		notify('config', 'please provide an asset id', 3)
@@ -13238,20 +14028,20 @@ cmd_library.add({'setuiasset', 'uiasset'}, 'change the ui asset id', {{'asset_id
 
 	if success and result then
 		config.set('ui_asset', asset_id)
-		notify('config', `ui asset set to {asset_id}. rejoin to apply.`, 5)
+		notify('config', `ui asset set to {asset_id}. new ui will be applied on the next run`, 1)
 	else
-		notify('config', 'invalid asset id or failed to load', 3)
+		notify('config', 'invalid asset id or failed to load', 2)
 	end
 end)
 
 cmd_library.add({'resetuiasset', 'defaultui'}, 'reset ui asset to default', {}, function(storage)
 	config.reset('ui_asset')
-	notify('config', 'ui asset reset to default. rejoin to apply.', 5)
+	notify('config', 'ui asset reset to default. new ui will be applied on the next run', 2)
 end)
 
 cmd_library.add({'getuiasset', 'currentui'}, 'get the current ui asset id', {}, function(storage)
 	local asset = config.get('ui_asset') or config.default_settings.ui_asset
-	notify('config', `current ui asset: {asset}`, 5)
+	notify('config', `current ui asset: {asset}`, 1)
 end)
 
 cmd_library.add({'btracers', 'bullettracers'}, 'enables bullet tracers when shooting', {
@@ -13848,7 +14638,7 @@ maid.add('player_esp_removing', services.players.PlayerRemoving, function(plr)
 	end
 end, true)
 
-cmd_library.add({'npcesp', 'npc'}, 'toggles npc esp', {
+cmd_library.add({'npcesp', 'espnpc'}, 'toggles npc esp', {
 	{'color', 'color3'}
 }, function(vstorage, color)
 	vstorage.enabled = not vstorage.enabled
@@ -14572,43 +15362,6 @@ maid.add('item_tracers_update', services.run_service.RenderStepped, function()
 		end
 	end
 end, true)
-
-cmd_library.add({'fullbright', 'fb'}, 'removes darkness', {}, function(vstorage)
-	vstorage.enabled = not vstorage.enabled
-
-	if vstorage.enabled then
-		notify('fullbright', 'fullbright enabled', 1)
-
-		vstorage.original_ambient = stuff.rawrbxget(services.lighting, 'Ambient')
-		vstorage.original_brightness = stuff.rawrbxget(services.lighting, 'Brightness')
-		vstorage.original_outdoor_ambient = stuff.rawrbxget(services.lighting, 'OutdoorAmbient')
-
-		stuff.rawrbxset(services.lighting, 'Ambient', Color3.new(1, 1, 1))
-		stuff.rawrbxset(services.lighting, 'Brightness', 2)
-		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', Color3.new(1, 1, 1))
-
-		maid.add('fullbright', services.lighting.ChildAdded, function(child)
-			if vstorage.enabled then
-				if child:IsA('BloomEffect') or child:IsA('BlurEffect') or child:IsA('ColorCorrectionEffect') or child:IsA('SunRaysEffect') then
-					stuff.rawrbxset(child, 'Enabled', false)
-				end
-			end
-		end)
-
-		for _, effect in pairs(services.lighting:GetChildren()) do
-			if effect:IsA('BloomEffect') or effect:IsA('BlurEffect') or effect:IsA('ColorCorrectionEffect') or effect:IsA('SunRaysEffect') then
-				stuff.rawrbxset(effect, 'Enabled', false)
-			end
-		end
-	else
-		notify('fullbright', 'fullbright disabled', 1)
-		maid.remove('fullbright')
-
-		stuff.rawrbxset(services.lighting, 'Ambient', vstorage.original_ambient)
-		stuff.rawrbxset(services.lighting, 'Brightness', vstorage.original_brightness)
-		stuff.rawrbxset(services.lighting, 'OutdoorAmbient', vstorage.original_outdoor_ambient)
-	end
-end)
 
 cmd_library.add({'view', 'spectate'}, 'spectate another player', {
 	{'player', 'player'}
