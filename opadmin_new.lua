@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.6',
+	ver = '3.8.0',
 	--[[   ^ ^ ^
 		   | | | hot-fix
 		   | | update
@@ -1757,10 +1757,12 @@ function cmd_library.execute(name, ...)
 		return false
 	end
 	
-	stuff.last_command = {
-		name = name,
-		args = {...}
-	}
+	if name ~= 'lastcommand' and name ~= 'lastcmd' then
+		stuff.last_command = {
+			name = name,
+			args = {...}
+		}
+	end
 
 	local vargs = {...}
 	local fvargs = {}
@@ -1970,11 +1972,7 @@ function config.apply()
 	end
 
 	for plugin_name, url in settings.saved_plugins do
-		task.spawn(function()
-			notify('plugin', `loading '{plugin_name}'...`, 4)
-			cmd_library.execute('pluginload', url)
-		end)
-		task.wait(.1)
+		cmd_library.execute('pluginload', url)
 	end
 end
 
@@ -3654,7 +3652,6 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 	{'url', 'string'}
 }, function(vars, url)
 	local success, content = pcall(function()
-		notify('plugin', 'fetching plugin from url...', 1)
 		return game:HttpGet(url, true)
 	end)
 
@@ -3666,12 +3663,24 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 	local success2, plugin_module = pcall(loadstring, content)
 	if not success2 then
 		notify('plugin', `failed to load plugin script: {plugin_module}`, 2)
+		local saved_plugins = config.get('saved_plugins') or {}
+		for name, plugin_url in saved_plugins do
+			if plugin_url == url then
+				saved_plugins[name] = nil
+				config.set('saved_plugins', saved_plugins)
+				notify('plugin', `removed saved plugin '{name}' because it's data could not be loaded`, 3)
+				break
+			end
+		end
+		
+		warn(plugin_module)
 		return
 	end
 
 	local success3, plugin_data = pcall(plugin_module)
 	if not success3 then
 		notify('plugin', `plugin execution error: {plugin_data}`, 2)
+		warn(plugin_data)
 		return
 	end
 
@@ -3746,6 +3755,10 @@ cmd_library.add({'pluginreload', 'preload'}, 'reload a plugin', {
 	{'plugin_name', 'string'},
 	{'refetch', 'boolean'}
 }, function(vars, plugin_name, refetch)
+	if not plugin_name then
+		return notify('plugin', `plugin '{plugin_name}' not found`, 2)
+	end
+	
 	local plugin = cmd_library._plugins[plugin_name:lower()]
 	if not plugin then
 		notify('plugin', `plugin '{plugin_name}' not found`, 2)
@@ -5956,7 +5969,18 @@ cmd_library.add({'fpsboost', 'performancemode'}, 'optimizes game for better fps'
 	notify('fpsboost', 'fps boost applied', 1)
 end)
 
-cmd_library.add({'copyid'}, 'copies a player\'s user id to clipboard', {
+cmd_library.add({'userid', 'id'}, 'shows the user id of a player', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	if not targets or #targets == 0 then
+		return notify('userid', 'player not found', 2)
+	end
+	
+	local target = targets[1]
+	notify('userid', `{target.Name}'s id: {target.UserId}`, 1)
+end)
+
+cmd_library.add({'copyuserid', 'copyid'}, 'copies a player\'s user id to clipboard', {
 	{'player', 'player'}
 }, function(vstorage, targets)
 	if not targets or #targets == 0 then
@@ -5979,9 +6003,21 @@ cmd_library.add({'copyjob'}, 'copies job id to clipboard', {}, function(vstorage
 end)
 
 cmd_library.add({'coords', 'position', 'pos'}, 'shows your current position', {}, function(vstorage)
-	local hrp = stuff.rawrbxget(stuff.owner_char, 'HumanoidRootPart')
-	local pos = stuff.rawrbxget(hrp, 'Position')
+	local pos = stuff.owner_char and stuff.owner_char:GetPivot().Position
+	if not pos then
+		return notify('coords', 'no character found', 2)
+	end
 	notify('coords', `position: {math.floor(pos.X)}, {math.floor(pos.Y)}, {math.floor(pos.Z)}`, 1)
+end)
+
+cmd_library.add({'copyposition', 'copycoords', 'copypos'}, 'copies your current position to clipboard', {}, function(vstorage)
+	local pos = stuff.owner_char and stuff.owner_char:GetPivot().Position
+	if not pos then
+		return notify('copyposition', 'no character found', 2)
+	end
+	
+	setclipboard(`{pos.X},{pos.Y},{pos.Z}`)
+	notify('copyposition', `copied exact position`, 1)
 end)
 
 cmd_library.add({'saveinstance', 'savegame'}, 'saves the game instance', {}, function(vstorage)
@@ -8608,7 +8644,7 @@ cmd_library.add({'stopanimations', 'stopanim'}, 'stops all playing animations', 
 	end
 end)
 
-cmd_library.add({'hipheight', 'hheight'}, 'sets hip height', {
+cmd_library.add({'hipheight', 'hheight', 'hh'}, 'sets hip height', {
 	{'height', 'number'}
 }, function(vstorage, height)
 	height = height or 0
@@ -8617,7 +8653,7 @@ cmd_library.add({'hipheight', 'hheight'}, 'sets hip height', {
 	stuff.rawrbxset(humanoid, 'HipHeight', height)
 end)
 
-cmd_library.add({'loophipheight', 'loophheight'}, 'loops hip height', {
+cmd_library.add({'loophipheight', 'loophheight', 'loophh'}, 'loops hip height', {
 	{'height', 'number'},
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, height, et)
