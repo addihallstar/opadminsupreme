@@ -168,7 +168,7 @@ local plugin = {
 			original_fov = 70
 		}
 
-		local function start_drunk()
+		local function yes()
 			shared_vars.drunk = true
 			shared_vars.original_fov = cam.FieldOfView
 
@@ -207,7 +207,7 @@ local plugin = {
 			api.notify('drunk', 'enabled', 1)
 		end
 
-		local function stop_drunk()
+		local function no()
 			shared_vars.drunk = false
 			maid:remove('drunk_camera')
 			maid:remove('drunk_movement')
@@ -230,14 +230,14 @@ local plugin = {
 			shared_vars.intensity = math.clamp(tonumber(intensity) or 1, 0.1, 3)
 
 			if shared_vars.drunk then
-				stop_drunk()
+				no()
 			else
-				start_drunk()
+				yes()
 			end
 		end)
 
 		api.add_command({'sober'}, 'disable drunk mode', {}, function(vars)
-			stop_drunk()
+			no()
 		end)
 
 		return true
