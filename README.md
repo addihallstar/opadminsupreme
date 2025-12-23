@@ -1,6 +1,6 @@
 # opadmin
 
-another admin script yes, currently we have 293 commands
+another admin script yes, currently we have 292 commands (297 if count plugins from opadmin)
 
 16000 lines op
 
