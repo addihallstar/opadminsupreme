@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.8.0',
+	ver = '3.9.0',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -950,9 +950,15 @@ local function str_to_type(str, t)
 				local n = tonumber(num:match('^%s*(.-)%s*$'))
 				if n then table.insert(parts, n) end
 			end
+			
 			if #parts >= 3 then
 				return CFrame.new(parts[1], parts[2], parts[3])
+			elseif #parts >= 7 then
+				return CFrame.new(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7])
+			elseif #parts >= 12 then
+				return CFrame.new(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], parts[9], parts[10], parts[11], parts[12])
 			end
+			
 			return nil
 		end,
 
@@ -3610,7 +3616,6 @@ cmd_library.add({'usetools', 'activatetools'}, 'equips all tools, activates them
 
 	notify('usetools', 'activated all tools', 1)
 end)
-
 
 cmd_library.add({'loadstring', 'run', 'script', 'execute', 'ls'}, 'run given luau code', {
 	{'...', 'string'}
@@ -9229,20 +9234,12 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	end
 
 	local hrp = character.HumanoidRootPart
-
-	local folder = Instance.new('Folder')
-	stuff.rawrbxset(folder, 'Parent', workspace)
-
+	
 	local part = Instance.new('Part')
-	stuff.rawrbxset(part, 'Parent', folder)
-	stuff.rawrbxset(part, 'Anchored', true)
-	stuff.rawrbxset(part, 'CanCollide', false)
-	stuff.rawrbxset(part, 'Transparency', 1)
 
 	local attachment1 = Instance.new('Attachment')
 	stuff.rawrbxset(attachment1, 'Parent', part)
 
-	vstorage.folder = folder
 	vstorage.part = part
 	vstorage.attachment1 = attachment1
 	vstorage.processed_parts = {}
@@ -9329,10 +9326,6 @@ cmd_library.add({'unblackhole', 'unbh'}, 'disables black hole', {}, function(vst
 
 	if blackhole_vs.attachment1 then
 		stuff.rawrbxset(blackhole_vs.attachment1, 'WorldCFrame', CFrame.new(0, -1000, 0))
-	end
-
-	if blackhole_vs.folder then
-		blackhole_vs.folder:Destroy()
 	end
 
 	maid.remove('blackhole_network')
@@ -9448,10 +9441,6 @@ cmd_library.add({'unmousefling', 'unmfling'}, 'disables mousefling', {}, functio
 
 	if mf_vs.attachment1 then
 		stuff.rawrbxset(mf_vs.attachment1, 'WorldCFrame', CFrame.new(0, -1000, 0))
-	end
-
-	if mf_vs.folder then
-		mf_vs.folder:Destroy()
 	end
 
 	maid.remove('mousefling_network')
@@ -10718,8 +10707,8 @@ cmd_library.add({'f3xnuke', 'nuke'}, 'kaboom? yes rico kaboom', {
 end)
 
 cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
-	{'size', 'number', 'optional'},
-	{'pull_strength', 'number', 'optional'}
+	{'size', 'number'},
+	{'pull_strength', 'number'}
 }, function(vstorage, size, pull_strength)
 	local tool, s_endpoint = find_f3x()
 	stuff.server_endpoint = s_endpoint
@@ -10728,15 +10717,15 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 		return notify('f3xblackhole', 'f3x tool not found', 2)
 	end
 
+	local sqrt, clamp, min, max, sin, floor = math.sqrt, math.clamp, math.min, math.max, math.sin, math.floor
 	local current_size = size or 12
-	local strength = (pull_strength and pull_strength * 1000) or 100000 -- def: 100
+	local base_strength = (pull_strength and pull_strength * 1000) or 100000
 	local max_size = 1800
-	local event_horizon_ratio = 0.65
-	local build_parent = workspace
-	local move_batch_size = 2500
-	local remove_batch_size = 1500
+	local ratio = 0.65
+	local useless = 7
+	local slop = 1.8
 
-	local character = stuff.owner.Character
+	local character = stuff.owner_char
 	local root_part = character and character:FindFirstChild('HumanoidRootPart')
 
 	if not root_part then
@@ -10753,7 +10742,6 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			color = Color3.new(0, 0, 0),
 			material = Enum.Material.Neon,
 			transparency = 0,
-			use_rotation = false
 		},
 		{
 			name = 'bh_innerdark',
@@ -10762,7 +10750,6 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			color = Color3.new(0.02, 0, 0.05),
 			material = Enum.Material.Neon,
 			transparency = 0.1,
-			use_rotation = false
 		},
 		{
 			name = 'bh_innerglow',
@@ -10771,7 +10758,6 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			color = Color3.new(0.25, 0, 0.4),
 			material = Enum.Material.Neon,
 			transparency = 0.45,
-			use_rotation = false
 		},
 		{
 			name = 'bh_outerglow',
@@ -10780,30 +10766,51 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			color = Color3.new(0.3, 0.05, 0.5),
 			material = Enum.Material.Neon,
 			transparency = 0.8,
-			use_rotation = false
 		}
 	}
 
 	local bh_parts = {}
 	local blackhole_lookup = {}
+	local part_velocities = {}
+	local total_mass = 0
+	local destroyed_count = 0
+
+	local overlap_params = OverlapParams.new()
+	overlap_params.FilterType = Enum.RaycastFilterType.Exclude
+	overlap_params.MaxParts = 2000
+
+	local function update_overlap_filter()
+		local filter_list = {}
+		local char = stuff.owner_char
+		if char then
+			filter_list[#filter_list + 1] = char
+		end
+		for _, part in bh_parts do
+			if part and part.Parent then
+				filter_list[#filter_list + 1] = part
+			end
+		end
+		overlap_params.FilterDescendantsInstances = filter_list
+	end
+
+	local function mass_to_size(mass)
+		return (mass ^ 0.35) * 0.025
+	end
 
 	local function wowzersv567753674567(template, cur_size)
-		local part_size
-		local part_cf
-
 		local s = cur_size * template.size_mult
-		part_size = Vector3.new(s, s, s)
-		part_cf = CFrame.new(spawn_position)
+		local part_size = Vector3.new(s, s, s)
+		local part_cf = CFrame.new(spawn_position)
 
-		local part = sync('CreatePart', template.shape, part_cf, build_parent)
+		local part = sync('CreatePart', template.shape, part_cf, workspace)
 		if not part then return nil end
 
-		sync('SyncResize', {{ Part = part, Size = part_size, CFrame = part_cf }})
-		sync('SyncColor', {{ Part = part, Color = template.color }})
-		sync('SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
-		sync('SyncAnchor', {{ Part = part, Anchored = true }})
-		sync('SyncCollision', {{ Part = part, CanCollide = false }})
-		sync('SetName', {part}, {template.name})
+		task.spawn(sync, 'SyncResize', {{ Part = part, Size = part_size, CFrame = part_cf }})
+		task.spawn(sync, 'SyncColor', {{ Part = part, Color = template.color }})
+		task.spawn(sync, 'SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
+		task.spawn(sync, 'SyncAnchor', {{ Part = part, Anchored = true }})
+		task.spawn(sync, 'SyncCollision', {{ Part = part, CanCollide = false }})
+		task.spawn(sync, 'SetName', {part}, {template.name})
 
 		return part
 	end
@@ -10816,49 +10823,41 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				blackhole_lookup[part] = true
 			end
 		end
+		update_overlap_filter()
 	end
 
 	local function fix(core_size)
+		local needs_filter_update = false
 		for i, template in part_templates do
 			local part = bh_parts[i]
 			local needs_recreate = not part or not part.Parent
 
 			if not needs_recreate then
-				local anchored = part.Anchored
-				local cancollide = part.CanCollide
-				if not anchored or cancollide then
+				if not part.Anchored or part.CanCollide then
 					pcall(sync, 'SyncAnchor', {{ Part = part, Anchored = true }})
 					pcall(sync, 'SyncCollision', {{ Part = part, CanCollide = false }})
+				end
+				if part.Material ~= template.material or part.Transparency ~= template.transparency then
+					pcall(sync, 'SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
+				end
+				if part.Color ~= template.color then
+					pcall(sync, 'SyncColor', {{ Part = part, Color = template.color }})
 				end
 			end
 
 			if needs_recreate then
-				if part then
-					blackhole_lookup[part] = nil
-				end
-
+				if part then blackhole_lookup[part] = nil end
 				local new_part = wowzersv567753674567(template, core_size)
 				if new_part then
 					bh_parts[i] = new_part
 					blackhole_lookup[new_part] = true
+					needs_filter_update = true
 				end
 			end
 		end
-	end
-
-	local function cac()
-		local cache = {}
-		for _, player in game:GetService('Players'):GetPlayers() do
-			local char = player.Character
-			if char then
-				for _, part in char:GetDescendants() do
-					if part:IsA('BasePart') then
-						cache[part] = true
-					end
-				end
-			end
+		if needs_filter_update then
+			update_overlap_filter()
 		end
-		return cache
 	end
 
 	zzz()
@@ -10869,11 +10868,10 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 
 	notify('f3xblackhole', 'created black hole', 1)
 
-	local destroyed_count = 0
 	local pulse = 0
-	local cache_time = 0
-	local repair_time = 0
-	local player_parts_cache = cac()
+	local refitslop = 0
+	local himynameisbob = 0
+	local filter_update_timer = 0
 
 	vstorage.blackhole_active = true
 	vstorage.blackhole_parts = bh_parts
@@ -10881,43 +10879,52 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 	vstorage.blackhole_position = spawn_position
 
 	task.spawn(function()
+		local last_tick = os.clock()
+
 		while vstorage.blackhole_active do
-			local dt = task.wait()
+			local now = os.clock()
+			local real_dt = now - last_tick
+			last_tick = now
 
-			cache_time = cache_time + dt
-			if cache_time > 0.2 then
-				cache_time = 0
-				player_parts_cache = cac()
+			local dt = clamp(real_dt, 0.001, 0.1)
+
+			himynameisbob = himynameisbob + dt
+			if himynameisbob > 2 then
+				himynameisbob = 0
+				local dead = {}
+				for obj in part_velocities do
+					if not obj or not obj.Parent then
+						dead[#dead + 1] = obj
+					end
+				end
+				for _, obj in dead do
+					part_velocities[obj] = nil
+				end
 			end
 
-			repair_time = repair_time + dt
-
-			pulse = pulse + dt * 6
-
-			if current_size < max_size then
-				current_size = current_size + dt * 30
+			filter_update_timer = filter_update_timer + dt
+			if filter_update_timer > 1 then
+				filter_update_timer = 0
+				update_overlap_filter()
 			end
 
-			local pulse_scale = 1 + math.sin(pulse) * 0.03
+			refitslop = refitslop + dt
+			pulse = pulse + dt * 3
+
+			local pulse_scale = 1 + sin(pulse) * 0.03
 			local core_size = current_size * pulse_scale
 
-			if repair_time > 0.5 then
-				repair_time = 0
-				fix(core_size)
+			if refitslop > 0.5 then
+				refitslop = 0
+				task.spawn(fix, core_size)
 			end
 
 			local resize_data = {}
 			for i, template in part_templates do
 				local part = bh_parts[i]
 				if part and part.Parent then
-					local part_size
-					local part_cf
-
 					local s = core_size * template.size_mult
-					part_size = Vector3.new(s, s, s)
-					part_cf = CFrame.new(spawn_position)
-
-					resize_data[#resize_data + 1] = { Part = part, Size = part_size, CFrame = part_cf }
+					resize_data[#resize_data + 1] = { Part = part, Size = Vector3.new(s, s, s), CFrame = CFrame.new(spawn_position) }
 				end
 			end
 
@@ -10925,77 +10932,206 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				pcall(sync, 'SyncResize', resize_data)
 			end
 
-			local pull_radius = current_size * 25
+			local strength = base_strength * (1 + current_size * 0.01)
+			local pull_radius = current_size * 35 + 400
 			local pull_radius_sq = pull_radius * pull_radius
-			local event_horizon = current_size * event_horizon_ratio
+			local event_horizon = current_size * ratio
+			local event_horizon_sq = event_horizon * event_horizon
+			local spaghetti_zone = current_size * slop
+			local tidal_zone = current_size * 4
+			local orbit_zone = current_size * 18
+			local max_spin_dist = pull_radius * 0.4
+
 			local move_changes = {}
+			local shrink_changes = {}
 			local to_remove = {}
+			local frame_mass = 0
 
-			for _, obj in workspace:GetDescendants() do
-				if obj:IsA('BasePart') and not obj:IsA('Terrain') and obj.Parent and not blackhole_lookup[obj] and not player_parts_cache[obj] then
+			local sp_x = spawn_position.X
+			local sp_y = spawn_position.Y
+			local sp_z = spawn_position.Z
+
+			local parts_in_radius = workspace:GetPartBoundsInRadius(spawn_position, pull_radius, overlap_params)
+
+			for _, obj in parts_in_radius do
+				if not obj:IsA('Terrain') and obj.Parent and not blackhole_lookup[obj] then
 					local pos = obj.Position
-					local diff_x = spawn_position.X - pos.X
-					local diff_y = spawn_position.Y - pos.Y
-					local diff_z = spawn_position.Z - pos.Z
-					local dist_sq = diff_x * diff_x + diff_y * diff_y + diff_z * diff_z
+					local dx = sp_x - pos.X
+					local dy = sp_y - pos.Y
+					local dz = sp_z - pos.Z
+					local dist_sq = dx * dx + dy * dy + dz * dz
 
-					if dist_sq < pull_radius_sq and dist_sq > 0.1 then
-						local distance = math.sqrt(dist_sq)
+					if dist_sq > 0.01 then
+						local dist = sqrt(dist_sq)
 
-						if distance <= event_horizon then
+						if dist <= event_horizon then
 							to_remove[#to_remove + 1] = obj
+							local vel = part_velocities[obj]
+							local orig_mass = vel and vel.orig_mass or obj.Mass
+							frame_mass = frame_mass + orig_mass
+							part_velocities[obj] = nil
 						else
-							local inv_dist = 1 / distance
-							local direction = Vector3.new(diff_x * inv_dist, diff_y * inv_dist, diff_z * inv_dist)
+							local vel = part_velocities[obj]
+							if not vel then
+								vel = { x = 0, y = 0, z = 0, spin = 0, time = 0, orig_size = obj.Size, orig_mass = obj.Mass, anchored = false }
+								part_velocities[obj] = vel
+							end
+
+							if not vel.anchored then
+								vel.anchored = true
+								task.spawn(pcall, sync, 'SyncAnchor', {{ Part = obj, Anchored = true }})
+							end
+
+							vel.time = vel.time + dt
+
+							local time_factor = clamp(vel.time / useless, 0, 1)
+							local decay_mult = 1 + time_factor * time_factor * 6
+
+							local inv_dist = 1 / dist
+							local dir_x = dx * inv_dist
+							local dir_y = dy * inv_dist
+							local dir_z = dz * inv_dist
+
+							local grav_mult = 1
+							if dist < tidal_zone then
+								local t = 1 - dist / tidal_zone
+								grav_mult = 1 + t * t * 4
+							end
 
 							local size_factor = current_size * current_size
-							local dist_factor = 1 / (distance * 0.5)
-							local pull_force = strength * size_factor * dist_factor * dt * 0.01
-							pull_force = math.clamp(pull_force, 0, distance * 0.85)
+							local dist_factor = 1 / (dist * 0.4 + current_size * 0.5)
+							local pull_accel = strength * size_factor * dist_factor * grav_mult * decay_mult * 0.000008
 
-							local tangent = direction:Cross(Vector3.yAxis)
-							if tangent.Magnitude < 0.1 then
-								tangent = direction:Cross(Vector3.xAxis)
+							vel.x = vel.x + dir_x * pull_accel * dt
+							vel.y = vel.y + dir_y * pull_accel * dt
+							vel.z = vel.z + dir_z * pull_accel * dt
+
+							local orbit_strength_mult = clamp(1 - time_factor * 1.4, 0, 1)
+
+							if dist < orbit_zone and orbit_strength_mult > 0.01 then
+								local orbit_t = clamp((orbit_zone - dist) / orbit_zone, 0, 1)
+
+								local tan_x = -dir_z
+								local tan_z = dir_x
+
+								local horizontal_dist = sqrt(dir_x * dir_x + dir_z * dir_z)
+								if horizontal_dist > 0.01 then
+									tan_x = -dir_z / horizontal_dist
+									tan_z = dir_x / horizontal_dist
+								end
+
+								local orbital_vel = sqrt(strength * current_size * 0.00001 / (dist * 0.3 + 1))
+								local orbit_force = orbital_vel * orbit_t * orbit_t * orbit_strength_mult * 2
+
+								vel.x = vel.x + tan_x * orbit_force * dt
+								vel.z = vel.z + tan_z * orbit_force * dt
 							end
-							tangent = tangent.Unit
 
-							local orbit_factor = math.clamp((pull_radius - distance) / pull_radius, 0, 1)
-							local orbit_force = tangent * pull_force * orbit_factor * 0.5
+							local base_drag = 0.002 + (1 - dist / pull_radius) * 0.01
+							local time_drag = time_factor * 0.015
+							local drag = 1 - clamp(base_drag + time_drag, 0, 0.06)
+							vel.x = vel.x * drag
+							vel.y = vel.y * drag
+							vel.z = vel.z * drag
 
-							local new_position = pos + direction * pull_force + orbit_force
+							local speed = sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)
+							local max_speed = dist * 3 + current_size * 1.5
+							if speed > max_speed then
+								local scale = max_speed / speed
+								vel.x = vel.x * scale
+								vel.y = vel.y * scale
+								vel.z = vel.z * scale
+								speed = max_speed
+							end
 
-							local spin_speed = pull_force * 0.1
-							local spin = CFrame.Angles(spin_speed, spin_speed * 1.2, spin_speed * 0.8)
+							local new_x = pos.X + vel.x * dt
+							local new_y = pos.Y + vel.y * dt
+							local new_z = pos.Z + vel.z * dt
 
-							move_changes[#move_changes + 1] = { Part = obj, CFrame = CFrame.new(new_position) * obj.CFrame.Rotation * spin }
+							local check_dx = sp_x - new_x
+							local check_dy = sp_y - new_y
+							local check_dz = sp_z - new_z
+							local check_dist_sq = check_dx * check_dx + check_dy * check_dy + check_dz * check_dz
+
+							if check_dist_sq < event_horizon_sq then
+								to_remove[#to_remove + 1] = obj
+								frame_mass = frame_mass + vel.orig_mass
+								part_velocities[obj] = nil
+							else
+								local check_dist = sqrt(check_dist_sq)
+
+								local spin_factor
+								if check_dist <= max_spin_dist then
+									spin_factor = 1
+								else
+									spin_factor = clamp((pull_radius - check_dist) / (pull_radius - max_spin_dist), 0, 1)
+									spin_factor = spin_factor * spin_factor
+								end
+
+								local min_spin_rate = 0.01
+								local max_spin_rate = 0.25
+								local spin_rate = speed * (min_spin_rate + (max_spin_rate - min_spin_rate) * spin_factor) * dt
+								vel.spin = vel.spin + spin_rate
+
+								local spin_axis
+								if speed > 0.1 then
+									spin_axis = Vector3.new(vel.x, vel.y, vel.z).Unit
+								else
+									spin_axis = Vector3.yAxis
+								end
+
+								local spin_cf = CFrame.fromAxisAngle(spin_axis, vel.spin)
+								local new_cf = CFrame.new(new_x, new_y, new_z) * spin_cf
+
+								if check_dist < spaghetti_zone then
+									local shrink_t = 1 - (check_dist - event_horizon) / (spaghetti_zone - event_horizon)
+									shrink_t = clamp(shrink_t, 0, 1)
+									shrink_t = shrink_t * shrink_t
+
+									local shrink_factor = 1 - shrink_t * 0.9
+									shrink_factor = max(shrink_factor, 0.08)
+
+									local orig = vel.orig_size
+									local new_size = Vector3.new(
+										max(orig.X * shrink_factor, 0.05),
+										max(orig.Y * shrink_factor, 0.05),
+										max(orig.Z * shrink_factor, 0.05)
+									)
+
+									shrink_changes[#shrink_changes + 1] = { Part = obj, Size = new_size, CFrame = new_cf }
+								else
+									move_changes[#move_changes + 1] = { Part = obj, CFrame = new_cf }
+								end
+							end
 						end
 					end
 				end
 			end
 
-			for i = 1, #move_changes, move_batch_size do
-				local batch = {}
-				local batch_end = math.min(i + move_batch_size - 1, #move_changes)
-				for j = i, batch_end do
-					batch[#batch + 1] = move_changes[j]
+			if frame_mass > 0 then
+				local growth = mass_to_size(frame_mass)
+				if current_size < max_size then
+					current_size = min(current_size + growth, max_size)
 				end
-				pcall(sync, 'SyncMove', batch)
+				total_mass = total_mass + frame_mass
 			end
 
-			if #to_remove > 0 then
-				for i = 1, #to_remove, remove_batch_size do
-					local batch = {}
-					local batch_end = math.min(i + remove_batch_size - 1, #to_remove)
-					for j = i, batch_end do
-						batch[#batch + 1] = to_remove[j]
-					end
-					pcall(sync, 'Remove', batch)
-				end
-				destroyed_count = destroyed_count + #to_remove
+			destroyed_count = destroyed_count + #to_remove
+
+			if #move_changes > 0 then
+				task.spawn(pcall, sync, 'SyncMove', move_changes)
 			end
+			if #shrink_changes > 0 then
+				task.spawn(pcall, sync, 'SyncResize', shrink_changes)
+			end
+			if #to_remove > 0 then
+				task.spawn(pcall, sync, 'Remove', to_remove)
+			end
+
+			task.wait()
 		end
 
-		notify('f3xblackhole', `collapsed after consuming {destroyed_count} parts`, 1)
+		notify('f3xblackhole', `collapsed | {destroyed_count} parts | {floor(total_mass)} mass | size {floor(current_size)}`, 1)
 
 		pcall(function()
 			local cleanup = {}
@@ -11009,6 +11145,7 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			end
 		end)
 
+		part_velocities = nil
 		vstorage.blackhole_parts = nil
 		vstorage.blackhole_lookup = nil
 		vstorage.blackhole_position = nil
@@ -11020,7 +11157,6 @@ cmd_library.add({'unf3xblackhole', 'unf3xbh'}, 'destroys the black hole', {}, fu
 
 	if vstorage and vstorage.blackhole_active then
 		vstorage.blackhole_active = false
-		notify('unf3xblackhole', 'black hole removed', 1)
 	else
 		notify('unf3xblackhole', 'no active black hole', 2)
 	end
@@ -14556,17 +14692,29 @@ cmd_library.add({'uncrosshair', 'uncross', 'unxhair'}, 'disables crosshair', {},
 end)
 
 cmd_library.add({'esp', 'playeresp'}, 'toggles player esp', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3', 'optional'},
+	{'box', 'boolean', 'optional'},
+	{'highlight', 'boolean', 'optional'},
+	{'name', 'boolean', 'optional'},
+	{'distance', 'boolean', 'optional'},
+	{'health', 'boolean', 'optional'},
+	{'tool', 'boolean', 'optional'}
+}, function(vstorage, color, box, highlight, name, distance, health, tool)
 	vstorage.enabled = not vstorage.enabled
-	vstorage.team = color == 'team'
 	vstorage.frames = vstorage.frames or {}
 	vstorage.highlights = vstorage.highlights or {}
 
-	if not vstorage.team and color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(176, 126, 215)
+
+	vstorage.opts = vstorage.opts or { box = true, highlight = true, name = true, dist = true, health = true, tool = true }
+
+	if box ~= nil then vstorage.opts.box = box end
+	if highlight ~= nil then vstorage.opts.highlight = highlight end
+	if name ~= nil then vstorage.opts.name = name end
+	if distance ~= nil then vstorage.opts.dist = distance end
+	if health ~= nil then vstorage.opts.health = health end
+	if tool ~= nil then vstorage.opts.tool = tool end
 
 	if vstorage.enabled then
 		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
@@ -14587,6 +14735,8 @@ maid.add('player_esp_update', services.run_service.RenderStepped, function()
 
 	local camera = workspace.CurrentCamera
 	local active = {}
+	local opts = vstorage.opts
+	local is_team_color = vstorage.color == 'team'
 
 	for _, plr in services.players:GetPlayers() do
 		if plr == stuff.owner or not plr.Character then continue end
@@ -14610,40 +14760,55 @@ maid.add('player_esp_update', services.run_service.RenderStepped, function()
 			continue
 		end
 
+		local esp_color = vstorage.color
+		if is_team_color and plr.Team then
+			esp_color = plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
+		else
+			esp_color = Color3.fromRGB(176, 126, 215)
+		end
+
 		local cf, size = char:GetBoundingBox()
 		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size)
 
-		if not esp_frame or not esp_frame.Parent then
-			if esp_frame then pcall(stuff.destroy, esp_frame) end
-			esp_frame = esp_frame_(vstorage.screen_gui)
-			vstorage.frames[plr] = esp_frame
-		end
-
-		local esp_color = vstorage.color
-		if vstorage.team and plr.Team then
-			esp_color = plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
-		end
-
-		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or 0
-
-		local health_data = humanoid and get_health_data(humanoid) or nil
-
-		local tool_names = {}
-		for _, tool in char:GetChildren() do
-			if tool:IsA('Tool') then
-				table.insert(tool_names, stuff.rawrbxget(tool, 'Name'))
+		if opts.box then
+			if not esp_frame or not esp_frame.Parent then
+				if esp_frame then pcall(stuff.destroy, esp_frame) end
+				esp_frame = esp_frame_(vstorage.screen_gui)
+				vstorage.frames[plr] = esp_frame
 			end
+
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			local dist = opts.dist and owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or nil
+			local health_data = opts.health and humanoid and get_health_data(humanoid) or nil
+
+			local tool_names = nil
+			if opts.tool then
+				tool_names = {}
+				for _, t in char:GetChildren() do
+					if t:IsA('Tool') then
+						table.insert(tool_names, stuff.rawrbxget(t, 'Name'))
+					end
+				end
+				tool_names = #tool_names > 0 and table.concat(tool_names, '\n') or nil
+			end
+
+			local display_name = opts.name and plr.Name or nil
+
+			update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, esp_color, display_name, dist, health_data, tool_names, true)
+		elseif esp_frame then
+			stuff.rawrbxset(esp_frame, 'Visible', false)
 		end
 
-		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, esp_color, plr.Name, distance, health_data, #tool_names > 0 and table.concat(tool_names, '\n') or nil, true)
-
-		if not highlight or not highlight.Parent then
-			if highlight then pcall(stuff.destroy, highlight) end
-			highlight = highlight_(char, esp_color)
-			vstorage.highlights[plr] = highlight
-		else
-			update_highlight(highlight, char, esp_color)
+		if opts.highlight then
+			if not highlight or not highlight.Parent then
+				if highlight then pcall(stuff.destroy, highlight) end
+				highlight = highlight_(char, esp_color)
+				vstorage.highlights[plr] = highlight
+			else
+				update_highlight(highlight, char, esp_color)
+			end
+		elseif highlight then
+			stuff.rawrbxset(highlight, 'Enabled', false)
 		end
 	end
 
@@ -14674,17 +14839,28 @@ maid.add('player_esp_removing', services.players.PlayerRemoving, function(plr)
 end, true)
 
 cmd_library.add({'npcesp', 'espnpc'}, 'toggles npc esp', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3', 'optional'},
+	{'box', 'boolean', 'optional'},
+	{'highlight', 'boolean', 'optional'},
+	{'name', 'boolean', 'optional'},
+	{'distance', 'boolean', 'optional'},
+	{'health', 'boolean', 'optional'}
+}, function(vstorage, color, box, highlight, name, distance, health)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.frames = vstorage.frames or {}
 	vstorage.highlights = vstorage.highlights or {}
 	vstorage.npcs = vstorage.npcs or {}
 
-	if color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(255, 255, 130)
+
+	vstorage.opts = vstorage.opts or { box = true, highlight = true, name = true, dist = true, health = true }
+
+	if box ~= nil then vstorage.opts.box = box end
+	if highlight ~= nil then vstorage.opts.highlight = highlight end
+	if name ~= nil then vstorage.opts.name = name end
+	if distance ~= nil then vstorage.opts.dist = distance end
+	if health ~= nil then vstorage.opts.health = health end
 
 	if vstorage.enabled then
 		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
@@ -14754,6 +14930,7 @@ maid.add('npc_esp_update', services.run_service.RenderStepped, function()
 
 	local camera = workspace.CurrentCamera
 	local active = {}
+	local opts = vstorage.opts
 
 	for model in vstorage.npcs do
 		if not model.Parent then continue end
@@ -14779,25 +14956,33 @@ maid.add('npc_esp_update', services.run_service.RenderStepped, function()
 		local cf, size = model:GetBoundingBox()
 		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size)
 
-		if not esp_frame or not esp_frame.Parent then
-			if esp_frame then pcall(stuff.destroy, esp_frame) end
-			esp_frame = esp_frame_(vstorage.screen_gui)
-			vstorage.frames[model] = esp_frame
+		if opts.box then
+			if not esp_frame or not esp_frame.Parent then
+				if esp_frame then pcall(stuff.destroy, esp_frame) end
+				esp_frame = esp_frame_(vstorage.screen_gui)
+				vstorage.frames[model] = esp_frame
+			end
+
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			local dist = opts.dist and owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or nil
+			local health_data = opts.health and humanoid and get_health_data(humanoid) or nil
+			local display_name = opts.name and `[npc] {model.Name}` or nil
+
+			update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, display_name, dist, health_data, nil, true)
+		elseif esp_frame then
+			stuff.rawrbxset(esp_frame, 'Visible', false)
 		end
 
-		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - hrp_pos).Magnitude) or 0
-
-		local health_data = humanoid and get_health_data(humanoid) or nil
-
-		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, `[npc] {model.Name}`, distance, health_data, nil, true)
-
-		if not highlight or not highlight.Parent then
-			if highlight then pcall(stuff.destroy, highlight) end
-			highlight = highlight_(model, vstorage.color)
-			vstorage.highlights[model] = highlight
-		else
-			update_highlight(highlight, model, vstorage.color)
+		if opts.highlight then
+			if not highlight or not highlight.Parent then
+				if highlight then pcall(stuff.destroy, highlight) end
+				highlight = highlight_(model, vstorage.color)
+				vstorage.highlights[model] = highlight
+			else
+				update_highlight(highlight, model, vstorage.color)
+			end
+		elseif highlight then
+			stuff.rawrbxset(highlight, 'Enabled', false)
 		end
 	end
 
@@ -14814,17 +14999,26 @@ maid.add('npc_esp_update', services.run_service.RenderStepped, function()
 end, true)
 
 cmd_library.add({'itemesp', 'itemsesp', 'toolesp'}, 'toggles item esp', {
-	{'color', 'color3'}
-}, function(vstorage, color)
+	{'color', 'color3', 'optional'},
+	{'box', 'boolean', 'optional'},
+	{'highlight', 'boolean', 'optional'},
+	{'name', 'boolean', 'optional'},
+	{'distance', 'boolean', 'optional'}
+}, function(vstorage, color, box, highlight, name, distance)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.frames = vstorage.frames or {}
 	vstorage.highlights = vstorage.highlights or {}
 	vstorage.items = vstorage.items or {}
 
-	if color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(130, 200, 255)
+
+	vstorage.opts = vstorage.opts or { box = true, highlight = true, name = true, dist = true }
+
+	if box ~= nil then vstorage.opts.box = box end
+	if highlight ~= nil then vstorage.opts.highlight = highlight end
+	if name ~= nil then vstorage.opts.name = name end
+	if distance ~= nil then vstorage.opts.dist = distance end
 
 	if vstorage.enabled then
 		if not vstorage.screen_gui or not vstorage.screen_gui.Parent then
@@ -14879,6 +15073,10 @@ maid.add('item_esp_update', services.run_service.RenderStepped, function()
 
 	local camera = workspace.CurrentCamera
 	local active = {}
+	local opts = vstorage.opts
+
+	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
 
 	for item in vstorage.items do
 		if not item.Parent or item.Parent ~= workspace then
@@ -14892,7 +15090,7 @@ maid.add('item_esp_update', services.run_service.RenderStepped, function()
 		active[item] = true
 
 		local handle_pos = stuff.rawrbxget(handle, 'Position')
-		local _, on_screen = camera:WorldToViewportPoint(handle_pos)
+		local screen_pos, on_screen = camera:WorldToViewportPoint(handle_pos)
 
 		local esp_frame = vstorage.frames[item]
 		local highlight = vstorage.highlights[item]
@@ -14903,30 +15101,42 @@ maid.add('item_esp_update', services.run_service.RenderStepped, function()
 			continue
 		end
 
+		local dist_val = owner_pos and (owner_pos - handle_pos).Magnitude or 0
+		local dist_display = opts.dist and math.floor(dist_val) or nil
+
 		local cf = stuff.rawrbxget(handle, 'CFrame')
 		local size = stuff.rawrbxget(handle, 'Size')
-		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size * 2)
+		local box_width, box_height, box_center_x, box_center_y = get_bounding_box_screen(camera, cf, size)
 
-		box_width = math.max(box_width, 30)
-		box_height = math.max(box_height, 30)
+		local depth = screen_pos.Z
+		local scale_factor = math.clamp(25 / depth, 0.15, 1.5)
+		box_width = math.clamp(box_width * scale_factor, 10, 60)
+		box_height = math.clamp(box_height * scale_factor, 10, 60)
 
-		if not esp_frame or not esp_frame.Parent then
-			if esp_frame then pcall(stuff.destroy, esp_frame) end
-			esp_frame = esp_frame_(vstorage.screen_gui)
-			vstorage.frames[item] = esp_frame
+		if opts.box then
+			if not esp_frame or not esp_frame.Parent then
+				if esp_frame then pcall(stuff.destroy, esp_frame) end
+				esp_frame = esp_frame_(vstorage.screen_gui)
+				vstorage.frames[item] = esp_frame
+			end
+
+			local display_name = opts.name and item.Name or nil
+
+			update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, display_name, dist_display, nil, nil, false)
+		elseif esp_frame then
+			stuff.rawrbxset(esp_frame, 'Visible', false)
 		end
 
-		local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-		local distance = owner_hrp and math.floor((stuff.rawrbxget(owner_hrp, 'Position') - handle_pos).Magnitude) or 0
-
-		update_esp_frame(esp_frame, box_width, box_height, box_center_x, box_center_y, vstorage.color, item.Name, distance, nil, nil, false)
-
-		if not highlight or not highlight.Parent then
-			if highlight then pcall(stuff.destroy, highlight) end
-			highlight = highlight_(item, vstorage.color)
-			vstorage.highlights[item] = highlight
-		else
-			update_highlight(highlight, item, vstorage.color)
+		if opts.highlight then
+			if not highlight or not highlight.Parent then
+				if highlight then pcall(stuff.destroy, highlight) end
+				highlight = highlight_(item, vstorage.color)
+				vstorage.highlights[item] = highlight
+			else
+				update_highlight(highlight, item, vstorage.color)
+			end
+		elseif highlight then
+			stuff.rawrbxset(highlight, 'Enabled', false)
 		end
 	end
 
@@ -14943,34 +15153,39 @@ maid.add('item_esp_update', services.run_service.RenderStepped, function()
 end, true)
 
 cmd_library.add({'tracers', 'playertracers'}, 'toggles player tracers', {
-	{'color', 'color3'},
-	{'mode', 'string'}
-}, function(vstorage, color, mode)
+	{'color', 'color3', 'optional'},
+	{'mode', 'string', 'optional'},
+	{'arrow', 'boolean', 'optional'},
+	{'thickness', 'number', 'optional'},
+	{'transparency', 'number', 'optional'}
+}, function(vstorage, color, mode, arrow, thickness, transparency)
 	vstorage.enabled = not vstorage.enabled
-	vstorage.team = color == 'team'
 	vstorage.lines = vstorage.lines or {}
 	vstorage.arrows = vstorage.arrows or {}
 
-	if not vstorage.team and color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(176, 126, 215)
-	vstorage.thickness = vstorage.thickness or 1
-	vstorage.transparency = vstorage.transparency or 0
-	vstorage.arrow_size = vstorage.arrow_size or 12
-	vstorage.arrow_distance = vstorage.arrow_distance or 50
+
+	vstorage.opts = vstorage.opts or { arrow = true, thickness = 1, transparency = 0 }
+
+	if arrow ~= nil then vstorage.opts.arrow = arrow end
+	if thickness ~= nil then vstorage.opts.thickness = math.clamp(thickness, 0.5, 5) end
+	if transparency ~= nil then vstorage.opts.transparency = math.clamp(transparency, 0, 0.9) end
 
 	if mode then
 		local valid_modes = {bottom = true, center = true, mouse = true}
 		if valid_modes[mode:lower()] then
 			vstorage.mode = mode:lower()
 		else
-			notify('tracers', `invalid mode '{mode}', using 'bottom'. valid: bottom, center, mouse`, 2)
+			notify('tracers', `invalid mode '{mode}', valid: bottom, center, mouse`, 2)
 			vstorage.mode = 'bottom'
 		end
 	else
 		vstorage.mode = vstorage.mode or 'bottom'
 	end
+
+	vstorage.arrow_size = 12
+	vstorage.arrow_distance = 50
 
 	if vstorage.enabled then
 		if not vstorage.gui or not vstorage.gui.Parent then
@@ -15005,6 +15220,8 @@ maid.add('player_tracers_update', services.run_service.RenderStepped, function()
 	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
 
+	local opts = vstorage.opts
+	local is_team_color = vstorage.color == 'team'
 	local active = {}
 
 	for _, plr in services.players:GetPlayers() do
@@ -15019,8 +15236,10 @@ maid.add('player_tracers_update', services.run_service.RenderStepped, function()
 		local screen_pos, on_screen = camera:WorldToViewportPoint(hrp_pos)
 
 		local tracer_color = vstorage.color
-		if vstorage.team and plr.Team then
+		if is_team_color and plr.Team then
 			tracer_color = plr.Team == stuff.owner.Team and Color3.fromRGB(143, 255, 130) or Color3.fromRGB(255, 130, 130)
+		else
+			tracer_color = Color3.fromRGB(176, 126, 215)
 		end
 
 		local line = vstorage.lines[plr]
@@ -15033,19 +15252,23 @@ maid.add('player_tracers_update', services.run_service.RenderStepped, function()
 				vstorage.lines[plr] = line
 			end
 
-			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, tracer_color, vstorage.thickness, vstorage.transparency)
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, tracer_color, opts.thickness, opts.transparency)
 
 			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
 		else
 			if line then stuff.rawrbxset(line, 'Visible', false) end
 
-			if not arrow or not arrow.Parent then
-				if arrow then pcall(stuff.destroy, arrow) end
-				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
-				vstorage.arrows[plr] = arrow
-			end
+			if opts.arrow then
+				if not arrow or not arrow.Parent then
+					if arrow then pcall(stuff.destroy, arrow) end
+					arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+					vstorage.arrows[plr] = arrow
+				end
 
-			update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, tracer_color, vstorage.arrow_distance)
+				update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, tracer_color, vstorage.arrow_distance)
+			elseif arrow then
+				stuff.rawrbxset(arrow, 'Visible', false)
+			end
 		end
 	end
 
@@ -15079,34 +15302,40 @@ maid.add('player_tracers_removing', services.players.PlayerRemoving, function(pl
 end, true)
 
 cmd_library.add({'npctracers', 'npct'}, 'toggles npc tracers', {
-	{'color', 'color3'},
-	{'mode', 'string'}
-}, function(vstorage, color, mode)
+	{'color', 'color3', 'optional'},
+	{'mode', 'string', 'optional'},
+	{'arrow', 'boolean', 'optional'},
+	{'thickness', 'number', 'optional'},
+	{'transparency', 'number', 'optional'}
+}, function(vstorage, color, mode, arrow, thickness, transparency)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.lines = vstorage.lines or {}
 	vstorage.arrows = vstorage.arrows or {}
 	vstorage.npcs = vstorage.npcs or {}
 
-	if color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(255, 255, 130)
-	vstorage.thickness = vstorage.thickness or 1
-	vstorage.transparency = vstorage.transparency or 0
-	vstorage.arrow_size = vstorage.arrow_size or 12
-	vstorage.arrow_distance = vstorage.arrow_distance or 50
+
+	vstorage.opts = vstorage.opts or { arrow = true, thickness = 1, transparency = 0 }
+
+	if arrow ~= nil then vstorage.opts.arrow = arrow end
+	if thickness ~= nil then vstorage.opts.thickness = math.clamp(thickness, 0.5, 5) end
+	if transparency ~= nil then vstorage.opts.transparency = math.clamp(transparency, 0, 0.9) end
 
 	if mode then
 		local valid_modes = {bottom = true, center = true, mouse = true}
 		if valid_modes[mode:lower()] then
 			vstorage.mode = mode:lower()
 		else
-			notify('npctracers', `invalid mode '{mode}', using 'bottom'. valid: bottom, center, mouse`, 2)
+			notify('npctracers', `invalid mode '{mode}', valid: bottom, center, mouse`, 2)
 			vstorage.mode = 'bottom'
 		end
 	else
 		vstorage.mode = vstorage.mode or 'bottom'
 	end
+
+	vstorage.arrow_size = 12
+	vstorage.arrow_distance = 50
 
 	if vstorage.enabled then
 		if not vstorage.gui or not vstorage.gui.Parent then
@@ -15190,6 +15419,7 @@ maid.add('npc_tracers_update', services.run_service.RenderStepped, function()
 	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
 
+	local opts = vstorage.opts
 	local active = {}
 
 	for model in vstorage.npcs do
@@ -15213,19 +15443,23 @@ maid.add('npc_tracers_update', services.run_service.RenderStepped, function()
 				vstorage.lines[model] = line
 			end
 
-			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, vstorage.thickness, vstorage.transparency)
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, opts.thickness, opts.transparency)
 
 			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
 		else
 			if line then stuff.rawrbxset(line, 'Visible', false) end
 
-			if not arrow or not arrow.Parent then
-				if arrow then pcall(stuff.destroy, arrow) end
-				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
-				vstorage.arrows[model] = arrow
-			end
+			if opts.arrow then
+				if not arrow or not arrow.Parent then
+					if arrow then pcall(stuff.destroy, arrow) end
+					arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+					vstorage.arrows[model] = arrow
+				end
 
-			update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+				update_tracer_arrow(arrow, camera, center_x, center_y, hrp_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+			elseif arrow then
+				stuff.rawrbxset(arrow, 'Visible', false)
+			end
 		end
 	end
 
@@ -15245,34 +15479,40 @@ maid.add('npc_tracers_update', services.run_service.RenderStepped, function()
 end, true)
 
 cmd_library.add({'itemtracers', 'itemst', 'tooltracers'}, 'toggles item tracers', {
-	{'color', 'color3'},
-	{'mode', 'string'}
-}, function(vstorage, color, mode)
+	{'color', 'color3', 'optional'},
+	{'mode', 'string', 'optional'},
+	{'arrow', 'boolean', 'optional'},
+	{'thickness', 'number', 'optional'},
+	{'transparency', 'number', 'optional'}
+}, function(vstorage, color, mode, arrow, thickness, transparency)
 	vstorage.enabled = not vstorage.enabled
 	vstorage.lines = vstorage.lines or {}
 	vstorage.arrows = vstorage.arrows or {}
 	vstorage.items = vstorage.items or {}
 
-	if color then
-		vstorage.color = color
-	end
+	if color then vstorage.color = color end
 	vstorage.color = vstorage.color or Color3.fromRGB(130, 200, 255)
-	vstorage.thickness = vstorage.thickness or 1
-	vstorage.transparency = vstorage.transparency or 0
-	vstorage.arrow_size = vstorage.arrow_size or 12
-	vstorage.arrow_distance = vstorage.arrow_distance or 50
+
+	vstorage.opts = vstorage.opts or { arrow = true, thickness = 1, transparency = 0 }
+
+	if arrow ~= nil then vstorage.opts.arrow = arrow end
+	if thickness ~= nil then vstorage.opts.thickness = math.clamp(thickness, 0.5, 5) end
+	if transparency ~= nil then vstorage.opts.transparency = math.clamp(transparency, 0, 0.9) end
 
 	if mode then
 		local valid_modes = {bottom = true, center = true, mouse = true}
 		if valid_modes[mode:lower()] then
 			vstorage.mode = mode:lower()
 		else
-			notify('itemtracers', `invalid mode '{mode}', using 'bottom'. valid: bottom, center, mouse`, 2)
+			notify('itemtracers', `invalid mode '{mode}', valid: bottom, center, mouse`, 2)
 			vstorage.mode = 'bottom'
 		end
 	else
 		vstorage.mode = vstorage.mode or 'bottom'
 	end
+
+	vstorage.arrow_size = 12
+	vstorage.arrow_distance = 50
 
 	if vstorage.enabled then
 		if not vstorage.gui or not vstorage.gui.Parent then
@@ -15341,6 +15581,7 @@ maid.add('item_tracers_update', services.run_service.RenderStepped, function()
 	local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 	local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position') or nil
 
+	local opts = vstorage.opts
 	local active = {}
 
 	for item in vstorage.items do
@@ -15367,19 +15608,23 @@ maid.add('item_tracers_update', services.run_service.RenderStepped, function()
 				vstorage.lines[item] = line
 			end
 
-			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, vstorage.thickness, vstorage.transparency)
+			update_tracer_line(line, start_x, start_y, screen_pos.X, screen_pos.Y, vstorage.color, opts.thickness, opts.transparency)
 
 			if arrow then stuff.rawrbxset(arrow, 'Visible', false) end
 		else
 			if line then stuff.rawrbxset(line, 'Visible', false) end
 
-			if not arrow or not arrow.Parent then
-				if arrow then pcall(stuff.destroy, arrow) end
-				arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
-				vstorage.arrows[item] = arrow
-			end
+			if opts.arrow then
+				if not arrow or not arrow.Parent then
+					if arrow then pcall(stuff.destroy, arrow) end
+					arrow = tracer_arrow_(vstorage.gui, vstorage.arrow_size)
+					vstorage.arrows[item] = arrow
+				end
 
-			update_tracer_arrow(arrow, camera, center_x, center_y, handle_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+				update_tracer_arrow(arrow, camera, center_x, center_y, handle_pos, owner_pos, vstorage.color, vstorage.arrow_distance)
+			elseif arrow then
+				stuff.rawrbxset(arrow, 'Visible', false)
+			end
 		end
 	end
 
