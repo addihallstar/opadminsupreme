@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.9.0',
+	ver = '3.10.0',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -731,27 +731,35 @@ local function get_closest_part()
 end
 
 local function find_f3x()
-	local function search(container)
-		if not container then return nil, nil end
-		for _, item in container:GetChildren() do
-			if item:IsA('Tool') then
-				for _, child in item:GetChildren() do
-					if child:IsA('BindableFunction') and child.Name:find('SyncAPI') then
-						local endpoint = child:FindFirstChild('ServerEndpoint')
-						if endpoint then
-							return item, endpoint
-						end
-					end
-				end
+	local function has_api(t)
+		for _, c in t:GetChildren() do
+			if c:IsA("BindableFunction") and c.Name:lower():find("syncapi", 1, true) then
+				return true
 			end
 		end
-		return nil, nil
+		return false
 	end
 
-	local tool, endpoint = search(stuff.owner:FindFirstChild('Backpack'))
-	if tool then return tool, endpoint end
-	tool, endpoint = search(stuff.owner.Character)
-	if tool then return tool, endpoint end
+	local function get_ep(t)
+		for _, d in t:GetDescendants() do
+			if not d:IsA("RemoteFunction") then continue end
+			local n = d.Name:lower()
+			if n:find("serverendpoint", 1, true) or n:find("apifunction", 1, true) then
+				return d
+			end
+		end
+		return nil
+	end
+
+	for _, c in { stuff.owner:FindFirstChild("Backpack"), stuff.owner.Character } do
+		if not c then continue end
+		for _, t in c:GetChildren() do
+			if not t:IsA("Tool") then continue end
+			if not has_api(t) then continue end
+			local ep = get_ep(t)
+			if ep then return t, ep end
+		end
+	end
 	return nil, nil
 end
 
@@ -9877,8 +9885,6 @@ cmd_library.add({'f3xkill', 'f3xk'}, 'kills a player by resizing their parts usi
 		return notify('f3xkill', 'f3x tool not found', 2)
 	end
 
-	local killed_players = {}
-
 	for _, target in targets do
 		local target_char = target.Character
 		if target_char then
@@ -9886,20 +9892,11 @@ cmd_library.add({'f3xkill', 'f3xk'}, 'kills a player by resizing their parts usi
 			local hum = target_char:FindFirstChildOfClass('Humanoid')
 			if head and hum then
 				sync('SyncResize', {{ Part = head, Size = Vector3.new(0, 0, 0), CFrame = head.CFrame }})
-				task.defer(function()
-					if hum.Health < 1 then 
-						table.insert(killed_players, target.Name)
-					end
-				end)
 			end
 		end
 	end
 
-	if #killed_players > 0 then
-		notify('f3xkill', `killed {table.concat(killed_players, ', ')}`, 1)
-	else
-		notify('f3xkill', 'no valid targets found', 2)
-	end
+	notify('f3xkill', `killed {table.concat(targets, ', ')}`, 1)
 end)
 
 cmd_library.add({'f3xfire'}, 'sets player on fire using f3x', {
@@ -10708,457 +10705,419 @@ end)
 
 cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 	{'size', 'number'},
+	{'debug', 'boolean'},
 	{'pull_strength', 'number'}
-}, function(vstorage, size, pull_strength)
-	local tool, s_endpoint = find_f3x()
-	stuff.server_endpoint = s_endpoint
+}, function(vs, size, debug, pull_strength)
+	local tool, ep = find_f3x()
+	stuff.server_endpoint = ep
 
-	if not tool or not stuff.server_endpoint then
-		return notify('f3xblackhole', 'f3x tool not found', 2)
+	if not tool or not ep then
+		return notify('f3xbh', 'f3x not found', 2)
 	end
 
-	local sqrt, clamp, min, max, sin, floor = math.sqrt, math.clamp, math.min, math.max, math.sin, math.floor
-	local current_size = size or 12
-	local base_strength = (pull_strength and pull_strength * 1000) or 100000
-	local max_size = 1800
-	local ratio = 0.65
-	local useless = 7
-	local slop = 1.8
+	local sqrt, clamp, min, max, sin, cos, floor, abs, atan2, pi = math.sqrt, math.clamp, math.min, math.max, math.sin, math.cos, math.floor, math.abs, math.atan2, math.pi
+	local sz = size or 12
+	local pwr = (pull_strength and pull_strength * 1000) or 100000
+	local max_sz = 2048
 
-	local character = stuff.owner_char
-	local root_part = character and character:FindFirstChild('HumanoidRootPart')
+	local char = stuff.owner_char
+	local root = char and char:FindFirstChild('HumanoidRootPart')
 
-	if not root_part then
-		return notify('f3xblackhole', 'character not found', 2)
+	if not root then
+		return notify('f3xbh', 'char not found', 2)
 	end
 
-	local spawn_position = root_part.Position + root_part.CFrame.LookVector * 30 + Vector3.new(0, 20, 0)
+	local pos = root.Position + root.CFrame.LookVector * 30 + Vector3.new(0, 20, 0)
 
-	local part_templates = {
-		{
-			name = 'bh_core',
-			shape = 'Ball',
-			size_mult = 1,
-			color = Color3.new(0, 0, 0),
-			material = Enum.Material.Neon,
-			transparency = 0,
-		},
-		{
-			name = 'bh_innerdark',
-			shape = 'Ball',
-			size_mult = 1.2,
-			color = Color3.new(0.02, 0, 0.05),
-			material = Enum.Material.Neon,
-			transparency = 0.1,
-		},
-		{
-			name = 'bh_innerglow',
-			shape = 'Ball',
-			size_mult = 1.5,
-			color = Color3.new(0.25, 0, 0.4),
-			material = Enum.Material.Neon,
-			transparency = 0.45,
-		},
-		{
-			name = 'bh_outerglow',
-			shape = 'Ball',
-			size_mult = 2.5,
-			color = Color3.new(0.3, 0.05, 0.5),
-			material = Enum.Material.Neon,
-			transparency = 0.8,
-		}
+	local temps = {
+		{ n = 'bh_core', m = 1, col = Color3.new(0, 0, 0), tr = 0, mat = Enum.Material.Neon },
+		{ n = 'bh_inner', m = 1.2, col = Color3.new(0.02, 0, 0.05), tr = 0.1, mat = Enum.Material.Neon },
+		{ n = 'bh_glow', m = 1.5, col = Color3.new(0.25, 0, 0.4), tr = 0.45, mat = Enum.Material.Neon },
+		{ n = 'bh_outer', m = 2.5, col = Color3.new(0.3, 0.05, 0.5), tr = 0.8, mat = Enum.Material.Neon }
 	}
 
 	local bh_parts = {}
-	local blackhole_lookup = {}
-	local part_velocities = {}
+	local bh_set = {}
+	local vels = {}
 	local total_mass = 0
-	local destroyed_count = 0
+	local kills = 0
 
-	local overlap_params = OverlapParams.new()
-	overlap_params.FilterType = Enum.RaycastFilterType.Exclude
-	overlap_params.MaxParts = 2000
+	local debug_part = nil
 
-	local function update_overlap_filter()
-		local filter_list = {}
-		local char = stuff.owner_char
-		if char then
-			filter_list[#filter_list + 1] = char
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.MaxParts = math.huge
+
+	local function upd_filter()
+		local list = {}
+		local c = stuff.owner_char
+		if c then list[#list + 1] = c end
+		for _, p in bh_parts do
+			if p and p.Parent then list[#list + 1] = p end
 		end
-		for _, part in bh_parts do
-			if part and part.Parent then
-				filter_list[#filter_list + 1] = part
-			end
+		if debug_part and debug_part.Parent then
+			list[#list + 1] = debug_part
 		end
-		overlap_params.FilterDescendantsInstances = filter_list
+		params.FilterDescendantsInstances = list
 	end
 
-	local function mass_to_size(mass)
-		return (mass ^ 0.35) * 0.025
-	end
-
-	local function wowzersv567753674567(template, cur_size)
-		local s = cur_size * template.size_mult
-		local part_size = Vector3.new(s, s, s)
-		local part_cf = CFrame.new(spawn_position)
-
-		local part = sync('CreatePart', template.shape, part_cf, workspace)
+	local function mkpart(t, s)
+		local ps = s * t.m
+		local part = sync('CreatePart', 'Ball', CFrame.new(pos), workspace)
 		if not part then return nil end
-
-		task.spawn(sync, 'SyncResize', {{ Part = part, Size = part_size, CFrame = part_cf }})
-		task.spawn(sync, 'SyncColor', {{ Part = part, Color = template.color }})
-		task.spawn(sync, 'SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
-		task.spawn(sync, 'SyncAnchor', {{ Part = part, Anchored = true }})
-		task.spawn(sync, 'SyncCollision', {{ Part = part, CanCollide = false }})
-		task.spawn(sync, 'SetName', {part}, {template.name})
-
+		sync('SyncResize', {{ Part = part, Size = Vector3.new(ps, ps, ps), CFrame = CFrame.new(pos) }})
+		sync('SyncColor', {{ Part = part, Color = t.col }})
+		sync('SyncMaterial', {{ Part = part, Material = t.mat, Transparency = t.tr, Reflectance = 0 }})
+		sync('SyncAnchor', {{ Part = part, Anchored = true }})
+		sync('SyncCollision', {{ Part = part, CanCollide = false }})
 		return part
 	end
 
-	local function zzz()
-		for i, template in part_templates do
-			local part = wowzersv567753674567(template, current_size)
-			if part then
-				bh_parts[i] = part
-				blackhole_lookup[part] = true
-			end
-		end
-		update_overlap_filter()
-	end
-
-	local function fix(core_size)
-		local needs_filter_update = false
-		for i, template in part_templates do
-			local part = bh_parts[i]
-			local needs_recreate = not part or not part.Parent
-
-			if not needs_recreate then
-				if not part.Anchored or part.CanCollide then
-					pcall(sync, 'SyncAnchor', {{ Part = part, Anchored = true }})
-					pcall(sync, 'SyncCollision', {{ Part = part, CanCollide = false }})
+	local function fix_bh(cs)
+		for i, t in temps do
+			local p = bh_parts[i]
+			if not p or not p.Parent then
+				if p then bh_set[p] = nil end
+				local np = mkpart(t, cs)
+				if np then
+					bh_parts[i] = np
+					bh_set[np] = true
 				end
-				if part.Material ~= template.material or part.Transparency ~= template.transparency then
-					pcall(sync, 'SyncMaterial', {{ Part = part, Material = template.material, Transparency = template.transparency, Reflectance = 0 }})
-				end
-				if part.Color ~= template.color then
-					pcall(sync, 'SyncColor', {{ Part = part, Color = template.color }})
+			else
+				local s = cs * t.m
+				local needs_fix = not p.Anchored or p.CanCollide or p.Color ~= t.col or p.Material ~= t.mat
+				if needs_fix then
+					task.spawn(pcall, sync, 'SyncAnchor', {{ Part = p, Anchored = true }})
+					task.spawn(pcall, sync, 'SyncCollision', {{ Part = p, CanCollide = false }})
+					task.spawn(pcall, sync, 'SyncColor', {{ Part = p, Color = t.col }})
+					task.spawn(pcall, sync, 'SyncMaterial', {{ Part = p, Material = t.mat, Transparency = t.tr, Reflectance = 0 }})
 				end
 			end
-
-			if needs_recreate then
-				if part then blackhole_lookup[part] = nil end
-				local new_part = wowzersv567753674567(template, core_size)
-				if new_part then
-					bh_parts[i] = new_part
-					blackhole_lookup[new_part] = true
-					needs_filter_update = true
-				end
-			end
-		end
-		if needs_filter_update then
-			update_overlap_filter()
 		end
 	end
 
-	zzz()
+	for i, t in temps do
+		local p = mkpart(t, sz)
+		if p then
+			bh_parts[i] = p
+			bh_set[p] = true
+		end
+	end
+
+	if debug then
+		local range = sz * 35 + 400
+		debug_part = Instance.new('Part')
+		debug_part.Shape = Enum.PartType.Ball
+		debug_part.Size = Vector3.one * (range*2)
+		debug_part.CFrame = CFrame.new(pos)
+		debug_part.Color = Color3.new(1, 0, 0)
+		debug_part.Material = Enum.Material.ForceField
+		debug_part.Transparency = .8
+		debug_part.Anchored = true
+		debug_part.CanCollide = false
+		debug_part.Parent = workspace
+	end
+
+	upd_filter()
 
 	if not bh_parts[1] then
-		return notify('f3xblackhole', 'failed to create black hole', 2)
+		return notify('f3xbh', 'failed', 2)
 	end
 
-	notify('f3xblackhole', 'created black hole', 1)
-
-	local pulse = 0
-	local refitslop = 0
-	local himynameisbob = 0
-	local filter_update_timer = 0
-
-	vstorage.blackhole_active = true
-	vstorage.blackhole_parts = bh_parts
-	vstorage.blackhole_lookup = blackhole_lookup
-	vstorage.blackhole_position = spawn_position
+	vs.active = true
+	vs.parts = bh_parts
+	vs.set = bh_set
+	vs.pos = pos
+	vs.debug_part = debug_part
 
 	task.spawn(function()
-		local last_tick = os.clock()
+		local last = os.clock()
+		local refit_t, clean_t, filter_t, pulse_t = 0, 0, 0, 0
 
-		while vstorage.blackhole_active do
+		while vs.active do
 			local now = os.clock()
-			local real_dt = now - last_tick
-			last_tick = now
+			local dt = clamp(now - last, 0.001, 0.1)
+			last = now
 
-			local dt = clamp(real_dt, 0.001, 0.1)
+			if not stuff.server_endpoint or not stuff.server_endpoint.Parent then
+				local t, e = find_f3x()
+				if t and e then stuff.server_endpoint = e end
+				task.wait()
+				continue
+			end
 
-			himynameisbob = himynameisbob + dt
-			if himynameisbob > 2 then
-				himynameisbob = 0
-				local dead = {}
-				for obj in part_velocities do
-					if not obj or not obj.Parent then
-						dead[#dead + 1] = obj
-					end
-				end
-				for _, obj in dead do
-					part_velocities[obj] = nil
+			clean_t = clean_t + dt
+			if clean_t > 2 then
+				clean_t = 0
+				for o in vels do
+					if not o or not o.Parent then vels[o] = nil end
 				end
 			end
 
-			filter_update_timer = filter_update_timer + dt
-			if filter_update_timer > 1 then
-				filter_update_timer = 0
-				update_overlap_filter()
+			filter_t = filter_t + dt
+			if filter_t > 1 then
+				filter_t = 0
+				upd_filter()
 			end
 
-			refitslop = refitslop + dt
-			pulse = pulse + dt * 3
+			pulse_t = pulse_t + dt * 3
+			local cs = sz * (1 + sin(pulse_t) * 0.03)
 
-			local pulse_scale = 1 + sin(pulse) * 0.03
-			local core_size = current_size * pulse_scale
-
-			if refitslop > 0.5 then
-				refitslop = 0
-				task.spawn(fix, core_size)
+			refit_t = refit_t + dt
+			if refit_t > 0.5 then
+				refit_t = 0
+				task.spawn(fix_bh, cs)
 			end
 
 			local resize_data = {}
-			for i, template in part_templates do
-				local part = bh_parts[i]
-				if part and part.Parent then
-					local s = core_size * template.size_mult
-					resize_data[#resize_data + 1] = { Part = part, Size = Vector3.new(s, s, s), CFrame = CFrame.new(spawn_position) }
+			for i, t in temps do
+				local p = bh_parts[i]
+				if p and p.Parent then
+					local s = cs * t.m
+					resize_data[#resize_data + 1] = { Part = p, Size = Vector3.new(s, s, s), CFrame = CFrame.new(pos) }
 				end
 			end
-
 			if #resize_data > 0 then
 				pcall(sync, 'SyncResize', resize_data)
 			end
 
-			local strength = base_strength * (1 + current_size * 0.01)
-			local pull_radius = current_size * 35 + 400
-			local pull_radius_sq = pull_radius * pull_radius
-			local event_horizon = current_size * ratio
-			local event_horizon_sq = event_horizon * event_horizon
-			local spaghetti_zone = current_size * slop
-			local tidal_zone = current_size * 4
-			local orbit_zone = current_size * 18
-			local max_spin_dist = pull_radius * 0.4
+			local range = sz * 8 + 50
+			local eh = sz * 0.65
+			local eh_sq = eh * eh
+			local spag_zone = sz * 6
+			local tidal_zone = sz * 12
+			local spiral_zone = sz * 25
+			local orbit_zone = sz * 18
+			local strength = pwr * (1 + sz * 0.01)
 
-			local move_changes = {}
-			local shrink_changes = {}
-			local to_remove = {}
-			local frame_mass = 0
+			if debug and debug_part and debug_part.Parent then
+				debug_part.Size = Vector3.new(range * 2, range * 2, range * 2)
+				debug_part.CFrame = CFrame.new(pos)
+			end
 
-			local sp_x = spawn_position.X
-			local sp_y = spawn_position.Y
-			local sp_z = spawn_position.Z
+			local mv, rs, rm = {}, {}, {}
+			local fm = 0
+			local curr_char = stuff.owner_char
 
-			local parts_in_radius = workspace:GetPartBoundsInRadius(spawn_position, pull_radius, overlap_params)
+			for _, obj in workspace:GetPartBoundsInRadius(pos, range, params) do
+				if not obj.Parent then continue end
+				if obj:IsA('Terrain') then continue end
+				if bh_set[obj] then continue end
+				if obj == debug_part then continue end
+				if curr_char and obj:IsDescendantOf(curr_char) then continue end
 
-			for _, obj in parts_in_radius do
-				if not obj:IsA('Terrain') and obj.Parent and not blackhole_lookup[obj] then
-					local pos = obj.Position
-					local dx = sp_x - pos.X
-					local dy = sp_y - pos.Y
-					local dz = sp_z - pos.Z
-					local dist_sq = dx * dx + dy * dy + dz * dz
+				local op = obj.Position
+				local dx = pos.X - op.X
+				local dy = pos.Y - op.Y
+				local dz = pos.Z - op.Z
+				local dist_sq = dx * dx + dy * dy + dz * dz
 
-					if dist_sq > 0.01 then
-						local dist = sqrt(dist_sq)
+				if dist_sq < 0.01 then continue end
+				
+				local obj_sz_mag = obj.Size.Magnitude / 10
+				if obj_sz_mag > sz and not vels[obj] then continue end
 
-						if dist <= event_horizon then
-							to_remove[#to_remove + 1] = obj
-							local vel = part_velocities[obj]
-							local orig_mass = vel and vel.orig_mass or obj.Mass
-							frame_mass = frame_mass + orig_mass
-							part_velocities[obj] = nil
-						else
-							local vel = part_velocities[obj]
-							if not vel then
-								vel = { x = 0, y = 0, z = 0, spin = 0, time = 0, orig_size = obj.Size, orig_mass = obj.Mass, anchored = false }
-								part_velocities[obj] = vel
-							end
+				local dist = sqrt(dist_sq)
 
-							if not vel.anchored then
-								vel.anchored = true
-								task.spawn(pcall, sync, 'SyncAnchor', {{ Part = obj, Anchored = true }})
-							end
+				if dist <= eh then
+					rm[#rm + 1] = obj
+					local v = vels[obj]
+					fm = fm + (v and v.om or obj.Mass)
+					vels[obj] = nil
+					continue
+				end
 
-							vel.time = vel.time + dt
+				local v = vels[obj]
+				if not v then
+					v = { 
+						x = 0, y = 0, z = 0, 
+						spin = 0, t = 0, 
+						os = obj.Size, om = obj.Mass, 
+						a = false,
+						ang = atan2(dz, dx),
+						stretch = 1,
+						spiral_phase = 0,
+						init_sm = obj.Size.Magnitude
+					}
+					vels[obj] = v
+				end
 
-							local time_factor = clamp(vel.time / useless, 0, 1)
-							local decay_mult = 1 + time_factor * time_factor * 6
+				if not v.a then
+					v.a = true
+					task.spawn(pcall, sync, 'SyncAnchor', {{ Part = obj, Anchored = true }})
+				end
 
-							local inv_dist = 1 / dist
-							local dir_x = dx * inv_dist
-							local dir_y = dy * inv_dist
-							local dir_z = dz * inv_dist
+				v.t = v.t + dt
 
-							local grav_mult = 1
-							if dist < tidal_zone then
-								local t = 1 - dist / tidal_zone
-								grav_mult = 1 + t * t * 4
-							end
+				local tf = clamp(v.t / 7, 0, 1)
+				local decay = 1 + tf * tf * 6
 
-							local size_factor = current_size * current_size
-							local dist_factor = 1 / (dist * 0.4 + current_size * 0.5)
-							local pull_accel = strength * size_factor * dist_factor * grav_mult * decay_mult * 0.000008
+				local inv_d = 1 / dist
+				local dx_n, dy_n, dz_n = dx * inv_d, dy * inv_d, dz * inv_d
 
-							vel.x = vel.x + dir_x * pull_accel * dt
-							vel.y = vel.y + dir_y * pull_accel * dt
-							vel.z = vel.z + dir_z * pull_accel * dt
+				local tidal_force = 0
+				if dist < tidal_zone then
+					local t = 1 - dist / tidal_zone
+					tidal_force = t * t * t
+				end
 
-							local orbit_strength_mult = clamp(1 - time_factor * 1.4, 0, 1)
+				local grav_mult = 1 + tidal_force * 5
 
-							if dist < orbit_zone and orbit_strength_mult > 0.01 then
-								local orbit_t = clamp((orbit_zone - dist) / orbit_zone, 0, 1)
+				local sf = sz * sz
+				local df = 1 / (dist * 0.4 + sz * 0.5)
+				local pull = strength * sf * df * grav_mult * decay * 0.000008
 
-								local tan_x = -dir_z
-								local tan_z = dir_x
+				v.x = v.x + dx_n * pull * dt
+				v.y = v.y + dy_n * pull * dt
+				v.z = v.z + dz_n * pull * dt
 
-								local horizontal_dist = sqrt(dir_x * dir_x + dir_z * dir_z)
-								if horizontal_dist > 0.01 then
-									tan_x = -dir_z / horizontal_dist
-									tan_z = dir_x / horizontal_dist
-								end
+				local orbit_str = clamp(1 - tf * 1.4, 0, 1)
 
-								local orbital_vel = sqrt(strength * current_size * 0.00001 / (dist * 0.3 + 1))
-								local orbit_force = orbital_vel * orbit_t * orbit_t * orbit_strength_mult * 2
+				if dist < spiral_zone then
+					local spiral_t = clamp((spiral_zone - dist) / spiral_zone, 0, 1)
+					spiral_t = spiral_t * spiral_t
 
-								vel.x = vel.x + tan_x * orbit_force * dt
-								vel.z = vel.z + tan_z * orbit_force * dt
-							end
+					local hd = sqrt(dx * dx + dz * dz)
+					if hd > 0.1 then
+						local ang_speed = sqrt(strength * sz * 0.00002 / (dist * 0.2 + 1)) * (1 + spiral_t * 3)
+						v.ang = v.ang + ang_speed * dt
+						v.spiral_phase = v.spiral_phase + dt
 
-							local base_drag = 0.002 + (1 - dist / pull_radius) * 0.01
-							local time_drag = time_factor * 0.015
-							local drag = 1 - clamp(base_drag + time_drag, 0, 0.06)
-							vel.x = vel.x * drag
-							vel.y = vel.y * drag
-							vel.z = vel.z * drag
+						local tx = -dz / hd
+						local tz = dx / hd
 
-							local speed = sqrt(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z)
-							local max_speed = dist * 3 + current_size * 1.5
-							if speed > max_speed then
-								local scale = max_speed / speed
-								vel.x = vel.x * scale
-								vel.y = vel.y * scale
-								vel.z = vel.z * scale
-								speed = max_speed
-							end
+						local spiral_str = spiral_t * sqrt(strength * sz * 0.00001) * 2
+						v.x = v.x + tx * spiral_str * dt
+						v.z = v.z + tz * spiral_str * dt
 
-							local new_x = pos.X + vel.x * dt
-							local new_y = pos.Y + vel.y * dt
-							local new_z = pos.Z + vel.z * dt
-
-							local check_dx = sp_x - new_x
-							local check_dy = sp_y - new_y
-							local check_dz = sp_z - new_z
-							local check_dist_sq = check_dx * check_dx + check_dy * check_dy + check_dz * check_dz
-
-							if check_dist_sq < event_horizon_sq then
-								to_remove[#to_remove + 1] = obj
-								frame_mass = frame_mass + vel.orig_mass
-								part_velocities[obj] = nil
-							else
-								local check_dist = sqrt(check_dist_sq)
-
-								local spin_factor
-								if check_dist <= max_spin_dist then
-									spin_factor = 1
-								else
-									spin_factor = clamp((pull_radius - check_dist) / (pull_radius - max_spin_dist), 0, 1)
-									spin_factor = spin_factor * spin_factor
-								end
-
-								local min_spin_rate = 0.01
-								local max_spin_rate = 0.25
-								local spin_rate = speed * (min_spin_rate + (max_spin_rate - min_spin_rate) * spin_factor) * dt
-								vel.spin = vel.spin + spin_rate
-
-								local spin_axis
-								if speed > 0.1 then
-									spin_axis = Vector3.new(vel.x, vel.y, vel.z).Unit
-								else
-									spin_axis = Vector3.yAxis
-								end
-
-								local spin_cf = CFrame.fromAxisAngle(spin_axis, vel.spin)
-								local new_cf = CFrame.new(new_x, new_y, new_z) * spin_cf
-
-								if check_dist < spaghetti_zone then
-									local shrink_t = 1 - (check_dist - event_horizon) / (spaghetti_zone - event_horizon)
-									shrink_t = clamp(shrink_t, 0, 1)
-									shrink_t = shrink_t * shrink_t
-
-									local shrink_factor = 1 - shrink_t * 0.9
-									shrink_factor = max(shrink_factor, 0.08)
-
-									local orig = vel.orig_size
-									local new_size = Vector3.new(
-										max(orig.X * shrink_factor, 0.05),
-										max(orig.Y * shrink_factor, 0.05),
-										max(orig.Z * shrink_factor, 0.05)
-									)
-
-									shrink_changes[#shrink_changes + 1] = { Part = obj, Size = new_size, CFrame = new_cf }
-								else
-									move_changes[#move_changes + 1] = { Part = obj, CFrame = new_cf }
-								end
-							end
-						end
+						local vert_osc = sin(v.spiral_phase * 4 + dist * 0.1) * spiral_t * 0.5
+						v.y = v.y + vert_osc * dt
 					end
+				elseif dist < orbit_zone and orbit_str > 0.01 then
+					local ot = clamp((orbit_zone - dist) / orbit_zone, 0, 1)
+					local hd = sqrt(dx_n * dx_n + dz_n * dz_n)
+					local tx, tz = -dz_n, dx_n
+					if hd > 0.01 then
+						tx, tz = -dz_n / hd, dx_n / hd
+					end
+					local ov = sqrt(strength * sz * 0.00001 / (dist * 0.3 + 1))
+					local of = ov * ot * ot * orbit_str * 2
+					v.x = v.x + tx * of * dt
+					v.z = v.z + tz * of * dt
+				end
+
+				local bd = 0.002 + (1 - dist / range) * 0.01
+				local td = tf * 0.015
+				local drag = 1 - clamp(bd + td, 0, 0.06)
+				v.x, v.y, v.z = v.x * drag, v.y * drag, v.z * drag
+
+				local spd = sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+				local max_spd = dist * 3 + sz * 1.5
+				if spd > max_spd then
+					local sc = max_spd / spd
+					v.x, v.y, v.z = v.x * sc, v.y * sc, v.z * sc
+					spd = max_spd
+				end
+
+				local nx = op.X + v.x * dt
+				local ny = op.Y + v.y * dt
+				local nz = op.Z + v.z * dt
+
+				local cdx = pos.X - nx
+				local cdy = pos.Y - ny
+				local cdz = pos.Z - nz
+				local cd_sq = cdx * cdx + cdy * cdy + cdz * cdz
+
+				if cd_sq < eh_sq then
+					rm[#rm + 1] = obj
+					fm = fm + v.om
+					vels[obj] = nil
+					continue
+				end
+
+				local cd = sqrt(cd_sq)
+
+				local max_spin_dist = range * 0.4
+				local spin_f = cd <= max_spin_dist and 1 or clamp((range - cd) / (range - max_spin_dist), 0, 1) ^ 2
+				local spin_rate = spd * (0.01 + 0.24 * spin_f) * dt
+				v.spin = v.spin + spin_rate
+
+				local to_center = Vector3.new(cdx, cdy, cdz).Unit
+				local vel_dir = spd > 0.1 and Vector3.new(v.x, v.y, v.z).Unit or Vector3.yAxis
+				local spin_axis = vel_dir:Cross(to_center)
+				if spin_axis.Magnitude < 0.01 then spin_axis = Vector3.yAxis end
+				spin_axis = spin_axis.Unit
+				local spin_cf = CFrame.fromAxisAngle(spin_axis, v.spin)
+
+				if cd < spag_zone then
+					local spag_t = clamp(1 - (cd - eh) / (spag_zone - eh), 0, 1) ^ 3
+					local stretch = 1 + spag_t * 15
+					local compress = max(1 - spag_t * 0.9, 0.05)
+					local os = v.os
+					local ns = Vector3.new(max(os.X * compress, 0.02), max(os.Y * compress, 0.02), max(os.Z * stretch, 0.02))
+
+					local look = to_center
+					local up = abs(look.Y) > 0.9 and Vector3.xAxis or Vector3.yAxis
+					local right = look:Cross(up).Unit
+					up = right:Cross(look).Unit
+
+					rs[#rs + 1] = { Part = obj, Size = ns, CFrame = CFrame.fromMatrix(Vector3.new(nx, ny, nz), right, up, -look) * CFrame.Angles(0, 0, v.spin) }
+				elseif cd < tidal_zone then
+					local tidal_t = clamp((tidal_zone - cd) / (tidal_zone - spag_zone), 0, 1) ^ 2
+					local stretch = 1 + tidal_t * 3
+					local compress = max(1 - tidal_t * 0.4, 0.6)
+					local os = v.os
+					local ns = Vector3.new(max(os.X * compress, 0.1), max(os.Y * compress, 0.1), max(os.Z * stretch, 0.1))
+
+					local look = to_center
+					local up = abs(look.Y) > 0.9 and Vector3.xAxis or Vector3.yAxis
+					local right = look:Cross(up).Unit
+					up = right:Cross(look).Unit
+
+					rs[#rs + 1] = { Part = obj, Size = ns, CFrame = CFrame.fromMatrix(Vector3.new(nx, ny, nz), right, up, -look) * CFrame.Angles(0, 0, v.spin) }
+				else
+					local axis = spd > 0.1 and Vector3.new(v.x, v.y, v.z).Unit or Vector3.yAxis
+					local ncf = CFrame.new(nx, ny, nz) * CFrame.fromAxisAngle(axis, v.spin)
+					mv[#mv + 1] = { Part = obj, CFrame = ncf }
 				end
 			end
 
-			if frame_mass > 0 then
-				local growth = mass_to_size(frame_mass)
-				if current_size < max_size then
-					current_size = min(current_size + growth, max_size)
-				end
-				total_mass = total_mass + frame_mass
+			if fm > 0 then
+				sz = min(sz + (fm ^ 0.35) * 0.0025, max_sz)
+				total_mass = total_mass + fm
 			end
 
-			destroyed_count = destroyed_count + #to_remove
+			kills = kills + #rm
 
-			if #move_changes > 0 then
-				task.spawn(pcall, sync, 'SyncMove', move_changes)
-			end
-			if #shrink_changes > 0 then
-				task.spawn(pcall, sync, 'SyncResize', shrink_changes)
-			end
-			if #to_remove > 0 then
-				task.spawn(pcall, sync, 'Remove', to_remove)
-			end
+			if #mv > 0 then task.spawn(pcall, sync, 'SyncMove', mv) end
+			if #rs > 0 then task.spawn(pcall, sync, 'SyncResize', rs) end
+			if #rm > 0 then task.spawn(pcall, sync, 'Remove', rm) end
 
 			task.wait()
 		end
 
-		notify('f3xblackhole', `collapsed | {destroyed_count} parts | {floor(total_mass)} mass | size {floor(current_size)}`, 1)
+		notify('f3xbh', `done | {kills} parts | {floor(total_mass)} mass | size: {floor(sz)}`, 1)
 
-		pcall(function()
-			local cleanup = {}
-			for _, p in vstorage.blackhole_parts or {} do
-				if p and p.Parent then
-					cleanup[#cleanup + 1] = p
-				end
-			end
-			if #cleanup > 0 then
-				sync('Remove', cleanup)
-			end
-		end)
+		local cl = {}
+		for _, p in bh_parts do
+			if p and p.Parent then cl[#cl + 1] = p end
+		end
+		if debug_part and debug_part.Parent then stuff.destroy(debug_part) end
+		if #cl > 0 then pcall(sync, 'Remove', cl) end
 
-		part_velocities = nil
-		vstorage.blackhole_parts = nil
-		vstorage.blackhole_lookup = nil
-		vstorage.blackhole_position = nil
+		vels = nil
+		vs.parts = nil
+		vs.set = nil
+		vs.debug_part = nil
 	end)
 end)
 
 cmd_library.add({'unf3xblackhole', 'unf3xbh'}, 'destroys the black hole', {}, function()
-	local vstorage = cmd_library.get_variable_storage('f3xbh')
-
-	if vstorage and vstorage.blackhole_active then
-		vstorage.blackhole_active = false
+	local vs = cmd_library.get_variable_storage('f3xbh')
+	if vs and vs.active then
+		vs.active = false
 	else
-		notify('unf3xblackhole', 'no active black hole', 2)
+		notify('unf3xbh', 'no active', 2)
 	end
 end)
 
