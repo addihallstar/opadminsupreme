@@ -2,6 +2,7 @@ if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
+identifyexecutor = identifyexecutor or function() return "CommandBar" end
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
 fireproximityprompt = fireproximityprompt or function() end
@@ -67,7 +68,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.10.1',
+	ver = '3.11.0',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -958,7 +959,7 @@ local function str_to_type(str, t)
 				local n = tonumber(num:match('^%s*(.-)%s*$'))
 				if n then table.insert(parts, n) end
 			end
-			
+
 			if #parts >= 3 then
 				return CFrame.new(parts[1], parts[2], parts[3])
 			elseif #parts >= 7 then
@@ -966,7 +967,7 @@ local function str_to_type(str, t)
 			elseif #parts >= 12 then
 				return CFrame.new(parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], parts[8], parts[9], parts[10], parts[11], parts[12])
 			end
-			
+
 			return nil
 		end,
 
@@ -1770,7 +1771,7 @@ function cmd_library.execute(name, ...)
 		end
 		return false
 	end
-	
+
 	if name ~= 'lastcommand' and name ~= 'lastcmd' then
 		stuff.last_command = {
 			name = name,
@@ -1935,7 +1936,7 @@ end
 function config.get_game_binds()
 	local binds = config.get('binds') or {}
 	if not binds[config.current_game_id] then
-		binds[config.current_game_id] = {}
+		binds[tostring(config.current_game_id)] = {}
 		config.set('binds', binds)
 	end
 	return binds[config.current_game_id]
@@ -1998,6 +1999,7 @@ local function load_ui()
 		local success, result = pcall(function()
 			return game:GetObjects(ui_asset)[1]
 		end)
+		
 		if success and result then
 			ui = result
 		end
@@ -3487,7 +3489,7 @@ cmd_library.add({'lastcommand', 'lastcmd'}, 're-runs the last command you ran', 
 	if stuff.last_command then
 		local name, args = stuff.last_command.name, stuff.last_command.args
 		cmd_library.execute(name, unpack(args))
-		
+
 		notify('lastcommand', `re-ran last command: {name}`, 1)
 	else
 		notify('lastcommand', 'no command to re-run', 2)
@@ -3685,7 +3687,7 @@ cmd_library.add({'pluginload', 'pload'}, 'load a plugin from url', {
 				break
 			end
 		end
-		
+
 		warn(plugin_module)
 		return
 	end
@@ -3771,7 +3773,7 @@ cmd_library.add({'pluginreload', 'preload'}, 'reload a plugin', {
 	if not plugin_name then
 		return notify('plugin', `plugin '{plugin_name}' not found`, 2)
 	end
-	
+
 	local plugin = cmd_library._plugins[plugin_name:lower()]
 	if not plugin then
 		notify('plugin', `plugin '{plugin_name}' not found`, 2)
@@ -4137,6 +4139,8 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 
 	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
 end)
+
+
 
 cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	{'key', 'string'}
@@ -4560,36 +4564,30 @@ cmd_library.add({'unclicktp', 'unctp'}, 'disables click teleport', {}, function(
 end)
 
 cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
-	{'bypass_mode', 'boolean'},
-	{'cooldown', 'number'}
-}, function(vstorage, bypass, cooldown)
-	cooldown = cooldown or 0.5
-	notify('tptool', `giving tp tool | cooldown: {cooldown}s{bypass and ' (bypass)' or ''}`, 1)
+	{'bypass_mode', 'boolean'}
+}, function(vstorage, bypass)
+	notify('tptool', `giving tp tool {bypass and ' (bypass)' or ''}`, 1)
 
-	local last_use = 0
-	local is_teleporting = false
 	local ccframe = stuff.owner_char:GetPivot()
-
 	if bypass then
-		hook_lib.create_hook('tptool_bypass', {
-			newindex = function(self, key, value)
-				if is_teleporting then
-					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-					if self == hrp and (key == 'CFrame' or key == 'Position') then
-						return false
-					end
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then return end
+		
+		hook_lib.create_hook('tptool_bypass', hook_lib.presets.property_spoof(hrp, {
+			CFrame = hrp.CFrame,
+			Position = hrp.Position
+		}))
+		
+		hook_lib.create_hook('tptool_bypass2', {
+			functions = {
+				[stuff.owner_char.GetPivot] = function()
+					return ccframe
+				end,
+				
+				[stuff.owner_char.PivotTo] = function(cf)
+					ccframe = cf
 				end
-			end,
-			index = function(self, key)
-				if is_teleporting then
-					local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
-					if self == hrp and key == 'CFrame' then
-						return ccframe or hrp.CFrame
-					elseif self == hrp and key == 'Position' then
-						return ccframe.Position or hrp.CFrame.Position
-					end
-				end
-			end
+			}
 		})
 	end
 
@@ -4651,30 +4649,19 @@ cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
 
 		if bypass then
 			hook_lib.destroy_hook('tptool_bypass')
+			hook_lib.destroy_hook('tptool_bypass2')
 		end
 	end)
 
 	tptool.Activated:Connect(function()
-		local current_time = tick()
-		if current_time - last_use < cooldown then
-			local remaining = math.ceil((cooldown - (current_time - last_use)) * 10) / 10
-			notify('tptool', `cooldown: {remaining}s`, 2)
-			return
-		end
-
 		local mouse = stuff.owner:GetMouse()
 		local pos = mouse.Hit.Position
 		pos = pos + Vector3.new(0, 1.5, 0)
 
 		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 		if hrp then
-			is_teleporting = true
 			ccframe = hrp.CFrame
 			stuff.rawrbxset(hrp, 'CFrame', CFrame.new(pos))
-			last_use = current_time
-
-			task.wait(0.1)
-			is_teleporting = false
 		end
 	end)
 
@@ -5505,10 +5492,15 @@ cmd_library.add({'enabletouchevent', 'enablete'}, 're-enables touch events', {},
 end)
 
 cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+	if identifyexecutor():lower():match('xeno') then
+		return notify('translatechat', 'xeno is not supported', 2)
+	end
+
 	notify('translatechat', 'loading chat translator', 1)
 	local success, err = pcall(function()
 		loadstring(game:HttpGet('https://raw.githubusercontent.com/x114/RobloxScripts/main/UpdatedChatTranslator'))()
 	end)
+	
 	if not success then
 		notify('translatechat', 'failed to load chat translator: ' .. tostring(err), 2)
 	end
@@ -5986,7 +5978,7 @@ cmd_library.add({'userid', 'id'}, 'shows the user id of a player', {
 	if not targets or #targets == 0 then
 		return notify('userid', 'player not found', 2)
 	end
-	
+
 	local target = targets[1]
 	notify('userid', `{target.Name}'s id: {target.UserId}`, 1)
 end)
@@ -6026,7 +6018,7 @@ cmd_library.add({'copyposition', 'copycoords', 'copypos'}, 'copies your current 
 	if not pos then
 		return notify('copyposition', 'no character found', 2)
 	end
-	
+
 	setclipboard(`{pos.X},{pos.Y},{pos.Z}`)
 	notify('copyposition', `copied exact position`, 1)
 end)
@@ -9230,7 +9222,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	end
 
 	local hrp = character.HumanoidRootPart
-	
+
 	local part = Instance.new('Part')
 
 	local attachment1 = Instance.new('Attachment')
@@ -9239,7 +9231,7 @@ cmd_library.add({'blackhole', 'bh'}, 'creates a black hole that attracts parts',
 	vstorage.part = part
 	vstorage.attachment1 = attachment1
 	vstorage.processed_parts = {}
-	
+
 	local function force_part(v)
 		if vstorage.part_count >= vstorage.max_parts then return end
 		if vstorage.processed_parts[v] then return end
@@ -10772,13 +10764,12 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 					bh_set[np] = true
 				end
 			else
-				local s = cs * t.m
 				local needs_fix = not p.Anchored or p.CanCollide or p.Color ~= t.col or p.Material ~= t.mat
 				if needs_fix then
-					task.spawn(pcall, sync, 'SyncAnchor', {{ Part = p, Anchored = true }})
-					task.spawn(pcall, sync, 'SyncCollision', {{ Part = p, CanCollide = false }})
-					task.spawn(pcall, sync, 'SyncColor', {{ Part = p, Color = t.col }})
-					task.spawn(pcall, sync, 'SyncMaterial', {{ Part = p, Material = t.mat, Transparency = t.tr, Reflectance = 0 }})
+					pcall(sync, 'SyncAnchor', {{ Part = p, Anchored = true }})
+					pcall(sync, 'SyncCollision', {{ Part = p, CanCollide = false }})
+					pcall(sync, 'SyncColor', {{ Part = p, Color = t.col }})
+					pcall(sync, 'SyncMaterial', {{ Part = p, Material = t.mat, Transparency = t.tr, Reflectance = 0 }})
 				end
 			end
 		end
@@ -10820,7 +10811,7 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 
 	task.spawn(function()
 		local last = os.clock()
-		local refit_t, clean_t, filter_t, pulse_t = 0, 0, 0, 0
+		local refit_t, clean_t, filter_t, pulse_t, grow_t = 0, 0, 0, 0, 0
 
 		while vs.active do
 			local now = os.clock()
@@ -10848,6 +10839,12 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				upd_filter()
 			end
 
+			grow_t = grow_t + dt
+			if grow_t > 0.5 then
+				grow_t = 0
+				sz = min(sz + sz * 0.002, max_sz)
+			end
+
 			pulse_t = pulse_t + dt * 3
 			local cs = sz * (1 + sin(pulse_t) * 0.03)
 
@@ -10872,8 +10869,8 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			local range = sz * 8 + 50
 			local eh = sz * 0.65
 			local eh_sq = eh * eh
-			local spag_zone = sz * 6
-			local tidal_zone = sz * 12
+			local spag_base = sz * 2
+			local tidal_base = sz * 5
 			local spiral_zone = sz * 25
 			local orbit_zone = sz * 18
 			local strength = pwr * (1 + sz * 0.01)
@@ -10886,6 +10883,7 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 			local mv, rs, rm = {}, {}, {}
 			local fm = 0
 			local curr_char = stuff.owner_char
+			local anchor_batch = {}
 
 			for _, obj in workspace:GetPartBoundsInRadius(pos, range, params) do
 				if not obj.Parent then continue end
@@ -10901,9 +10899,9 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				local dist_sq = dx * dx + dy * dy + dz * dz
 
 				if dist_sq < 0.01 then continue end
-				
-				local obj_sz_mag = obj.Size.Magnitude / 10
-				if obj_sz_mag > sz and not vels[obj] then continue end
+
+				local obj_sz_mag = obj.Size.Magnitude
+				if obj_sz_mag > sz * 10 and not vels[obj] then continue end
 
 				local dist = sqrt(dist_sq)
 
@@ -10923,16 +10921,16 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 						os = obj.Size, om = obj.Mass, 
 						a = false,
 						ang = atan2(dz, dx),
-						stretch = 1,
 						spiral_phase = 0,
-						init_sm = obj.Size.Magnitude
+						init_sm = obj_sz_mag,
+						eaten_front = 0
 					}
 					vels[obj] = v
 				end
 
 				if not v.a then
 					v.a = true
-					task.spawn(pcall, sync, 'SyncAnchor', {{ Part = obj, Anchored = true }})
+					anchor_batch[#anchor_batch + 1] = { Part = obj, Anchored = true }
 				end
 
 				v.t = v.t + dt
@@ -10943,6 +10941,8 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				local inv_d = 1 / dist
 				local dx_n, dy_n, dz_n = dx * inv_d, dy * inv_d, dz * inv_d
 
+				local size_factor = v.init_sm / 10
+				local tidal_zone = tidal_base + size_factor * 3
 				local tidal_force = 0
 				if dist < tidal_zone then
 					local t = 1 - dist / tidal_zone
@@ -11031,31 +11031,52 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				v.spin = v.spin + spin_rate
 
 				local to_center = Vector3.new(cdx, cdy, cdz).Unit
-				local vel_dir = spd > 0.1 and Vector3.new(v.x, v.y, v.z).Unit or Vector3.yAxis
-				local spin_axis = vel_dir:Cross(to_center)
-				if spin_axis.Magnitude < 0.01 then spin_axis = Vector3.yAxis end
-				spin_axis = spin_axis.Unit
-				local spin_cf = CFrame.fromAxisAngle(spin_axis, v.spin)
 
-				if cd < spag_zone then
-					local spag_t = clamp(1 - (cd - eh) / (spag_zone - eh), 0, 1) ^ 3
-					local stretch = 1 + spag_t * 15
-					local compress = max(1 - spag_t * 0.9, 0.05)
+				local spag_zone = spag_base + size_factor * 4
+				local tidal_effect_zone = tidal_base + size_factor * 3
+
+				if cd < spag_zone and cd > eh then
+					local spag_t = clamp(1 - (cd - eh) / (spag_zone - eh), 0, 1)
 					local os = v.os
-					local ns = Vector3.new(max(os.X * compress, 0.02), max(os.Y * compress, 0.02), max(os.Z * stretch, 0.02))
+
+					local dist_into_zone = spag_zone - cd
+					local eat_rate = dist_into_zone / (spag_zone - eh) * dt * 0.5
+					v.eaten_front = min(v.eaten_front + eat_rate, os.Z * 0.5 - 0.1)
+
+					local front_half = os.Z * 0.5
+					local back_half = os.Z * 0.5
+					local front_remaining = max(front_half - v.eaten_front, 0.1)
+
+					local stretch = 1 + spag_t * spag_t * 4
+					local compress = max(1 - spag_t * spag_t * 0.5, 0.3)
+
+					local new_z = (front_remaining + back_half) * stretch
+					local ns = Vector3.new(
+						max(os.X * compress, os.X * 0.3),
+						max(os.Y * compress, os.Y * 0.3),
+						max(new_z, 0.2)
+					)
 
 					local look = to_center
 					local up = abs(look.Y) > 0.9 and Vector3.xAxis or Vector3.yAxis
 					local right = look:Cross(up).Unit
 					up = right:Cross(look).Unit
 
-					rs[#rs + 1] = { Part = obj, Size = ns, CFrame = CFrame.fromMatrix(Vector3.new(nx, ny, nz), right, up, -look) * CFrame.Angles(0, 0, v.spin) }
-				elseif cd < tidal_zone then
-					local tidal_t = clamp((tidal_zone - cd) / (tidal_zone - spag_zone), 0, 1) ^ 2
-					local stretch = 1 + tidal_t * 3
-					local compress = max(1 - tidal_t * 0.4, 0.6)
+					local offset = v.eaten_front * 0.5 * stretch
+					local offset_pos = Vector3.new(nx, ny, nz) + to_center * offset
+
+					rs[#rs + 1] = { Part = obj, Size = ns, CFrame = CFrame.fromMatrix(offset_pos, right, up, -look) * CFrame.Angles(0, 0, v.spin) }
+				elseif cd < tidal_effect_zone then
+					local tidal_t = clamp((tidal_effect_zone - cd) / (tidal_effect_zone - spag_zone), 0, 1)
 					local os = v.os
-					local ns = Vector3.new(max(os.X * compress, 0.1), max(os.Y * compress, 0.1), max(os.Z * stretch, 0.1))
+					local stretch = 1 + tidal_t * tidal_t * 1.5
+					local compress = max(1 - tidal_t * tidal_t * 0.2, 0.8)
+
+					local ns = Vector3.new(
+						max(os.X * compress, os.X * 0.5),
+						max(os.Y * compress, os.Y * 0.5),
+						os.Z * stretch
+					)
 
 					local look = to_center
 					local up = abs(look.Y) > 0.9 and Vector3.xAxis or Vector3.yAxis
@@ -11070,16 +11091,20 @@ cmd_library.add({'f3xblackhole', 'f3xbh'}, 'creates a black hole using f3x', {
 				end
 			end
 
+			if #anchor_batch > 0 then
+				pcall(sync, 'SyncAnchor', anchor_batch)
+			end
+
 			if fm > 0 then
-				sz = min(sz + (fm ^ 0.35) * 0.0025, max_sz)
+				sz = min(sz + (fm ^ 0.35) * 0.003, max_sz)
 				total_mass = total_mass + fm
 			end
 
 			kills = kills + #rm
 
-			if #mv > 0 then task.spawn(pcall, sync, 'SyncMove', mv) end
-			if #rs > 0 then task.spawn(pcall, sync, 'SyncResize', rs) end
-			if #rm > 0 then task.spawn(pcall, sync, 'Remove', rm) end
+			if #mv > 0 then pcall(sync, 'SyncMove', mv) end
+			if #rs > 0 then pcall(sync, 'SyncResize', rs) end
+			if #rm > 0 then pcall(sync, 'Remove', rm) end
 
 			task.wait()
 		end
@@ -11519,7 +11544,7 @@ cmd_library.add({'aimbot', 'aim'}, 'aims at nearest enemy or npc (set prediction
 	vstorage.fov = fov or 90
 	vstorage.fov_radius = fov_to_radius(vstorage.fov)
 	vstorage.max_distance = max_distance or 500
-	vstorage.smoothness = math.clamp(smoothness or 0.15, 0.01, 1)
+	vstorage.smoothness = 1-math.clamp(smoothness or 0.15, 0.01, 1)
 	vstorage.target_part = (target_part or 'head'):lower()
 	vstorage.priority = (priority or 'fov'):lower()
 	vstorage.wallcheck = wallcheck ~= false
@@ -13401,7 +13426,7 @@ cmd_library.add({"deletetool"}, "gives you a tool to delete unanchored parts on 
 	stuff.rawrbxset(tool, "Name", "delete")
 	stuff.rawrbxset(tool, "RequiresHandle", false)
 	stuff.rawrbxset(tool, "CanBeDropped", false)
-	
+
 	maid.add('deletetool_activated', tool.Activated, function()
 		if stuff.owner:GetMouse().Target ~= nil then
 			if stuff.owner:GetMouse().Target:IsA("Part") or stuff.owner:GetMouse().Target:IsA("MeshPart") or stuff.owner:GetMouse().Target:IsA("UnionOperation") or stuff.owner:GetMouse().Target:IsA("BasePart") then
@@ -16269,6 +16294,13 @@ pcall(protect_gui, ui_notifications)
 stuff.ui_notifications_template = ui_notifications_template
 stuff.ui_notifications_main_container = ui_notifications_main_container
 
-config.apply()
+xpcall(config.apply, function(err)
+	warn(debug.traceback(err, 2))
+	notify('config', `an error occured while applying config: {err} | check console for full error`, 2)
+end)
+
 notify('info', 'join the discord .gg/StHSWMjcnk', 4)
 notify('info', `opadmin v{stuff.ver} loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
+if identifyexecutor():lower():match('xeno') then
+	notify('warning', `opadmin is running on xeno api, some commands will not work as expected`, 3)
+end
