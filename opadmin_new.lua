@@ -2496,7 +2496,7 @@ cmd_library.add({'unloopwalkspeed', 'unloopws'}, 'disables loopwalkspeed', {}, f
 	end
 end)
 
-cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
+cmd_library.add({'fly', 'cfly', 'cframefly'}, 'enable flight', {
 	{'speed', 'number'},
 	{'bypass_mode', 'boolean'},
 	{'enable_toggling', 'boolean', 'hidden'}
@@ -2572,7 +2572,7 @@ cmd_library.add({'fly', 'cframefly'}, 'enable flight', {
 	end)
 end)
 
-cmd_library.add({'unfly', 'disablefly', 'stopfly'}, 'disable flight', {}, function(vstorage)
+cmd_library.add({'unfly', 'uncframefly', 'uncfly'}, 'disable flight', {}, function(vstorage)
 	local vstorage = cmd_library.get_variable_storage('fly')
 
 	if vstorage.enabled then
@@ -4228,10 +4228,10 @@ cmd_library.add({'clearbinds', 'unbindall'}, 'clears all keybinds for current ga
 	notify('clearbinds', `cleared {count} keybind(s)`, 1)
 end)
 
-cmd_library.add({'purgegamebinds', 'resetbinds', 'nobinds'}, 'clears all current and saved binds', {}, function(vstorage)
+cmd_library.add({'nobinds', 'resetbinds', 'purgeallbinds'}, 'clears all current and saved binds', {}, function(vstorage)
 	local bind_vs = cmd_library.get_variable_storage('bind')
 	local count = 0
-
+	
 	if bind_vs and bind_vs.binds then
 		for bind_id in pairs(bind_vs.binds) do
 			maid.remove(bind_id)
@@ -4242,7 +4242,7 @@ cmd_library.add({'purgegamebinds', 'resetbinds', 'nobinds'}, 'clears all current
 
 	config.set_game_binds({})
 
-	notify('purgegamebinds', `purged {count} keybind(s) and saved config`, 1)
+	notify('nobinds', `purged {count} keybind(s) and saved config`, 1)
 end)
 
 cmd_library.add({'savebinds'}, 'saves all current keybinds to config', {}, function(vstorage)
