@@ -2,6 +2,13 @@ if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
+export type options_table = {
+	binds_autosave: boolean?
+}
+
+local options: options_table = #{...} > 0 and ({...})[1] or {}
+options.binds_autosave = options.binds_autosave or true
+
 identifyexecutor = identifyexecutor or function() return "CommandBar" end
 setfpscap = setfpscap or function() end
 setfps = setfps or function() end
@@ -68,7 +75,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.11.0',
+	ver = '3.13.1',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -1937,7 +1944,6 @@ function config.get_game_binds()
 	local binds = config.get('binds') or {}
 	if not binds[config.current_game_id] then
 		binds[tostring(config.current_game_id)] = {}
-		config.set('binds', binds)
 	end
 	return binds[config.current_game_id]
 end
@@ -1973,10 +1979,19 @@ function config.apply()
 	end
 
 	local game_binds = config.get_game_binds()
-	if game_binds then
-		for bind_id, bind_data in game_binds do
+	if game_binds and next(game_binds) then
+		local bind_vs = cmd_library.get_variable_storage('bind')
+		bind_vs.binds = bind_vs.binds or {}
+
+		for bind_id, bind_data in pairs(game_binds) do
 			local keycode = Enum.KeyCode[bind_data.key]
 			if keycode and cmd_library._command_map[bind_data.command:lower()] then
+				bind_vs.binds[bind_id] = {
+					key = bind_data.key,
+					command = bind_data.command,
+					args = bind_data.args or {}
+				}
+
 				maid.add(bind_id, services.user_input_service.InputBegan, function(input, processed)
 					if input.KeyCode == keycode and not processed then
 						cmd_library.execute(bind_data.command, unpack(bind_data.args or {}))
@@ -1999,7 +2014,7 @@ local function load_ui()
 		local success, result = pcall(function()
 			return game:GetObjects(ui_asset)[1]
 		end)
-		
+
 		if success and result then
 			ui = result
 		end
@@ -4111,7 +4126,7 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 	local args = {...}
 	vstorage.binds = vstorage.binds or {}
 
-	local bind_id = `keybind_{key:upper()}_{command:lower()}`
+	local bind_id = `keybind_{key:upper()}`
 
 	if vstorage.binds[bind_id] then
 		maid.remove(bind_id)
@@ -4129,18 +4144,14 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 		end
 	end)
 
-	local game_binds = config.get_game_binds()
-	game_binds[bind_id] = {
-		key = key:upper(),
-		command = command:lower(),
-		args = args
-	}
-	config.set_game_binds(game_binds)
+	if options.autosave_binds then
+		local game_binds = config.get_game_binds()
+		game_binds[bind_id] = vstorage.binds[bind_id]
+		config.set_game_binds(game_binds)
+	end
 
-	notify('bind', `bound {key:upper()} to {command} {#args > 0 and `with {#args} args` or ''}`, 1)
+	notify('bind', `bound {key:upper()} to {command}{#args > 0 and ` with {#args} args` or ''}`, 1)
 end)
-
-
 
 cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	{'key', 'string'}
@@ -4154,24 +4165,22 @@ cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 		return notify('unbind', 'no binds exist', 2)
 	end
 
-	local removed = false
-	local game_binds = config.get_game_binds()
+	local bind_id = `keybind_{key:upper()}`
 
-	for bind_id, bind_data in bind_vs.binds do
-		if bind_data.key == key:upper() then
-			maid.remove(bind_id)
-			bind_vs.binds[bind_id] = nil
-			game_binds[bind_id] = nil
-			removed = true
-		end
+	if not bind_vs.binds[bind_id] then
+		return notify('unbind', `no bind found for key {key:upper()}`, 2)
 	end
 
-	if removed then
+	maid.remove(bind_id)
+	bind_vs.binds[bind_id] = nil
+
+	if options.autosave_binds then
+		local game_binds = config.get_game_binds()
+		game_binds[bind_id] = nil
 		config.set_game_binds(game_binds)
-		notify('unbind', `unbound key {key:upper()}`, 1)
-	else
-		notify('unbind', `no binds found for key {key:upper()}`, 2)
 	end
+
+	notify('unbind', `unbound key {key:upper()}`, 1)
 end)
 
 cmd_library.add({'listbinds', 'binds', 'showbinds'}, 'lists all keybinds for current game', {}, function(vstorage)
@@ -4181,31 +4190,78 @@ cmd_library.add({'listbinds', 'binds', 'showbinds'}, 'lists all keybinds for cur
 	end
 
 	local bind_list = {}
-	for bind_id, bind_data in ipairs(bind_vs.binds) do
+	for bind_id, bind_data in pairs(bind_vs.binds) do
 		local args_str = #bind_data.args > 0 and ` {table.concat(bind_data.args, ' ')}` or ''
 		table.insert(bind_list, `{bind_data.key}: {bind_data.command}{args_str}`)
 	end
 
 	table.sort(bind_list)
-	notify('listbinds', `keybinds:\n{table.concat(bind_list, '\n')}`, 1)
+
+	if #bind_list > 5 then
+		notify('listbinds', `too many binds to display ({#bind_list}), printing to console`, 3)
+		print(`keybinds:\n{table.concat(bind_list, '\n')}`)
+	else
+		for _, y in bind_list do
+			notify('listbinds', y, 1)
+		end
+	end
 end)
 
 cmd_library.add({'clearbinds', 'unbindall'}, 'clears all keybinds for current game', {}, function(vstorage)
 	local bind_vs = cmd_library.get_variable_storage('bind')
-	if not bind_vs or not bind_vs.binds then
+	if not bind_vs or not bind_vs.binds or next(bind_vs.binds) == nil then
 		return notify('clearbinds', 'no binds exist', 2)
 	end
 
 	local count = 0
-	for bind_id, _ in ipairs(bind_vs.binds) do
+	for bind_id in pairs(bind_vs.binds) do
 		maid.remove(bind_id)
-		count = count + 1
+		count += 1
 	end
 
 	bind_vs.binds = {}
-	config.set_game_binds({})
+
+	if options.autosave_binds then
+		config.set_game_binds({})
+	end
 
 	notify('clearbinds', `cleared {count} keybind(s)`, 1)
+end)
+
+cmd_library.add({'purgegamebinds', 'resetbinds', 'nobinds'}, 'clears all current and saved binds', {}, function(vstorage)
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	local count = 0
+
+	if bind_vs and bind_vs.binds then
+		for bind_id in pairs(bind_vs.binds) do
+			maid.remove(bind_id)
+			count += 1
+		end
+		bind_vs.binds = {}
+	end
+
+	config.set_game_binds({})
+
+	notify('purgegamebinds', `purged {count} keybind(s) and saved config`, 1)
+end)
+
+cmd_library.add({'savebinds'}, 'saves all current keybinds to config', {}, function(vstorage)
+	local bind_vs = cmd_library.get_variable_storage('bind')
+	if not bind_vs or not bind_vs.binds or next(bind_vs.binds) == nil then
+		return notify('savebinds', 'no binds to save', 2)
+	end
+
+	local game_binds = {}
+	local count = 0
+
+	for bind_id, bind_data in pairs(bind_vs.binds) do
+		game_binds[bind_id] = bind_data
+		count += 1
+	end
+
+	config.set_game_binds(game_binds)
+
+	notify('savebinds', `saved {count} keybind(s)`, 1)
 end)
 
 cmd_library.add({'dupetools', 'clonetools'}, 'duplicates your tools', {
@@ -4572,18 +4628,18 @@ cmd_library.add({'tptool', 'tpt'}, 'gives you a teleport tool', {
 	if bypass then
 		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
 		if not hrp then return end
-		
+
 		hook_lib.create_hook('tptool_bypass', hook_lib.presets.property_spoof(hrp, {
 			CFrame = hrp.CFrame,
 			Position = hrp.Position
 		}))
-		
+
 		hook_lib.create_hook('tptool_bypass2', {
 			functions = {
 				[stuff.owner_char.GetPivot] = function()
 					return ccframe
 				end,
-				
+
 				[stuff.owner_char.PivotTo] = function(cf)
 					ccframe = cf
 				end
@@ -5500,7 +5556,7 @@ cmd_library.add({'translatechat', 'chattranslate'}, 'translates chat [WARNING: I
 	local success, err = pcall(function()
 		loadstring(game:HttpGet('https://raw.githubusercontent.com/x114/RobloxScripts/main/UpdatedChatTranslator'))()
 	end)
-	
+
 	if not success then
 		notify('translatechat', 'failed to load chat translator: ' .. tostring(err), 2)
 	end
