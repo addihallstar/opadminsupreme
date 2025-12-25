@@ -211,6 +211,42 @@ local plugin = {
 		local full_text = ('slop warning ⚠ slop alert ⚠ slop detected ⚠ slop detection software ⚠ '):rep(50)
 		local display_length = 250
 
+		local function get_chars(str)
+			local chars = {}
+			local i = 1
+			while i <= #str do
+				local byte = string.byte(str, i)
+				local char_len = 1
+				if byte >= 240 then
+					char_len = 4
+				elseif byte >= 224 then
+					char_len = 3
+				elseif byte >= 192 then
+					char_len = 2
+				end
+				table.insert(chars, string.sub(str, i, i + char_len - 1))
+				i = i + char_len
+			end
+			return chars
+		end
+
+		local chars = get_chars(full_text)
+
+		local function get_display_text(start_pos, length)
+			local result = {}
+			local count = 0
+			local pos = start_pos
+			while count < length and pos <= #chars do
+				table.insert(result, chars[pos])
+				count = count + 1
+				pos = pos + 1
+				if pos > #chars then
+					pos = 1
+				end
+			end
+			return table.concat(result)
+		end
+
 		local function yes()
 			if shared_vars.active then return end
 			shared_vars.active = true
@@ -220,7 +256,7 @@ local plugin = {
 			hint.Parent = workspace
 			shared_vars.hint = hint
 
-			hint.Text = string.sub(full_text, 1, display_length)
+			hint.Text = get_display_text(1, display_length)
 
 			task.spawn(function()
 				while shared_vars.active and shared_vars.hint and shared_vars.hint.Parent do
@@ -228,12 +264,12 @@ local plugin = {
 					
 					shared_vars.scroll_position = shared_vars.scroll_position + 1
 
-					if shared_vars.scroll_position + display_length > #full_text then
+					if shared_vars.scroll_position > #chars then
 						shared_vars.scroll_position = 1
 					end
 
 					if shared_vars.hint and shared_vars.hint.Parent then
-						shared_vars.hint.Text = string.sub(full_text, shared_vars.scroll_position, shared_vars.scroll_position + display_length - 1)
+						shared_vars.hint.Text = get_display_text(shared_vars.scroll_position, display_length)
 					end
 				end
 			end)
