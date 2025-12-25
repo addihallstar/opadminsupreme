@@ -67,7 +67,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.10.0',
+	ver = '3.10.1',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -4834,21 +4834,19 @@ cmd_library.add({'chatlogs', 'cl'}, 'toggles the chatlogs', {}, function(vstorag
 	local ui_chatlog_template = chatlog.main_container.chatlogs.log
 	ui_chatlog_template.Parent = nil
 
-	if services.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
-		services.text_chat_service.OnIncomingMessage = function(message)
-			if message.Status == Enum.TextChatMessageStatus.Success then
-				local frame = chatlog:FindFirstChildOfClass('Frame')
-				local sframe = frame:FindFirstChildOfClass('ScrollingFrame')
-				local label = ui_chatlog_template:Clone()
+	services.text_chat_service.OnIncomingMessage = function(message)
+		if message.Status == Enum.TextChatMessageStatus.Success then
+			local frame = chatlog:FindFirstChildOfClass('Frame')
+			local sframe = frame:FindFirstChildOfClass('ScrollingFrame')
+			local label = ui_chatlog_template:Clone()
 
-				stuff.rawrbxset(label, 'Name', tostring(message.Text))
-				stuff.rawrbxset(label, 'Visible', true)
-				stuff.rawrbxset(label, 'Text', tostring(message.TextSource) .. ': ' .. tostring(message.Text))
-				stuff.rawrbxset(label, 'Parent', sframe)
-				if #chatlog.main_container.chatlogs:GetChildren() > 3 then
-					task.wait()
-					stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
-				end
+			stuff.rawrbxset(label, 'Name', tostring(message.Text))
+			stuff.rawrbxset(label, 'Visible', true)
+			stuff.rawrbxset(label, 'Text', tostring(message.TextSource) .. ': ' .. tostring(message.Text))
+			stuff.rawrbxset(label, 'Parent', sframe)
+			if #chatlog.main_container.chatlogs:GetChildren() > 3 then
+				task.wait()
+				stuff.rawrbxset(sframe, 'CanvasPosition', Vector2.new(0, sframe.AbsoluteCanvasSize.Y))
 			end
 		end
 	end
@@ -6061,11 +6059,7 @@ cmd_library.add({'chat', 'say'}, 'says something in chat', {
 
 	notify('chat', `saying '{message}'`, 1)
 
-	if services.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
-		services.text_chat_service.TextChannels.RBXGeneral:SendAsync(message)
-	else
-		services.replicated_storage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(message, 'All')
-	end
+	services.text_chat_service.TextChannels.RBXGeneral:SendAsync(message)
 end)
 
 
@@ -6090,15 +6084,9 @@ cmd_library.add({'spamchat'}, 'spams chat with a message', {
 
 	task.spawn(function()
 		while task.wait(interval) and vstorage.enabled do
-			if services.text_chat_service.ChatVersion == Enum.ChatVersion.TextChatService then
-				pcall(function()
-					services.text_chat_service.TextChannels.RBXGeneral:SendAsync(vstorage.message)
-				end)
-			else
-				pcall(function()
-					services.replicated_storage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer(vstorage.message, 'All')
-				end)
-			end
+			pcall(function()
+				services.text_chat_service.TextChannels.RBXGeneral:SendAsync(vstorage.message)
+			end)
 		end
 	end)
 end)
