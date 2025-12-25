@@ -75,7 +75,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.13.1',
+	ver = '3.13.2',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -4144,7 +4144,7 @@ cmd_library.add({'bind', 'keybind', 'bindkey'}, 'binds a command to a key', {
 		end
 	end)
 
-	if options.autosave_binds then
+	if options.binds_autosave then
 		local game_binds = config.get_game_binds()
 		game_binds[bind_id] = vstorage.binds[bind_id]
 		config.set_game_binds(game_binds)
@@ -4174,7 +4174,7 @@ cmd_library.add({'unbind', 'unkeybind', 'unbindkey'}, 'unbinds a key', {
 	maid.remove(bind_id)
 	bind_vs.binds[bind_id] = nil
 
-	if options.autosave_binds then
+	if options.binds_autosave then
 		local game_binds = config.get_game_binds()
 		game_binds[bind_id] = nil
 		config.set_game_binds(game_binds)
@@ -4221,7 +4221,7 @@ cmd_library.add({'clearbinds', 'unbindall'}, 'clears all keybinds for current ga
 
 	bind_vs.binds = {}
 
-	if options.autosave_binds then
+	if options.binds_autosave then
 		config.set_game_binds({})
 	end
 
