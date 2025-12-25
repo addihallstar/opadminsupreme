@@ -273,8 +273,6 @@ local plugin = {
 					end
 				end
 			end)
-
-			api.notify('slopalert', 'slop detection active', 1)
 		end
 
 		local function no()
@@ -289,17 +287,8 @@ local plugin = {
 			api.notify('slopalert', 'slop detection disabled', 1)
 		end
 
-		api.add_command({'slopalert', 'slop'}, 'toggle scrolling slop warning hint', {}, function(vars)
-			if shared_vars.active then
-				no()
-			else
-				yes()
-			end
-		end)
-
-		api.add_command({'unslopalert', 'unslop'}, 'disable slop warning hint', {}, function(vars)
-			no()
-		end)
+		api.add_command({'slopalert', 'slop'}, 'enable slop detection software', {}, yes)
+		api.add_command({'unslopalert', 'unslop'}, 'disable slop detection software', {}, no)
 
 		return true
 	end
