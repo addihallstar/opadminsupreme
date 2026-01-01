@@ -1832,7 +1832,7 @@ function cmd_library.execute(name, ...)
 
 		if not success then
 			notify('cmd', `error in '{name}': {tostring(err):match("[^\n]*")}`, 2)
-			notify('command error', 'report this to the develepors, open console for the full error (F9 or /console in chat)', 4)
+			notify('command error', 'report this to the developers, open console for the full error (F9 or /console in chat)', 4)
 			warn(`command '{name}' failed:`, err)
 		end
 	end)
@@ -6343,7 +6343,7 @@ cmd_library.add({'reach', 'r'}, 'increases your tool handle size', {
 end)
 
 cmd_library.add({'unreach', 'unr'}, 'disables reach', {}, function(vstorage)
-	local reach_storage = cmd_library.get_storage('reach')
+	local reach_storage = cmd_library.get_variable_storage('reach')
 	if not reach_storage or not reach_storage.enabled then
 		return notify('reach', 'reach is not enabled', 2)
 	end
@@ -6453,7 +6453,7 @@ cmd_library.add({'touchreach', 'treach', 'tr'}, 'adds touch-based reach to your 
 end)
 
 cmd_library.add({'untouchreach', 'untreach', 'untr'}, 'disables touch reach', {}, function(vstorage)
-	local touchreach_storage = cmd_library.get_storage('touchreach')
+	local touchreach_storage = cmd_library.get_variable_storage('touchreach')
 	if not touchreach_storage or not touchreach_storage.enabled then
 		return notify('touchreach', 'touchreach is not enabled', 2)
 	end
