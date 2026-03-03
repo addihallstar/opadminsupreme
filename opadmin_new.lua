@@ -75,7 +75,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.14.3',
+	ver = '3.15.3',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -388,6 +388,28 @@ local function get_plr(name)
 		end,
 		['@old'] = function() return special_selectors['@oldest']() end,
 		['@veteran'] = function() return special_selectors['@oldest']() end,
+
+		['@nearest'] = function()
+			local nearest, nearest_dist = nil, math.huge
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			if not owner_hrp then return {} end
+			for _, plr in all_plrs do
+				if plr ~= stuff.owner and plr.Character then
+					local hrp = plr.Character:FindFirstChild('HumanoidRootPart')
+					if hrp then
+						local dist = (owner_hrp.Position - hrp.Position).Magnitude
+						if dist < nearest_dist then
+							nearest_dist = dist
+							nearest = plr
+						end
+					end
+				end
+			end
+			return nearest and {nearest} or {}
+		end,
+		['@near'] = function() return special_selectors['@nearest']() end,
+		['@closest'] = function() return special_selectors['@nearest']() end,
+		['@n'] = function() return special_selectors['@nearest']() end,
 
 		['@facing'] = function()
 			local facing = {}
@@ -4231,7 +4253,7 @@ end)
 cmd_library.add({'nobinds', 'resetbinds', 'purgeallbinds'}, 'clears all current and saved binds', {}, function(vstorage)
 	local bind_vs = cmd_library.get_variable_storage('bind')
 	local count = 0
-	
+
 	if bind_vs and bind_vs.binds then
 		for bind_id in pairs(bind_vs.binds) do
 			maid.remove(bind_id)
@@ -5579,6 +5601,16 @@ cmd_library.add({'dex'}, 'dex (dex++) [WARNING: ITS A THIRD-PARTY TOOL]', {}, fu
 	end)
 	if not success then
 		notify('dex', 'failed to load dex: ' .. tostring(err), 2)
+	end
+end)
+
+cmd_library.add({'universe viewer', 'uv', 'uview'}, 'it lets you view every place of the game that is public [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+	notify('universe viewer', 'loading universe viewer', 1)
+	local success, err = pcall(function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/sinret/rbxscript.com-scripts-reuploads-/main/UNVIew', true))()
+	end)
+	if not success then
+		notify('universe viewer', 'failed to load universe viewer: ' .. tostring(err), 2)
 	end
 end)
 
@@ -8531,6 +8563,18 @@ cmd_library.add({'sit'}, 'buckle up', {}, function(vstorage)
 		local current_sit = stuff.rawrbxget(humanoid, 'Sit')
 		stuff.rawrbxset(humanoid, 'Sit', not current_sit)
 		notify('togglesit', `set sitting to {not current_sit}`, 1)
+	end
+end)
+
+cmd_library.add({'shiftlocktoggle', 'slt'}, 'enables shiftlock even if developer disabled it', {}, function(vstorage)
+	vstorage.enabled = not vstorage.enabled
+
+	if vstorage.enabled then
+		stuff.rawrbxset(stuff.owner, 'DevEnableMouseLock', true)
+		notify('shiftlocktoggle', 'shiftlock enabled', 1)
+	else
+		stuff.rawrbxset(stuff.owner, 'DevEnableMouseLock', false)
+		notify('shiftlocktoggle', 'shiftlock disabled', 1)
 	end
 end)
 
@@ -13664,6 +13708,193 @@ cmd_library.add({'partfling', 'pf', 'partf'}, 'flings someone using parts, far m
 	end
 end)
 
+cmd_library.add({'partbring', 'pb', 'bringpart'}, 'brings the nearest part to you or a specified player', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	local part = get_closest_part()
+
+	if not part then
+		return notify('partbring', 'no usable part found nearby', 2)
+	end
+
+	local function bring_part(target)
+		local target_hrp = target and target.Character and target.Character:FindFirstChild('HumanoidRootPart')
+		if not target_hrp then
+			return notify('partbring', `{target and target.Name or 'target'} has no HumanoidRootPart`, 2)
+		end
+
+		local old_cf = stuff.owner_char:GetPivot()
+		local start_tick = tick()
+
+		repeat
+			stuff.owner_char:PivotTo(stuff.rawrbxget(part, 'CFrame'))
+			services.run_service.RenderStepped:Wait()
+		until network_check(part) == true or stuff.sim_range_reset == true or tick() - start_tick >= 5
+
+		stuff.owner_char:PivotTo(old_cf)
+		local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+		if not network_check(part) and stuff.sim_range_reset == false then
+			return notify('partbring', 'failed to gain part ownership, try reloadnetwork', 2)
+		end
+
+		stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+		stuff.rawrbxset(part, 'Anchored', false)
+		stuff.rawrbxset(part, 'CanCollide', true)
+		stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+		stuff.rawrbxset(part, 'CFrame', stuff.rawrbxget(target_hrp, 'CFrame') * CFrame.new(0, 0, -5))
+
+		notify('partbring', `brought part to {target.Name}`, 1)
+	end
+
+	if not targets or #targets == 0 then
+		bring_part(stuff.owner)
+	else
+		for _, target in targets do
+			bring_part(target)
+			task.wait(0.5)
+		end
+	end
+end)
+
+cmd_library.add({'tripwire', 'tw'}, 'sets a tripwire on the nearest part, flings anyone who gets close to it', {
+	{'velocity', 'number'},
+	{'radius', 'number'}
+}, function(vstorage, vel, rad)
+	if vstorage.enabled then
+		return notify('tripwire', 'already active, use untripwire to stop', 2)
+	end
+
+	local part = get_closest_part()
+	if not part then return notify('tripwire', 'no usable part found nearby', 2) end
+
+	notify('tripwire', 'gaining ownership of part...', 1)
+
+	local old_cf = stuff.owner_char:GetPivot()
+	local start_tick = tick()
+
+	repeat
+		stuff.owner_char:PivotTo(stuff.rawrbxget(part, 'CFrame'))
+		services.run_service.RenderStepped:Wait()
+	until network_check(part) == true or stuff.sim_range_reset == true or tick() - start_tick >= 5
+
+	stuff.owner_char:PivotTo(old_cf)
+	local humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
+	humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+	if not network_check(part) and stuff.sim_range_reset == false then
+		return notify('tripwire', 'failed to gain part ownership, try reloadnetwork', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.velocity = vel or 2500
+	vstorage.radius = rad or 8
+	vstorage.on_cooldown = {}
+	vstorage.watch_pos = stuff.rawrbxget(part, 'Position')
+	vstorage.part = part
+
+	local old_can_collide = stuff.rawrbxget(part, 'CanCollide')
+	local old_anchored = stuff.rawrbxget(part, 'Anchored')
+
+	stuff.rawrbxset(part, 'Anchored', false)
+	stuff.rawrbxset(part, 'CanCollide', false)
+	stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+	stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
+	stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+
+	notify('tripwire', `tripwire armed | radius: {vstorage.radius} | velocity: {vstorage.velocity}`, 1)
+
+	maid.add('tripwire', services.run_service.Heartbeat, function()
+		if not vstorage.enabled then return end
+
+		stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+
+		if not network_check(part) then
+			local regain_tick = tick()
+			local owner_cf2 = stuff.owner_char:GetPivot()
+			repeat
+				stuff.owner_char:PivotTo(stuff.rawrbxget(part, 'CFrame'))
+				services.run_service.RenderStepped:Wait()
+			until network_check(part) == true or tick() - regain_tick >= 1
+			stuff.owner_char:PivotTo(owner_cf2)
+			stuff.rawrbxget(stuff.owner_char, 'Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+		end
+
+		stuff.rawrbxset(part, 'CFrame', CFrame.new(vstorage.watch_pos))
+		stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+		stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
+
+		for _, plr in services.players:GetPlayers() do
+			local char = plr.Character
+			if not char then continue end
+			local plr_hrp = char:FindFirstChild('HumanoidRootPart')
+			if not plr_hrp then continue end
+			if (stuff.rawrbxget(plr_hrp, 'Position') - vstorage.watch_pos).Magnitude > vstorage.radius then continue end
+			if vstorage.on_cooldown[plr.Name] then continue end
+
+			vstorage.on_cooldown[plr.Name] = true
+			local target_original_pos = stuff.rawrbxget(plr_hrp, 'Position')
+			local fling_start_tick = tick()
+			local fling_detected = false
+			local max_distance_reached = 0
+
+			task.spawn(function()
+				repeat
+					local current_hrp = plr.Character and plr.Character:FindFirstChild('HumanoidRootPart')
+					if not current_hrp then break end
+
+					stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+					stuff.rawrbxset(part, 'Anchored', false)
+					stuff.rawrbxset(part, 'CanCollide', false)
+
+					local predicted_cf = predict_position(plr.Character)
+					if predicted_cf then
+						stuff.rawrbxset(part, 'CFrame', predicted_cf)
+					else
+						stuff.rawrbxset(part, 'CFrame', CFrame.new(stuff.rawrbxget(current_hrp, 'Position')))
+					end
+
+					stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.new(0, vstorage.velocity, 0))
+
+					local current_pos = stuff.rawrbxget(current_hrp, 'Position')
+					local dist_from_original = (current_pos - target_original_pos).Magnitude
+					max_distance_reached = math.max(max_distance_reached, dist_from_original)
+
+					if dist_from_original >= 100 and tick() - fling_start_tick <= 1 then
+						fling_detected = true
+					end
+
+					services.run_service.RenderStepped:Wait()
+				until fling_detected or tick() - fling_start_tick >= 3
+
+				if max_distance_reached >= 100 then
+					notify('tripwire', `triggered on {plr.Name} ({math.floor(max_distance_reached)} studs)`, 1)
+				else
+					notify('tripwire', `triggered on {plr.Name} (weak fling, {math.floor(max_distance_reached)} studs)`, 2)
+				end
+
+				stuff.rawrbxset(part, 'CFrame', CFrame.new(vstorage.watch_pos))
+				stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+
+				task.wait(3)
+				vstorage.on_cooldown[plr.Name] = nil
+			end)
+		end
+	end)
+end)
+
+cmd_library.add({'untripwire', 'untw'}, 'disables tripwire', {}, function()
+	local vs = cmd_library.get_variable_storage('tripwire')
+	if not vs.enabled then return notify('tripwire', 'tripwire is not active', 2) end
+	vs.enabled = false
+	vs.on_cooldown = {}
+	vs.watch_pos = nil
+	vs.part = nil
+	maid.remove('tripwire')
+	notify('tripwire', 'tripwire disabled', 1)
+end)
+
 cmd_library.add({'instantprompt', 'instaprompt'}, 'sets proximity prompt hold duration to 0', {
 	{'enable_toggling', 'boolean', 'hidden'}
 }, function(vstorage, et)
@@ -13704,7 +13935,7 @@ cmd_library.add({'uninstantprompt', 'uninstaprompt'}, 'disables instant prompt',
 	end
 
 	vstorage.enabled = false
-	
+
 	for prompt, original_duration in vstorage.original do
 		if prompt and prompt.Parent then
 			pcall(function()
@@ -13712,7 +13943,7 @@ cmd_library.add({'uninstantprompt', 'uninstaprompt'}, 'disables instant prompt',
 			end)
 		end
 	end
-	
+
 	vstorage.original = {}
 	notify('instantprompt', 'instant prompt disabled', 1)
 	maid.remove('instantprompt')
@@ -14087,6 +14318,404 @@ cmd_library.add({'unflingaura', 'unfaura', 'unfa'}, 'stop fling aura', {}, funct
 		vstorage.fling_aura_conn = nil
 	end
 	notify('unflingaura', 'fling aura stopped', 1)
+end)
+
+
+cmd_library.add({'waypoint', 'wp'}, 'manage waypoints: add, del, go, list, clear, esp, noesp, save, load', {
+	{'action', 'string'},
+	{'name', 'string'},
+	{'color', 'color3'}
+}, function(vstorage, action, name, color)
+	vstorage.waypoints = vstorage.waypoints or {}
+	vstorage.markers = vstorage.markers or {}
+	vstorage.arrows = vstorage.arrows or {}
+	vstorage.esp_enabled = vstorage.esp_enabled or false
+
+	local WP_PURPLE = Color3.fromRGB(180, 100, 255)
+	local WP_TEXT_DIM = Color3.fromRGB(200, 180, 255)
+
+	action = action and action:lower()
+
+	if not action then
+		return notify('waypoint', 'actions: add, del, go, list, clear, esp, noesp, save, load', 3)
+	end
+
+	if action == 'add' or action == 'set' then
+		if not name or name == '' then
+			return notify('waypoint', 'provide a name: wp add <n> [color]', 2)
+		end
+
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return notify('waypoint', 'no HumanoidRootPart found', 2)
+		end
+
+		local pos = stuff.rawrbxget(hrp, 'Position')
+		vstorage.waypoints[name] = {
+			position = pos,
+			color = color or WP_PURPLE
+		}
+
+		notify('waypoint', `added "{name}" at {math.floor(pos.X)}, {math.floor(pos.Y)}, {math.floor(pos.Z)}`, 1)
+
+		if vstorage.esp_enabled then
+			cmd_library.execute('waypoint', 'noesp')
+			cmd_library.execute('waypoint', 'esp')
+		end
+
+	elseif action == 'del' or action == 'delete' or action == 'remove' then
+		if not name or name == '' then
+			return notify('waypoint', 'provide a name: wp del <n>', 2)
+		end
+
+		if not vstorage.waypoints[name] then
+			return notify('waypoint', `waypoint "{name}" not found`, 2)
+		end
+
+		vstorage.waypoints[name] = nil
+
+		if vstorage.markers[name] then
+			pcall(stuff.destroy, vstorage.markers[name])
+			vstorage.markers[name] = nil
+		end
+
+		if vstorage.arrows[name] then
+			pcall(stuff.destroy, vstorage.arrows[name])
+			vstorage.arrows[name] = nil
+		end
+
+		notify('waypoint', `deleted "{name}"`, 1)
+
+	elseif action == 'go' or action == 'tp' or action == 'teleport' then
+		if not name or name == '' then
+			return notify('waypoint', 'provide a name: wp go <n>', 2)
+		end
+
+		local wp = vstorage.waypoints[name]
+		if not wp then
+			return notify('waypoint', `waypoint "{name}" not found`, 2)
+		end
+
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		if not hrp then
+			return notify('waypoint', 'no HumanoidRootPart found', 2)
+		end
+
+		stuff.rawrbxset(hrp, 'CFrame', CFrame.new(wp.position + Vector3.new(0, 3, 0)))
+		notify('waypoint', `teleported to "{name}"`, 1)
+
+	elseif action == 'list' or action == 'ls' then
+		local count = 0
+		for _ in vstorage.waypoints do
+			count += 1
+		end
+
+		if count == 0 then
+			return notify('waypoint', 'no waypoints saved', 2)
+		end
+
+		notify('waypoint', `{count} waypoint(s):`, 4)
+
+		local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+		for n, wp in vstorage.waypoints do
+			local dist_str = ''
+			if hrp then
+				local dist = math.floor((stuff.rawrbxget(hrp, 'Position') - wp.position).Magnitude)
+				dist_str = ` [{dist}m]`
+			end
+			local p = wp.position
+			notify('waypoint', `"{n}"{dist_str} — {math.floor(p.X)}, {math.floor(p.Y)}, {math.floor(p.Z)}`, 1)
+			task.wait(0.05)
+		end
+
+	elseif action == 'clear' then
+		local count = 0
+		for _ in vstorage.waypoints do
+			count += 1
+		end
+
+		if count == 0 then
+			return notify('waypoint', 'no waypoints to clear', 2)
+		end
+
+		if vstorage.esp_enabled then
+			cmd_library.execute('waypoint', 'noesp')
+		end
+
+		vstorage.waypoints = {}
+		notify('waypoint', `cleared {count} waypoint(s)`, 1)
+
+	elseif action == 'save' then
+		if not writefile then
+			return notify('waypoint', 'writefile not supported on your executor', 2)
+		end
+
+		local serialisable = {}
+		for n, wp in vstorage.waypoints do
+			serialisable[n] = {
+				x = wp.position.X,
+				y = wp.position.Y,
+				z = wp.position.Z,
+				r = wp.color.R,
+				g = wp.color.G,
+				b = wp.color.B
+			}
+		end
+
+		local ok, err = pcall(function()
+			writefile('opadmin_waypoints.json', services.http:JSONEncode(serialisable))
+		end)
+
+		if ok then
+			local count = 0
+			for _ in serialisable do count += 1 end
+			notify('waypoint', `saved {count} waypoint(s) to opadmin_waypoints.json`, 1)
+		else
+			notify('waypoint', `save failed: {tostring(err)}`, 2)
+		end
+
+	elseif action == 'load' then
+		if not readfile or not isfile then
+			return notify('waypoint', 'readfile not supported on your executor', 2)
+		end
+
+		if not isfile('opadmin_waypoints.json') then
+			return notify('waypoint', 'no save file found, use wp save first', 2)
+		end
+
+		local ok, result = pcall(function()
+			return services.http:JSONDecode(readfile('opadmin_waypoints.json'))
+		end)
+
+		if not ok or type(result) ~= 'table' then
+			return notify('waypoint', 'failed to parse waypoints file', 2)
+		end
+
+		local count = 0
+		for n, data in result do
+			vstorage.waypoints[n] = {
+				position = Vector3.new(data.x, data.y, data.z),
+				color = Color3.new(data.r, data.g, data.b)
+			}
+			count += 1
+		end
+
+		notify('waypoint', `loaded {count} waypoint(s)`, 1)
+
+		if vstorage.esp_enabled then
+			cmd_library.execute('waypoint', 'noesp')
+			cmd_library.execute('waypoint', 'esp')
+		end
+
+	elseif action == 'esp' or action == 'show' then
+		if vstorage.esp_enabled then
+			return notify('waypoint', 'waypoint esp already on, use wp noesp to stop', 2)
+		end
+
+		local count = 0
+		for _ in vstorage.waypoints do count += 1 end
+
+		if count == 0 then
+			return notify('waypoint', 'no waypoints to display, add one first', 2)
+		end
+
+		vstorage.esp_enabled = true
+
+		local gui = Instance.new('ScreenGui')
+		stuff.rawrbxset(gui, 'Name', 'opadmin_wp_esp')
+		stuff.rawrbxset(gui, 'ResetOnSpawn', false)
+		stuff.rawrbxset(gui, 'IgnoreGuiInset', true)
+		stuff.rawrbxset(gui, 'DisplayOrder', 2147483647)
+		pcall(protect_gui, gui)
+		vstorage.gui = gui
+
+		for n, wp in vstorage.waypoints do
+			local wp_color = wp.color
+
+			local marker = Instance.new('Frame')
+			stuff.rawrbxset(marker, 'Name', `wp_marker_{n}`)
+			stuff.rawrbxset(marker, 'AnchorPoint', Vector2.new(0.5, 0.5))
+			stuff.rawrbxset(marker, 'BackgroundTransparency', 1)
+			stuff.rawrbxset(marker, 'BorderSizePixel', 0)
+			stuff.rawrbxset(marker, 'Size', UDim2.new(0, 120, 0, 40))
+			stuff.rawrbxset(marker, 'Visible', false)
+			stuff.rawrbxset(marker, 'Parent', gui)
+
+			local dot = Instance.new('Frame')
+			stuff.rawrbxset(dot, 'Name', 'dot')
+			stuff.rawrbxset(dot, 'AnchorPoint', Vector2.new(0.5, 0.5))
+			stuff.rawrbxset(dot, 'Size', UDim2.new(0, 8, 0, 8))
+			stuff.rawrbxset(dot, 'Position', UDim2.new(0.5, 0, 0.5, 0))
+			stuff.rawrbxset(dot, 'BackgroundColor3', wp_color)
+			stuff.rawrbxset(dot, 'BorderSizePixel', 0)
+			stuff.rawrbxset(dot, 'ZIndex', 2)
+			stuff.rawrbxset(dot, 'Parent', marker)
+
+			local dot_corner = Instance.new('UICorner')
+			stuff.rawrbxset(dot_corner, 'CornerRadius', UDim.new(1, 0))
+			stuff.rawrbxset(dot_corner, 'Parent', dot)
+
+			local name_label = Instance.new('TextLabel')
+			stuff.rawrbxset(name_label, 'Name', 'name_label')
+			stuff.rawrbxset(name_label, 'AnchorPoint', Vector2.new(0.5, 1))
+			stuff.rawrbxset(name_label, 'Size', UDim2.new(0, 120, 0, 14))
+			stuff.rawrbxset(name_label, 'Position', UDim2.new(0.5, 0, 0.5, -8))
+			stuff.rawrbxset(name_label, 'BackgroundTransparency', 1)
+			stuff.rawrbxset(name_label, 'BorderSizePixel', 0)
+			stuff.rawrbxset(name_label, 'Text', n)
+			stuff.rawrbxset(name_label, 'TextColor3', wp_color)
+			stuff.rawrbxset(name_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+			stuff.rawrbxset(name_label, 'TextStrokeTransparency', 0.4)
+			stuff.rawrbxset(name_label, 'Font', Enum.Font.Code)
+			stuff.rawrbxset(name_label, 'TextSize', 13)
+			stuff.rawrbxset(name_label, 'ZIndex', 2)
+			stuff.rawrbxset(name_label, 'Parent', marker)
+
+			local dist_label = Instance.new('TextLabel')
+			stuff.rawrbxset(dist_label, 'Name', 'dist_label')
+			stuff.rawrbxset(dist_label, 'AnchorPoint', Vector2.new(0.5, 0))
+			stuff.rawrbxset(dist_label, 'Size', UDim2.new(0, 80, 0, 12))
+			stuff.rawrbxset(dist_label, 'Position', UDim2.new(0.5, 0, 0.5, 8))
+			stuff.rawrbxset(dist_label, 'BackgroundTransparency', 1)
+			stuff.rawrbxset(dist_label, 'BorderSizePixel', 0)
+			stuff.rawrbxset(dist_label, 'Text', '')
+			stuff.rawrbxset(dist_label, 'TextColor3', WP_TEXT_DIM)
+			stuff.rawrbxset(dist_label, 'TextStrokeColor3', Color3.new(0, 0, 0))
+			stuff.rawrbxset(dist_label, 'TextStrokeTransparency', 0.4)
+			stuff.rawrbxset(dist_label, 'Font', Enum.Font.Code)
+			stuff.rawrbxset(dist_label, 'TextSize', 11)
+			stuff.rawrbxset(dist_label, 'ZIndex', 2)
+			stuff.rawrbxset(dist_label, 'Parent', marker)
+
+			vstorage.markers[n] = marker
+
+			local arrow = Instance.new('ImageLabel')
+			stuff.rawrbxset(arrow, 'Name', `wp_arrow_{n}`)
+			stuff.rawrbxset(arrow, 'AnchorPoint', Vector2.new(0.5, 0.5))
+			stuff.rawrbxset(arrow, 'BackgroundTransparency', 1)
+			stuff.rawrbxset(arrow, 'Size', UDim2.new(0, 18, 0, 18))
+			stuff.rawrbxset(arrow, 'ImageColor3', wp_color)
+			stuff.rawrbxset(arrow, 'Image', 'rbxassetid://3926305904')
+			stuff.rawrbxset(arrow, 'ImageRectOffset', Vector2.new(524, 763))
+			stuff.rawrbxset(arrow, 'ImageRectSize', Vector2.new(36, 36))
+			stuff.rawrbxset(arrow, 'ResampleMode', Enum.ResamplerMode.Pixelated)
+			stuff.rawrbxset(arrow, 'ZIndex', 2)
+			stuff.rawrbxset(arrow, 'Visible', false)
+			stuff.rawrbxset(arrow, 'Parent', gui)
+
+			local arrow_dist = Instance.new('TextLabel')
+			stuff.rawrbxset(arrow_dist, 'Name', 'distance')
+			stuff.rawrbxset(arrow_dist, 'AnchorPoint', Vector2.new(0.5, 0))
+			stuff.rawrbxset(arrow_dist, 'Size', UDim2.new(0, 60, 0, 11))
+			stuff.rawrbxset(arrow_dist, 'Position', UDim2.new(0.5, 0, 1, 2))
+			stuff.rawrbxset(arrow_dist, 'BackgroundTransparency', 1)
+			stuff.rawrbxset(arrow_dist, 'BorderSizePixel', 0)
+			stuff.rawrbxset(arrow_dist, 'Text', '')
+			stuff.rawrbxset(arrow_dist, 'TextColor3', wp_color)
+			stuff.rawrbxset(arrow_dist, 'TextStrokeColor3', Color3.new(0, 0, 0))
+			stuff.rawrbxset(arrow_dist, 'TextStrokeTransparency', 0.4)
+			stuff.rawrbxset(arrow_dist, 'Font', Enum.Font.Code)
+			stuff.rawrbxset(arrow_dist, 'TextSize', 10)
+			stuff.rawrbxset(arrow_dist, 'ZIndex', 2)
+			stuff.rawrbxset(arrow_dist, 'Parent', arrow)
+
+			vstorage.arrows[n] = arrow
+		end
+
+		maid.add('waypoint_esp', services.run_service.RenderStepped, function()
+			if not vstorage.esp_enabled then return end
+
+			local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+			local viewport = camera.ViewportSize
+			local cx = viewport.X / 2
+			local cy = viewport.Y / 2
+			local pad = 28
+
+			local owner_hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+			local owner_pos = owner_hrp and stuff.rawrbxget(owner_hrp, 'Position')
+
+			for n, wp in vstorage.waypoints do
+				local marker = vstorage.markers[n]
+				local arrow = vstorage.arrows[n]
+
+				if not marker or not arrow then continue end
+
+				local wp_pos = wp.position + Vector3.new(0, 3, 0)
+				local screen_pos, on_screen = camera:WorldToViewportPoint(wp_pos)
+
+				local dist_str = owner_pos and `{math.floor((owner_pos - wp.position).Magnitude)}m` or ''
+
+				if on_screen and screen_pos.Z > 0 then
+					stuff.rawrbxset(marker, 'Visible', true)
+					stuff.rawrbxset(marker, 'Position', UDim2.new(0, screen_pos.X, 0, screen_pos.Y))
+					stuff.rawrbxset(arrow, 'Visible', false)
+
+					local dl = marker:FindFirstChild('dist_label')
+					if dl then
+						stuff.rawrbxset(dl, 'Text', dist_str)
+					end
+				else
+					stuff.rawrbxset(marker, 'Visible', false)
+					stuff.rawrbxset(arrow, 'Visible', true)
+
+					local dir = (wp_pos - camera.CFrame.Position).Unit
+					local screen_dir = Vector2.new(
+						dir:Dot(camera.CFrame.RightVector),
+						-dir:Dot(camera.CFrame.UpVector)
+					).Unit
+
+					local scale = math.min(
+						(cx - pad) / math.max(math.abs(screen_dir.X), 0.0001),
+						(cy - pad) / math.max(math.abs(screen_dir.Y), 0.0001)
+					)
+
+					local ax = cx + screen_dir.X * scale
+					local ay = cy + screen_dir.Y * scale
+					local angle = math.deg(math.atan2(screen_dir.Y, screen_dir.X)) + 90
+
+					stuff.rawrbxset(arrow, 'Position', UDim2.new(0, ax, 0, ay))
+					stuff.rawrbxset(arrow, 'Rotation', angle)
+
+					local adl = arrow:FindFirstChild('distance')
+					if adl then
+						stuff.rawrbxset(adl, 'Text', dist_str)
+						stuff.rawrbxset(adl, 'Rotation', -angle)
+					end
+				end
+			end
+		end)
+
+		notify('waypoint', `waypoint esp enabled for {count} waypoint(s)`, 1)
+
+	elseif action == 'noesp' or action == 'hide' then
+		if not vstorage.esp_enabled then
+			return notify('waypoint', 'waypoint esp is not enabled', 2)
+		end
+
+		vstorage.esp_enabled = false
+		maid.remove('waypoint_esp')
+
+		for n, marker in vstorage.markers do
+			pcall(stuff.destroy, marker)
+		end
+
+		for n, arrow in vstorage.arrows do
+			pcall(stuff.destroy, arrow)
+		end
+
+		vstorage.markers = {}
+		vstorage.arrows = {}
+
+		if vstorage.gui then
+			pcall(stuff.destroy, vstorage.gui)
+			vstorage.gui = nil
+		end
+
+		notify('waypoint', 'waypoint esp disabled', 1)
+
+	else
+		notify('waypoint', `unknown action "{action}" | actions: add, del, go, list, clear, esp, noesp, save, load`, 2)
+	end
 end)
 
 cmd_library.add({'partwalkfling', 'pwalkfling', 'partwalkf', 'pwalkf', 'pwf'}, 'partfling on walkfling', {
@@ -16064,6 +16693,81 @@ cmd_library.add({'stopdamage', 'stopd'}, 'attempts to cancel the damage to your 
 			end
 		end
 	})
+end)
+
+cmd_library.add({'partdrag', 'pd', 'drag'}, 'carries a nearby part with your camera lookvector', {
+	{'distance', 'number'}
+}, function(vstorage, dist)
+	if vstorage.enabled then
+		return notify('partdrag', 'already dragging, use unpartdrag to stop', 2)
+	end
+
+	local part = get_closest_part()
+	if not part then return notify('partdrag', 'no usable part found nearby', 2) end
+
+	local old_cf = stuff.owner_char:GetPivot()
+	local start_tick = tick()
+
+	repeat
+		stuff.owner_char:PivotTo(stuff.rawrbxget(part, 'CFrame'))
+		services.run_service.RenderStepped:Wait()
+	until network_check(part) == true or stuff.sim_range_reset == true or tick() - start_tick >= 5
+
+	stuff.owner_char:PivotTo(old_cf)
+	stuff.rawrbxget(stuff.owner_char, 'Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+
+	if not network_check(part) and stuff.sim_range_reset == false then
+		return notify('partdrag', 'failed to gain part ownership, try reloadnetwork', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.part = part
+	vstorage.orig_anchored = stuff.rawrbxget(part, 'Anchored')
+	vstorage.orig_cancollide = stuff.rawrbxget(part, 'CanCollide')
+	vstorage.drag_distance = dist or 10
+
+	stuff.rawrbxset(part, 'Anchored', false)
+	stuff.rawrbxset(part, 'CanCollide', false)
+	stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+
+	maid.add('partdrag', services.run_service.RenderStepped, function()
+		if not vstorage.enabled or not part or not part.Parent then
+			maid.remove('partdrag')
+			return
+		end
+
+		stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+
+		local camera = stuff.rawrbxget(workspace, 'CurrentCamera')
+		local cam_cf = stuff.rawrbxget(camera, 'CFrame')
+		local target_pos = cam_cf.Position + cam_cf.LookVector * vstorage.drag_distance
+
+		stuff.rawrbxset(part, 'CFrame', CFrame.new(target_pos))
+		stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+		stuff.rawrbxset(part, 'AssemblyAngularVelocity', Vector3.zero)
+	end)
+
+	notify('partdrag', `dragging part (distance: {vstorage.drag_distance}) | use unpartdrag to stop`, 1)
+end)
+
+cmd_library.add({'unpartdrag', 'unpd', 'undrag'}, 'stops dragging the part', {}, function()
+	local vs = cmd_library.get_variable_storage('partdrag')
+
+	if not vs.enabled then return notify('partdrag', 'not dragging', 2) end
+
+	vs.enabled = false
+	maid.remove('partdrag')
+
+	if vs.part then
+		pcall(function()
+			stuff.rawrbxset(vs.part, 'Anchored', vs.orig_anchored)
+			stuff.rawrbxset(vs.part, 'CanCollide', vs.orig_cancollide)
+			stuff.rawrbxset(vs.part, 'AssemblyLinearVelocity', Vector3.zero)
+		end)
+		vs.part = nil
+	end
+
+	notify('partdrag', 'stopped dragging', 1)
 end)
 
 cmd_library.add({'unstopdamage', 'unstopd'}, 'disables damage prevention', {}, function(vstorage)
