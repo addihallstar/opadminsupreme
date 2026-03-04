@@ -1,8 +1,8 @@
 # opadmin
 
-another admin script yes, currently we have 292 commands (297 if count plugins from opadmin)
+another admin script yes, currently we have 300+ commands (313 if count plugins from opadmin)
 
-16000 lines op
+17000 lines op
 
 ## features
 
@@ -44,6 +44,7 @@ commands that accept players support these selectors:
 | `@everyone` / `@all` / `@e` / `@a` | all players |
 | `@others` / `@other` / `@o` | everyone except you |
 | `@random` / `@rand` / `@r` | random player |
+| `@nearest` / `@near` / `@closest` / `@n` |  person closest to you |
 | `@view` / `@v` | the player you are currently viewing with `view` command |
 
 ### team-based selectors
