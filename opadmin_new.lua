@@ -75,7 +75,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.15.0',
+	ver = '3.15.1',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -7420,53 +7420,6 @@ cmd_library.add({'uninstakillreach', 'uninstksreach'}, 'disable instakillreach',
 	vstorage.enabled = false
 	maid.remove('instks_sword_activated')
 	notify('instakillreach', 'disabled instakillreach', 1)
-end)
-
-cmd_library.add({'grabtp'}, 'only works on ink game, you also need takedown ability', {
-	{'player', 'player'}
-}, function(vstorage, targets)
-	if not targets or #targets == 0 then
-		return notify('grabtp', 'player not found', 2)
-	end
-
-	for _, target in targets do
-		notify('grabtp', `bringing {target.Name} to you`, 1)
-
-		local old_pos = stuff.owner_char:GetPivot()
-		local takedown = stuff.owner.Backpack:FindFirstChild('Takedown') or stuff.owner_char:FindFirstChild('Takedown')
-
-		if not takedown then
-			return notify('grabtp', 'takedown ability not found', 2)
-		end
-
-		local local_humanoid = stuff.rawrbxget(stuff.owner_char, 'Humanoid')
-		local target_character = target.Character
-
-		if not target_character then
-			notify('grabtp', `{target.Name} has no character`, 2)
-			continue
-		end
-
-		local target_humanoid = stuff.rawrbxget(target_character, 'Humanoid')
-
-		if stuff.rawrbxget(takedown, 'Parent') ~= stuff.owner_char then
-			local_humanoid:EquipTool(takedown)
-		end
-
-		local move_direction = stuff.rawrbxget(target_humanoid, 'MoveDirection')
-		if move_direction ~= Vector3.zero then
-			stuff.owner_char:PivotTo(quick_predict_position(target, 20))
-		else
-			local target_hrp = stuff.rawrbxget(target_character, 'HumanoidRootPart')
-			local target_cf = stuff.rawrbxget(target_hrp, 'CFrame')
-			stuff.owner_char:PivotTo(target_cf * CFrame.new(0, 0, 3))
-		end
-
-		task.wait(1)
-
-		local_humanoid:UnequipTools()
-		stuff.owner_char:PivotTo(old_pos)
-	end
 end)
 
 cmd_library.add({'mirror', 'mimic'}, 'become their mirror and copy their movements', {
