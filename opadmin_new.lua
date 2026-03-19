@@ -71,11 +71,12 @@ local services = {
 	gui_service = cloneref(game:GetService('GuiService')),
 	marketplace_service = cloneref(game:GetService('MarketplaceService')),
 	network_client = cloneref(game:GetService('NetworkClient')),
-	sound_service = cloneref(game:GetService('SoundService'))
+	sound_service = cloneref(game:GetService('SoundService')),
+	chat = cloneref(game:GetService('Chat')),
 }
 
 local stuff = {
-	ver = '3.17.0',
+	ver = '3.18.0',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
@@ -6715,6 +6716,30 @@ cmd_library.add({'btools', 'bt'}, 'gives client-sided btools', {}, function(vsto
 end)
 
 -- c3: fun/trolling
+
+cmd_library.add({'fakechat', 'fchat'}, 'creates a chat bubble with your text above the player', {
+	{'player', 'player'},
+	{'text', 'string'}
+}, function(vstorage, targets, text)
+	if not targets or #targets == 0 then
+		return notify('fakechat', 'player not found', 2)
+	end
+
+	for _, target in targets do
+		local character = target.Character
+		if not character then
+			notify('fakechat', string.format('%s has no character', target.Name), 2)
+		else
+			local head = stuff.rawrbxget(character, 'Head')
+			if not head then
+				notify('fakechat', string.format('%s has no head', target.Name), 2)
+			else
+				services.chat:Chat(head, text)
+				notify('fakechat', string.format('created fake chat for %s: \'%s\'', target.Name, text), 1)
+			end
+		end
+	end
+end)
 
 cmd_library.add({'loopoof', 'oofloop'}, 'loops character sounds for all players', {}, function(vstorage)
 	if vstorage.active then
