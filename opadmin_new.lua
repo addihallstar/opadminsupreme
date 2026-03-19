@@ -75,7 +75,7 @@ local services = {
 }
 
 local stuff = {
-	ver = '3.16.0',
+	ver = '3.17.0',
 	--[[   ^ ^ ^
 		   | | | patch
 		   | | minor
