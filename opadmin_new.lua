@@ -8135,6 +8135,70 @@ cmd_library.add({'punchfling', 'pfling'}, 'gives you a punch fling tool', {}, fu
 	notify('punchfling', 'punch fling tool given', 1)
 end)
 
+cmd_library.add({'unload', 'killopadmin', 'koa'}, 'fully unloads opadmin', {}, function()
+	notify('unload', 'unloading opadmin...', 1)
+	task.delay(0.5, function()
+		maid.clean(false)
+		task.wait()
+		if stuff.ui then
+			pcall(function() stuff.ui:Destroy() end)
+		end
+		for _, v in ipairs(services.core_gui:GetChildren()) do
+			if v:IsA('ScreenGui') and v.Name:lower():find('opadmin') then
+				pcall(function() v:Destroy() end)
+			end
+		end
+		getgenv()['opadmin'] = nil
+	end)
+end)
+
+cmd_library.add({'partbring', 'pb', 'bringpart'}, 'brings the nearest unanchored part to you or a player', {
+	{'player', 'player'}
+}, function(vstorage, targets)
+	local part = get_closest_part()
+	if not part then return notify('partbring', 'no usable part found nearby', 2) end
+	local target = targets and targets[1]
+	local target_hrp = target and target.Character and target.Character:FindFirstChild('HumanoidRootPart')
+	local hrp = target_hrp or stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	if not hrp then return notify('partbring', 'no hrp found', 2) end
+	local old_cf = stuff.owner_char:GetPivot()
+	local start_tick = tick()
+	repeat
+		stuff.owner_char:PivotTo(stuff.rawrbxget(part, 'CFrame'))
+		services.run_service.RenderStepped:Wait()
+	until network_check(part) == true or stuff.sim_range_reset == true or tick() - start_tick >= 5
+	stuff.owner_char:PivotTo(old_cf)
+	stuff.rawrbxget(stuff.owner_char, 'Humanoid'):ChangeState(Enum.HumanoidStateType.Running)
+	if not network_check(part) and stuff.sim_range_reset == false then
+		return notify('partbring', 'failed to gain part ownership, try reloadnetwork', 2)
+	end
+	stuff.rawrbxset(stuff.owner, 'SimulationRadius', 1000)
+	services.run_service.RenderStepped:Wait()
+	stuff.rawrbxset(part, 'CFrame', stuff.rawrbxget(hrp, 'CFrame') * CFrame.new(0, 0, -5))
+	stuff.rawrbxset(part, 'AssemblyLinearVelocity', Vector3.zero)
+	notify('partbring', 'brought part \'' .. part.Name .. '\' to ' .. (target and target.Name or 'you'), 1)
+end)
+
+cmd_library.add({'scanparts', 'sp', 'checkparts'}, 'scans for usable unanchored parts nearby', {}, function(vstorage)
+	local hrp = stuff.owner_char and stuff.owner_char:FindFirstChild('HumanoidRootPart')
+	if not hrp then return notify('scanparts', 'no hrp found', 2) end
+	local hrp_pos = stuff.rawrbxget(hrp, 'Position')
+	local found = {}
+	for _, v in workspace:GetDescendants() do
+		if v:IsA('BasePart') and not stuff.rawrbxget(v, 'Anchored') and #v:GetConnectedParts() < 2 and not v:IsDescendantOf(stuff.owner_char) then
+			local dist = math.floor((stuff.rawrbxget(v, 'Position') - hrp_pos).Magnitude)
+			table.insert(found, {part = v, dist = dist})
+		end
+	end
+	if #found == 0 then return notify('scanparts', 'no usable parts found', 2) end
+	table.sort(found, function(a, b) return a.dist < b.dist end)
+	for _, data in found do
+		local p = data.part
+		print('[scanparts] ' .. p.Name .. ' | ' .. p.ClassName .. ' | ' .. data.dist .. 'm | ' .. (p.Parent and p.Parent.Name or 'nil'))
+	end
+	notify('scanparts', 'found ' .. #found .. ' part(s), check f9 for list', 1)
+end)
+
 cmd_library.add({'carpetfling', 'cfling'}, 'flings player using carpet animation and hip height', {
 	{'player', 'player'},
 	{'power', 'number'}
@@ -16845,6 +16909,4 @@ end)
 
 notify('info', 'join the discord .gg/StHSWMjcnk', 4)
 notify('info', `opadmin v{stuff.ver} loaded, press [{stuff.open_keybind.Name}] to open the cmdbar`, 1)
-if identifyexecutor():lower():match('xeno') then
-	notify('warning', `opadmin is running on xeno api, some commands will not work as expected`, 3)
-end
+notify('warning', `if your executor is shit some commands wont work as expected get a better exe i guess`, 3)
