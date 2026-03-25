@@ -8029,6 +8029,91 @@ cmd_library.add({'unmirror', 'unmimic'}, 'stop mirroring', {}, function(vstorage
 	end
 end)
 
+cmd_library.add({'instantprompt', 'instaprompt'}, 'sets proximity prompt hold duration to 0', {
+	{'enable_toggling', 'boolean', 'hidden'}
+}, function(vstorage, et)
+
+	if et and vstorage.enabled then
+		cmd_library.execute('uninstantprompt')
+		return
+	end
+
+	if vstorage.enabled then
+		return notify('instantprompt', 'instant prompt already enabled', 2)
+	end
+
+	vstorage.enabled = true
+	vstorage.original = {}
+	notify('instantprompt', 'instant prompt enabled', 1)
+
+	for _, v in workspace:GetDescendants() do
+		if v:IsA('ProximityPrompt') then
+			vstorage.original[v] = stuff.rawrbxget(v, 'HoldDuration')
+			stuff.rawrbxset(v, 'HoldDuration', 0)
+		end
+	end
+
+	maid.add('instantprompt', workspace.DescendantAdded, function(v)
+		if v:IsA('ProximityPrompt') then
+			vstorage.original[v] = stuff.rawrbxget(v, 'HoldDuration')
+			stuff.rawrbxset(v, 'HoldDuration', 0)
+		end
+	end, true)
+end)
+
+cmd_library.add({'uninstantprompt', 'uninstaprompt'}, 'disables instant prompt', {}, function(vstorage)
+	local vstorage = cmd_library.get_variable_storage('instantprompt')
+
+	if not vstorage.enabled then
+		return notify('instantprompt', 'instant prompt not enabled', 2)
+	end
+
+	vstorage.enabled = false
+
+	for prompt, original_duration in vstorage.original do
+		if prompt and prompt.Parent then
+			pcall(function()
+				stuff.rawrbxset(prompt, 'HoldDuration', original_duration)
+			end)
+		end
+	end
+
+	vstorage.original = {}
+	notify('instantprompt', 'instant prompt disabled', 1)
+	maid.remove('instantprompt')
+end)
+
+cmd_library.add({'lagswitch', 'lswitch', 'ls'}, 'freezes network like tab glitch', {
+	{'duration', 'number'}
+}, function(vstorage, duration)
+	duration = duration or 1
+
+	if vstorage.active then
+		return notify('lagswitch', 'lagswitch already active', 2)
+	end
+
+	vstorage.active = true
+	notify('lagswitch', `lagswitching for {duration}s`, 1)
+
+	settings().Network.IncomingReplicationLag = math.huge
+
+	task.delay(duration, function()
+		settings().Network.IncomingReplicationLag = 0
+		vstorage.active = false
+		notify('lagswitch', 'lagswitch ended', 1)
+	end)
+end)
+
+cmd_library.add({'universe viewer', 'uv', 'uview'}, 'it lets you view every place of the game that is public [WARNING: ITS A THIRD-PARTY TOOL]', {}, function()
+	notify('universe viewer', 'loading universe viewer', 1)
+	local success, err = pcall(function()
+		loadstring(game:HttpGet('https://raw.githubusercontent.com/sinret/rbxscript.com-scripts-reuploads-/main/UNVIew', true))()
+	end)
+	if not success then
+		notify('universe viewer', 'failed to load universe viewer: ' .. tostring(err), 2)
+	end
+end)
+			
 cmd_library.add({'fling'}, 'uses velocity to fling people', {
 	{'player', 'player'}
 }, function(vstorage, targets)
